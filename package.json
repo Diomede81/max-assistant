@@ -12,7 +12,8 @@
     "start": "node dist/main.js",
     "dev": "tsc -p tsconfig.json && node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "mic-check": "tsc -p tsconfig.json && node dist/tools/mic-check.js"
+    "mic-check": "tsc -p tsconfig.json && node dist/tools/mic-check.js",
+    "chat": "tsc -p tsconfig.json && node dist/tools/chat.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

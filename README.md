@@ -19,6 +19,11 @@ Mic → Wake word → End-of-speech → Speech-to-text → LLM ⇄ Home Assistan
 - **Follow-up window:** after replying, Max listens for 5 seconds without needing the wake word.
 - **Every turn logs a latency breakdown**, so you can tune with numbers.
 
+## No Ubuntu machine yet? Use Docker
+
+Run everything in containers on Mac, Windows or Linux, including a **typing mode** to test
+Home Assistant control without any audio setup. See **[docs/DOCKER.md](docs/DOCKER.md)**.
+
 ## Quick start (Ubuntu)
 
 ```bash
@@ -65,7 +70,7 @@ See [`deploy/max.service`](deploy/max.service).
 | `audio/` | Microphone capture (`arecord`), playback (`aplay`), end-of-speech detection |
 | `wyoming/` | Client for Home Assistant's Wyoming voice protocol |
 | `wake-word/` | openWakeWord with the custom "hey max" model ([training guide](training/README.md)) |
-| `tools/` | `npm run mic-check`: live mic levels and wake word detections for tuning |
+| `tools/` | `npm run mic-check`: live mic levels and wake word detections · `npm run chat`: type to Max instead of talking |
 | `stt/` | Speech-to-text (Whisper via Wyoming) |
 | `llm/` | Any OpenAI-compatible LLM, streaming + tool calls + fallback |
 | `ha-mcp/` | Home Assistant MCP client (`/api/mcp`, Streamable HTTP) |

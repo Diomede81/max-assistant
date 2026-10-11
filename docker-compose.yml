@@ -1,6 +1,25 @@
-# Local voice services (Home Assistant's own "Wyoming" stack) + optional local LLM.
-# Start with:  docker compose up -d            (add --profile local-llm for Ollama)
+# Local voice services (Home Assistant's own "Wyoming" stack), Max himself, optional local LLM.
+#   docker compose up -d                       voice services only (run Max with npm on the host)
+#   docker compose --profile max up -d --build voice services + Max in a container
+#   docker compose run --rm max node dist/tools/chat.js     type to Max (no audio needed)
+#   add --profile local-llm for Ollama
+# Running Max in Docker on a Mac/Windows laptop needs a sound bridge: see docs/DOCKER.md.
 services:
+  max:
+    build: .
+    profiles: ["max"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside Docker the voice services are reached by name, not 127.0.0.1.
+      WAKEWORD_HOST: openwakeword
+      STT_HOST: whisper
+      TTS_HOST: piper
+      # Sound bridge (docs/DOCKER.md). Default suits Mac + Windows Docker Desktop.
+      PULSE_SERVER: ${PULSE_SERVER:-tcp:host.docker.internal:4713}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: [openwakeword, whisper, piper]
+
   openwakeword:
     image: rhasspy/wyoming-openwakeword:latest
     restart: unless-stopped

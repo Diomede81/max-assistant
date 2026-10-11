@@ -5,7 +5,7 @@ import { MicrophoneService } from '../audio/microphone.service';
 import { Endpointer } from '../audio/endpointer';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { SttService } from '../stt/stt.service';
-import { LlmService } from '../llm/llm.service';
+import { LlmService, explainLlmError } from '../llm/llm.service';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from './sentence-splitter';
 import { TimerService, announcement } from '../actions/timer.service';
@@ -200,9 +200,10 @@ export class ConversationService implements OnApplicationBootstrap {
         }
       }
     } catch (err) {
-      this.log.error(`LLM error: ${(err as Error).message}`);
+      const why = explainLlmError(err);
+      this.log.error(`LLM error: ${why.log}`);
       splitter.flush();
-      speech.say('Sorry, I could not reach my brain just now.');
+      speech.say(why.spoken);
     }
     for (const sentence of splitter.flush()) {
       if (!firstSpoken) firstSpoken = Date.now();

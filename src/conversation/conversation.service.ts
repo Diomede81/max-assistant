@@ -8,6 +8,7 @@ import { SttService } from '../stt/stt.service';
 import { LlmService } from '../llm/llm.service';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from './sentence-splitter';
+import { TimerService, announcement } from '../actions/timer.service';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -41,16 +42,45 @@ export class ConversationService implements OnApplicationBootstrap {
     private readonly stt: SttService,
     private readonly llm: LlmService,
     private readonly tts: TtsService,
+    private readonly timers: TimerService,
   ) {}
+
+  private readonly pendingAnnouncements: string[] = [];
+  private announcing = false;
 
   onApplicationBootstrap(): void {
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();
+    // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
+    // the current conversation ends (never in the middle of an answer).
+    this.timers.on('fired', (t) => {
+      this.pendingAnnouncements.push(announcement(t));
+      if (this.state === 'wake') void this.flushAnnouncements();
+    });
     void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
+  }
+
+  private async flushAnnouncements(): Promise<void> {
+    if (this.announcing) return;
+    this.announcing = true;
+    try {
+      while (this.pendingAnnouncements.length) {
+        const text = this.pendingAnnouncements.shift()!;
+        this.log.log(`Announcing: "${text}"`);
+        await this.tts.chime().catch(() => undefined);
+        await this.tts.chime().catch(() => undefined);
+        const speech = this.tts.session();
+        speech.say(text);
+        await speech.done();
+      }
+    } finally {
+      this.announcing = false;
+    }
   }
 
   private async waitForWakeWord(): Promise<void> {
     this.state = 'wake';
+    if (this.pendingAnnouncements.length) void this.flushAnnouncements();
     const fmt = this.mic.format;
     let name: string;
     try {

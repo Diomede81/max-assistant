@@ -13,6 +13,7 @@ import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
 import { LlmService } from '../llm/llm.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
+import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
@@ -41,6 +42,15 @@ async function main(): Promise<void> {
   // Start buffering input immediately, so lines typed/pasted during start-up are not lost.
   const lines = rl[Symbol.asyncIterator]();
 
+  app.get(TimerService).on('fired', (t) => {
+    const text = announcement(t);
+    process.stdout.write(`\n*** ${text} ***\nYou: `);
+    if (speak) {
+      const s = tts.session();
+      s.say(text);
+      void s.done();
+    }
+  });
   const ha = await app.get(HaMcpService).status();
   console.log(
     ha.connected

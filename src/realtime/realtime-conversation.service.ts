@@ -62,7 +62,7 @@ export class RealtimeConversationService {
       instructions:
         `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
-      tools: this.tools.tools,
+      tools: rt.tools ? this.tools.tools : [],
       silenceMs: rt.silenceMs,
       interruptResponse: rt.bargeIn,
       transcribeModel: rt.transcribeModel,
@@ -228,7 +228,15 @@ export class RealtimeConversationService {
     });
     client.on('user-transcript', (t: string) => this.log.log(`You: "${t}"`));
     client.on('assistant-transcript', (t: string) => this.log.log(`Max: "${t}"`));
-    client.on('error', (err: Error) => this.log.error(`${providerName}: ${err.message}`));
+    client.on('error', (err: Error) => {
+      this.log.error(`${providerName}: ${err.message}`);
+      if (/invalid argument/i.test(err.message) && rt.tools) {
+        this.log.warn(
+          `${providerName} rejected part of the session set-up (${options.tools.length} actions offered). ` +
+            'To check whether an action description is the cause, set REALTIME_TOOLS=off in .env and restart.',
+        );
+      }
+    });
     client.on('close', () => (closed = true));
 
     // Stay open while the conversation is alive; close after a quiet spell.

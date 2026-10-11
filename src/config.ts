@@ -66,6 +66,8 @@ export interface AppConfig {
     /** Say the wake word while Max is talking to interrupt him (works on speakers, no echo issues). */
     wakeInterrupt: boolean;
     transcribeModel?: string;
+    /** Offer Max's actions in realtime mode (off = conversation only; useful to isolate problems). */
+    tools: boolean;
     followUpMs: number;
     maxSessionMs: number;
   };
@@ -180,6 +182,7 @@ export function loadConfig(): AppConfig {
       bargeIn: env.REALTIME_BARGE_IN === 'on',
       wakeInterrupt: env.REALTIME_WAKE_INTERRUPT !== 'off',
       transcribeModel: env.REALTIME_TRANSCRIBE_MODEL || undefined,
+      tools: env.REALTIME_TOOLS !== 'off',
       followUpMs: num(env.REALTIME_FOLLOW_UP_MS, 8000),
       maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 300) * 1000,
     },

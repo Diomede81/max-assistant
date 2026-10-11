@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
+import { toGeminiSchema } from './gemini-schema';
 
 /**
  * Minimal client for Google's Gemini Live API (speech-to-speech over WebSocket,
@@ -123,17 +124,28 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
         model: opts.model.startsWith('models/') ? opts.model : `models/${opts.model}`,
         generationConfig: { responseModalities: ['AUDIO'], speechConfig },
         systemInstruction: { parts: [{ text: opts.instructions }] },
-        tools: [
-          {
-            functionDeclarations: opts.tools
-              .filter((t) => t.type === 'function')
-              .map((t) => ({
-                name: t.type === 'function' ? t.function.name : '',
-                description: t.type === 'function' ? (t.function.description ?? '') : '',
-                parametersJsonSchema: (t.type === 'function' && t.function.parameters) || { type: 'object', properties: {} },
-              })),
-          },
-        ],
+        // Strict OpenAPI-style schemas: Gemini Live rejects many JSON Schema keywords with
+        // "Request contains an invalid argument" once the model tries to use the tools.
+        ...(opts.tools.length
+          ? {
+              tools: [
+                {
+                  functionDeclarations: opts.tools
+                    .filter((t) => t.type === 'function')
+                    .map((t) => {
+                      const fn = t.type === 'function' ? t.function : { name: '', description: '', parameters: {} };
+                      const params = toGeminiSchema(fn.parameters);
+                      const hasParams = Object.keys((params.properties as object) ?? {}).length > 0;
+                      return {
+                        name: fn.name,
+                        description: (fn.description ?? '').slice(0, 1000) || fn.name,
+                        ...(hasParams ? { parameters: params } : {}),
+                      };
+                    }),
+                },
+              ],
+            }
+          : {}),
         realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: opts.silenceMs } },
         inputAudioTranscription: {},
         outputAudioTranscription: {},

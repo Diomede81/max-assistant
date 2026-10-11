@@ -47,19 +47,17 @@ export class RealtimeConversationService {
     // Capture what the user says while we connect (they often keep talking after the wake word).
     let connected = false;
     const early: Buffer[] = [];
-    let speaking = false;
-    // Max must never hear himself: the mic stays muted while he talks and until his audio
-    // has certainly finished playing (by the clock, not just when the player exits, because
-    // the Mac sound bridge keeps playing buffered audio for a while) plus an echo tail.
-    let mutedUntil = 0;
-    let playStartedAt = 0;
-    let bytesThisReply = 0;
+    // Max's replies play strictly one after another, and the mic stays deaf until the last
+    // one has finished coming out of the speakers (tracked by the clock: the Mac sound bridge
+    // keeps playing buffered audio after the player process exits) plus an echo tail.
+    let audioEndsAt = 0;
     const echoTail = this.cfg.audio.echoTailMs;
-    const expectedEnd = () => playStartedAt + (bytesThisReply / (PCM24.rate * 2)) * 1000;
+    const speaking = () => Date.now() < audioEndsAt;
+    const deaf = () => Date.now() < audioEndsAt + echoTail;
     setMicHandler((chunk) => {
       const now = Date.now();
       if (now < skipUntil) return;
-      if (!rt.bargeIn && (speaking || now < mutedUntil || now < expectedEnd() + echoTail)) return;
+      if (!rt.bargeIn && deaf()) return;
       const pcm = resampler.push(chunk);
       if (connected) client.sendAudio(pcm);
       else early.push(pcm);
@@ -100,14 +98,16 @@ export class RealtimeConversationService {
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
+    let clearTimer: NodeJS.Timeout | undefined;
 
     client.on('speech-started', () => {
       userSpeaking = true;
       lastActivity = Date.now();
-      if (rt.bargeIn && speaking) {
+      if (rt.bargeIn && speaking()) {
         this.speaker.stop(); // user interrupted Max
         player?.close();
         player = undefined;
+        audioEndsAt = Date.now();
       }
     });
     client.on('speech-stopped', () => {
@@ -118,25 +118,16 @@ export class RealtimeConversationService {
     });
     client.on('audio', (pcm: Buffer) => {
       if (!player) {
-        player = new AsyncQueue<Buffer>();
-        speaking = true;
-        playStartedAt = Date.now();
-        bytesThisReply = 0;
-        if (!rt.bargeIn) client.clearInput();
+        if (!rt.bargeIn && !speaking()) client.clearInput();
         if (firstAudioThisTurn && speechStoppedAt) {
           this.log.log(`voice-to-voice ${Date.now() - speechStoppedAt} ms (end of your speech -> Max starts talking)`);
           firstAudioThisTurn = false;
         }
-        const q = player;
-        playing = this.speaker.play(PCM24, q).finally(() => {
-          speaking = false;
-          mutedUntil = Math.max(Date.now(), expectedEnd()) + echoTail;
-          lastActivity = mutedUntil;
-          // Anything the server buffered while we were muting is echo: discard it.
-          if (!rt.bargeIn) setTimeout(() => client.clearInput(), Math.max(0, mutedUntil - Date.now()));
-        });
+        const q = (player = new AsyncQueue<Buffer>());
+        // Queue behind any reply still playing, so two replies never overlap.
+        playing = playing.then(() => this.speaker.play(PCM24, q)).catch(() => undefined);
       }
-      bytesThisReply += pcm.length;
+      audioEndsAt = Math.max(audioEndsAt, Date.now()) + (pcm.length / (PCM24.rate * 2)) * 1000;
       player.push(pcm);
     });
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
@@ -145,6 +136,11 @@ export class RealtimeConversationService {
     client.on('response-done', async (r: { toolCalls: number; status?: string; reason?: string }) => {
       player?.close();
       player = undefined;
+      // Discard anything the server buffered while Max was still audible (his own echo).
+      if (!rt.bargeIn) {
+        clearTimeout(clearTimer);
+        clearTimer = setTimeout(() => client.clearInput(), Math.max(0, audioEndsAt + echoTail - Date.now()));
+      }
       if (r.status === 'failed') this.log.error(`Response failed: ${r.reason ?? 'unknown reason'}`);
       if (r.toolCalls) {
         const work = pendingTools;
@@ -155,7 +151,7 @@ export class RealtimeConversationService {
       }
       turns++;
       busy = false;
-      lastActivity = Date.now();
+      lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
     client.on('user-transcript', (t: string) => this.log.log(`You: "${t}"`));
     client.on('assistant-transcript', (t: string) => this.log.log(`Max: "${t}"`));
@@ -171,7 +167,7 @@ export class RealtimeConversationService {
         let why: string | undefined;
         if (closed) why = 'connection closed';
         else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
-        else if (!speaking && !busy && !userSpeaking && now > mutedUntil && quietFor > limit) {
+        else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {
           why = turns === 0 ? 'no request heard' : 'no follow-up question';
         }
         if (why) {
@@ -182,8 +178,10 @@ export class RealtimeConversationService {
     });
 
     setMicHandler(() => undefined);
+    clearTimeout(clearTimer);
     client.close();
-    await playing.catch(() => undefined);
+    player?.close();
+    await playing;
     this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); waiting for the wake word`);
   }
 

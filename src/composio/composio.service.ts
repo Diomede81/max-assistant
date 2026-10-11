@@ -61,10 +61,13 @@ export class ComposioService implements OnModuleInit {
 
   private async registerTools(): Promise<void> {
     const connected = (await this.apps()).filter((a) => a.connected).map((a) => a.slug.toUpperCase());
-    // Only offer tools for apps that are actually connected, and only the allowed ones.
-    const patterns = this.cfg.composio.allowedTools.filter((p) =>
-      connected.some((slug) => p.toUpperCase().startsWith(`${slug}_`) || p === '*'),
-    );
+    // Only offer tools for apps that are actually connected. Apps with their own patterns in
+    // COMPOSIO_ALLOWED_TOOLS are narrowed to those; any other connected app gets all its tools,
+    // so adding an app never silently gives Max zero actions.
+    const patterns = connected.flatMap((slug) => {
+      const own = this.cfg.composio.allowedTools.filter((p) => p === '*' || p.toUpperCase().startsWith(`${slug}_`));
+      return own.length ? own : [`${slug}_*`];
+    });
     const conn = await this.mcp.register({
       name: 'composio',
       url: this.session.mcp.url,
@@ -76,6 +79,39 @@ export class ComposioService implements OnModuleInit {
         ? `Connected apps: ${connected.join(', ')}; ${conn.counts.offered} tools offered`
         : `No apps connected yet - open the control panel (${this.cfg.controlPanel.publicUrl}) to connect them`,
     );
+    const d = await this.diagnostics();
+    if (d.notEnabled.length) {
+      this.log.warn(`Connected in Composio but not enabled in Max: ${d.notEnabled.join(', ')}. Add to COMPOSIO_TOOLKITS in .env and restart`);
+    }
+    if (d.otherUser.length) {
+      this.log.warn(
+        `Connected in Composio under a different user than Max's ("${this.cfg.composio.userId}"): ${d.otherUser.join(', ')}. ` +
+          'Connect them from Max\'s control panel instead, or set COMPOSIO_USER_ID to that user',
+      );
+    }
+  }
+
+  /**
+   * Apps connected in the Composio project that Max can't use: connected for Max's user
+   * but missing from COMPOSIO_TOOLKITS, or connected only under another user ID (e.g. via
+   * Composio's own dashboard).
+   */
+  async diagnostics(): Promise<{ notEnabled: string[]; otherUser: string[] }> {
+    if (!this.composio) return { notEnabled: [], otherUser: [] };
+    try {
+      const active = { statuses: ['ACTIVE'], limit: 100 } as never;
+      const mine = await this.composio.connectedAccounts.list({ ...(active as object), userIds: [this.cfg.composio.userId] } as never);
+      const all = await this.composio.connectedAccounts.list(active);
+      const mineIds = new Set(mine.items.map((a) => a.id));
+      const slugs = (items: { toolkit: { slug: string } }[]) => [...new Set(items.map((a) => a.toolkit.slug.toLowerCase()))];
+      const enabled = new Set(this.cfg.composio.toolkits);
+      return {
+        notEnabled: slugs(mine.items).filter((s) => !enabled.has(s)),
+        otherUser: slugs(all.items.filter((a) => !mineIds.has(a.id))).filter((s) => !slugs(mine.items).includes(s)),
+      };
+    } catch {
+      return { notEnabled: [], otherUser: [] };
+    }
   }
 
   /** Connection status for every configured app. */

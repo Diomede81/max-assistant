@@ -52,7 +52,8 @@ export class ConversationService implements OnApplicationBootstrap {
 
   onApplicationBootstrap(): void {
     if (this.cfg.voiceMode === 'realtime') {
-      this.log.log(`Voice mode: OpenAI Realtime (${this.cfg.realtime.model}, voice "${this.cfg.realtime.voice}")`);
+      const name = this.cfg.realtime.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime';
+      this.log.log(`Voice mode: ${name} (${this.cfg.realtime.model}, voice "${this.cfg.realtime.voice}")`);
     }
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();

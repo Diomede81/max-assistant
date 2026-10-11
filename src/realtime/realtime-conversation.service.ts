@@ -8,11 +8,15 @@ import { TtsService } from '../tts/tts.service';
 import { describeNow } from '../actions/clock';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { RealtimeClient } from './realtime-client';
+import { GeminiLiveClient } from './gemini-live-client';
+import type { VoiceClient, VoiceClientOptions } from './voice-client';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
 const CHIME_SKIP_MS = 400;
 const FIRST_TURN_WAIT_MS = 7000;
+/** If a provider never answers after the user spoke, stop waiting (keeps sessions from hanging open). */
+const NO_ANSWER_MS = 15000;
 /** After an interruption, listen again almost immediately (Max's audio has been cut). */
 const INTERRUPT_REOPEN_MS = 250;
 
@@ -40,12 +44,33 @@ export class RealtimeConversationService {
    */
   async run(setMicHandler: (h: (chunk: Buffer) => void) => void, micRate: number, chimed: boolean): Promise<void> {
     const rt = this.cfg.realtime;
+    const providerName = rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime';
     if (!rt.apiKey) {
-      this.log.error('REALTIME_API_KEY (or OPENAI_API_KEY) is not set in .env');
-      return this.sayFallback("I can't use my real-time voice: the OpenAI key is missing.");
+      this.log.error(
+        rt.provider === 'gemini'
+          ? 'GEMINI_API_KEY is not set in .env'
+          : 'REALTIME_API_KEY (or OPENAI_API_KEY) is not set in .env',
+      );
+      return this.sayFallback(`I can't use my real-time voice: the ${rt.provider === 'gemini' ? 'Gemini' : 'OpenAI'} key is missing.`);
     }
     const started = Date.now();
-    const resampler = new Resampler(micRate, PCM24.rate);
+    const options: VoiceClientOptions = {
+      url: rt.url,
+      apiKey: rt.apiKey,
+      model: rt.model,
+      voice: rt.voice,
+      instructions:
+        `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
+        (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
+      tools: this.tools.tools,
+      silenceMs: rt.silenceMs,
+      interruptResponse: rt.bargeIn,
+      transcribeModel: rt.transcribeModel,
+      language: rt.language,
+      vadThreshold: this.cfg.vad.rmsThreshold,
+    };
+    const client: VoiceClient = rt.provider === 'gemini' ? new GeminiLiveClient(options) : new RealtimeClient(options);
+    const resampler = new Resampler(micRate, client.inputRate);
     const skipUntil = chimed ? started + CHIME_SKIP_MS : 0;
 
     // Capture what the user says while we connect (they often keep talking after the wake word).
@@ -92,30 +117,17 @@ export class RealtimeConversationService {
       else early.push(pcm);
     });
 
-    const client = new RealtimeClient({
-      url: rt.url,
-      apiKey: rt.apiKey,
-      model: rt.model,
-      voice: rt.voice,
-      instructions:
-        `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
-        (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
-      tools: this.tools.tools,
-      silenceMs: rt.silenceMs,
-      interruptResponse: rt.bargeIn,
-      transcribeModel: rt.transcribeModel,
-    });
 
     try {
       await client.connect();
     } catch (err) {
       setMicHandler(() => undefined);
-      this.log.error(`Could not start a Realtime session: ${(err as Error).message}`);
+      this.log.error(`Could not start the ${providerName} session: ${(err as Error).message}`);
       return this.sayFallback("Sorry, I can't reach my real-time voice right now.");
     }
     connected = true;
     for (const pcm of early.splice(0)) client.sendAudio(pcm);
-    this.log.log(`Connected to ${rt.model} (voice "${rt.voice}") in ${Date.now() - started} ms - talk now`);
+    this.log.log(`Connected to ${providerName} ${rt.model} (voice "${rt.voice}") in ${Date.now() - started} ms - talk now`);
 
     let player: AsyncQueue<Buffer> | undefined;
     let playing: Promise<void> = Promise.resolve();
@@ -216,7 +228,7 @@ export class RealtimeConversationService {
     });
     client.on('user-transcript', (t: string) => this.log.log(`You: "${t}"`));
     client.on('assistant-transcript', (t: string) => this.log.log(`Max: "${t}"`));
-    client.on('error', (err: Error) => this.log.error(`OpenAI Realtime: ${err.message}`));
+    client.on('error', (err: Error) => this.log.error(`${providerName}: ${err.message}`));
     client.on('close', () => (closed = true));
 
     // Stay open while the conversation is alive; close after a quiet spell.
@@ -228,7 +240,10 @@ export class RealtimeConversationService {
         let why: string | undefined;
         if (closed) why = 'connection closed';
         else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
-        else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {
+        else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
+          busy = false; // the provider never answered (e.g. it heard noise, not a request)
+          lastActivity = now;
+        } else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {
           why = turns === 0 ? 'no request heard' : 'no follow-up question';
         }
         if (why) {

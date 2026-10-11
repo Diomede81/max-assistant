@@ -61,7 +61,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const apps = this.composio.enabled ? await this.composio.apps().catch(() => []) : [];
     const ha = await this.ha.status(0);
     return {
-      voice: this.cfg.voiceMode === 'realtime' ? `OpenAI Realtime (${rt.model}, "${rt.voice}")` : `Pipeline (${this.cfg.llm.model})`,
+      voice:
+        this.cfg.voiceMode === 'realtime'
+          ? `${rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'} (${rt.model}, "${rt.voice}")`
+          : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       composio: {
         configured: this.composio.enabled,

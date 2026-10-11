@@ -1,18 +1,8 @@
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
-import type { ChatCompletionTool } from 'openai/resources/chat/completions';
+import type { VoiceClient, VoiceClientOptions } from './voice-client';
 
-export interface RealtimeOptions {
-  url: string;
-  apiKey: string;
-  model: string;
-  voice: string;
-  instructions: string;
-  tools: ChatCompletionTool[];
-  silenceMs: number;
-  interruptResponse: boolean;
-  transcribeModel?: string;
-}
+export type RealtimeOptions = VoiceClientOptions;
 
 /**
  * Minimal client for OpenAI's Realtime API (speech-to-speech over WebSocket).
@@ -23,7 +13,8 @@ export interface RealtimeOptions {
  * Accepts both GA event names (response.output_audio.delta) and the older beta names
  * (response.audio.delta) so it keeps working across API versions.
  */
-export class RealtimeClient extends EventEmitter {
+export class RealtimeClient extends EventEmitter implements VoiceClient {
+  readonly inputRate = 24000;
   private ws?: WebSocket;
   private toolCallsInResponse = 0;
 
@@ -41,9 +32,11 @@ export class RealtimeClient extends EventEmitter {
         reject(new Error(`no answer from OpenAI Realtime within ${timeoutMs / 1000}s`));
       }, timeoutMs);
       let settled = false;
+      let ready = false; // set once the session is fully set up
       const done = (err?: Error) => {
         if (settled) return;
         settled = true;
+        ready = !err;
         clearTimeout(timer);
         if (err) reject(err);
         else resolve();
@@ -65,12 +58,14 @@ export class RealtimeClient extends EventEmitter {
         if (e.type === 'error' && !settled) done(new Error(e.error?.message ?? 'Realtime error'));
         this.handle(e);
       });
+      // Errors before setup completes reject connect(); only later ones become 'error' events
+      // (emitting during setup, before anyone listens, would crash the process).
       ws.on('error', (err) => {
-        done(err);
-        if (settled) this.emit('error', err);
+        if (!ready) return done(err);
+        this.emit('error', err);
       });
       ws.on('close', () => {
-        done(new Error('connection closed during setup'));
+        if (!ready) done(new Error('connection closed during setup'));
         this.emit('close');
       });
     });

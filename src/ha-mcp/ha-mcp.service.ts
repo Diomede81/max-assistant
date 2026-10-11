@@ -4,6 +4,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 
+const TOOL_REFRESH_MS = 5 * 60 * 1000;
+
 /**
  * Connects to Home Assistant's built-in "Model Context Protocol Server" integration
  * (`/api/mcp`, Streamable HTTP, long-lived access token). The tools it exposes
@@ -15,6 +17,7 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(HaMcpService.name);
   private client?: Client;
   private tools: ChatCompletionTool[] = [];
+  private refreshTimer?: NodeJS.Timeout;
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
 
@@ -23,12 +26,36 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
       this.log.warn('HA_TOKEN not set: Home Assistant tools disabled');
       return;
     }
-    const transport = new StreamableHTTPClientTransport(new URL(this.cfg.ha.mcpUrl), {
-      requestInit: { headers: { Authorization: `Bearer ${this.cfg.ha.token}` } },
-    });
-    this.client = new Client({ name: 'max-assistant', version: '0.1.0' });
-    await this.client.connect(transport);
-    await this.refreshTools();
+    // Don't block start-up on Home Assistant: connect (and reconnect) in the background,
+    // and re-read the tools periodically so newly exposed devices appear without a restart.
+    void this.connect();
+    this.refreshTimer = setInterval(() => void this.refreshOrReconnect(), TOOL_REFRESH_MS);
+  }
+
+  private async connect(): Promise<void> {
+    try {
+      const transport = new StreamableHTTPClientTransport(new URL(this.cfg.ha.mcpUrl), {
+        requestInit: { headers: { Authorization: `Bearer ${this.cfg.ha.token}` } },
+      });
+      const client = new Client({ name: 'max-assistant', version: '0.1.0' });
+      await client.connect(transport);
+      this.client = client;
+      await this.refreshTools();
+    } catch (err) {
+      this.client = undefined;
+      this.log.error(`Cannot reach Home Assistant MCP at ${this.cfg.ha.mcpUrl} (${(err as Error).message}); retrying in 10s`);
+      setTimeout(() => void this.connect(), 10_000);
+    }
+  }
+
+  private async refreshOrReconnect(): Promise<void> {
+    if (!this.client) return; // a connect() retry is already scheduled
+    try {
+      await this.refreshTools();
+    } catch {
+      this.client = undefined;
+      void this.connect();
+    }
   }
 
   /** Re-read the tool list, e.g. after exposing new entities in Home Assistant. */
@@ -60,6 +87,7 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    clearInterval(this.refreshTimer);
     await this.client?.close();
   }
 }

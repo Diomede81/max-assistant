@@ -9,7 +9,18 @@ export interface AppConfig {
   wakeWord: { host: string; port: number; names: string[] };
   vad: { rmsThreshold: number; silenceMs: number; maxUtteranceMs: number };
   stt: { host: string; port: number; language: string };
-  tts: { host: string; port: number; voice?: string };
+  tts: {
+    /** 'piper' (local Wyoming) or 'openai' (any OpenAI-compatible speech API: Kokoro, OpenAI, ...) */
+    provider: 'piper' | 'openai';
+    host: string;
+    port: number;
+    voice?: string;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    instructions?: string;
+    sampleRate: number;
+  };
   llm: {
     baseUrl: string;
     apiKey: string;
@@ -54,9 +65,15 @@ export function loadConfig(): AppConfig {
       language: env.STT_LANGUAGE ?? 'en',
     },
     tts: {
+      provider: env.TTS_PROVIDER === 'openai' ? 'openai' : 'piper',
       host: env.TTS_HOST ?? '127.0.0.1',
       port: num(env.TTS_PORT, 10200),
       voice: env.TTS_VOICE || undefined,
+      baseUrl: (env.TTS_BASE_URL ?? 'http://127.0.0.1:8880/v1').replace(/\/+$/, ''),
+      apiKey: env.TTS_API_KEY || 'none',
+      model: env.TTS_MODEL ?? 'kokoro',
+      instructions: env.TTS_INSTRUCTIONS || undefined,
+      sampleRate: num(env.TTS_SAMPLE_RATE, 24000),
     },
     llm: {
       baseUrl: env.LLM_BASE_URL ?? 'https://api.groq.com/openai/v1',

@@ -63,6 +63,11 @@ Then set `LLM_FALLBACK_BASE_URL=http://127.0.0.1:11434/v1` and `LLM_FALLBACK_MOD
 ### Run on boot
 See [`deploy/max.service`](deploy/max.service).
 
+## Voice
+
+The default voice (Piper) is fast but robotic. For a natural voice, switch to **Kokoro**
+(free, runs locally) or **OpenAI voices** (paid, most expressive). See **[docs/VOICES.md](docs/VOICES.md)**.
+
 ## Project layout
 
 | Module | Responsibility |

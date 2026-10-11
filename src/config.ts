@@ -4,6 +4,7 @@ export interface AppConfig {
     sampleRate: number;
     inputDevice: string;
     outputDevice: string;
+    wakeChime: boolean;
   };
   wakeWord: { host: string; port: number; names: string[] };
   vad: { rmsThreshold: number; silenceMs: number; maxUtteranceMs: number };
@@ -31,6 +32,7 @@ export function loadConfig(): AppConfig {
       sampleRate: num(env.AUDIO_SAMPLE_RATE, 16000),
       inputDevice: env.AUDIO_INPUT_DEVICE ?? 'default',
       outputDevice: env.AUDIO_OUTPUT_DEVICE ?? 'default',
+      wakeChime: (env.WAKE_CHIME ?? 'on') !== 'off',
     },
     wakeWord: {
       host: env.WAKEWORD_HOST ?? '127.0.0.1',

@@ -8,6 +8,8 @@ export class Endpointer {
   private heardSpeech = false;
   private silentMs = 0;
   private totalMs = 0;
+  /** Loudest chunk seen, reported when nobody seems to speak (helps tune rmsThreshold). */
+  peakRms = 0;
 
   constructor(
     private readonly rate: number,
@@ -15,6 +17,8 @@ export class Endpointer {
     private readonly silenceMs: number,
     private readonly maxUtteranceMs: number,
     private readonly noSpeechTimeoutMs = 4000,
+    /** Ignore the first ms of audio (e.g. Max's own wake chime) when deciding if someone spoke. */
+    private readonly graceMs = 0,
   ) {}
 
   /** Returns 'continue', 'end' (user finished) or 'timeout' (nobody spoke). */
@@ -28,6 +32,8 @@ export class Endpointer {
     }
     const rms = Math.sqrt(sum / Math.max(samples, 1));
     this.totalMs += ms;
+    if (this.totalMs <= this.graceMs) return 'continue';
+    this.peakRms = Math.max(this.peakRms, Math.round(rms));
 
     if (rms >= this.rmsThreshold) {
       this.heardSpeech = true;

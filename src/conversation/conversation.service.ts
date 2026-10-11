@@ -14,6 +14,12 @@ type State = 'idle' | 'wake' | 'listen' | 'respond';
 const HISTORY_LIMIT = 16;
 const HISTORY_RESET_MS = 2 * 60 * 1000;
 const FOLLOW_UP_WINDOW_MS = 5000;
+const CHIME_GRACE_MS = 400;
+const STT_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
+}
 
 /**
  * The conductor: wake word -> listen -> transcribe -> think/act -> speak -> short
@@ -46,29 +52,63 @@ export class ConversationService implements OnApplicationBootstrap {
   private async waitForWakeWord(): Promise<void> {
     this.state = 'wake';
     const fmt = this.mic.format;
+    let name: string;
     try {
       const { detected } = await this.wake.arm(fmt);
       this.onChunk = (c) => this.wake.feed(c, fmt);
       this.log.log(`Listening for wake word: ${this.cfg.wakeWord.names.join(', ')}`);
-      const name = await detected;
+      name = await detected;
       this.wake.disarm();
-      this.log.log(`Wake word "${name}" detected`);
-      await this.listen(4000);
     } catch (err) {
       this.log.error(`Wake word service error: ${(err as Error).message}; retrying in 3s`);
       this.wake.disarm();
       this.onChunk = () => undefined;
       setTimeout(() => void this.waitForWakeWord(), 3000);
+      return;
+    }
+
+    this.log.log(`Wake word "${name}" detected - listening for your request`);
+    if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    await this.conversation();
+    return this.waitForWakeWord();
+  }
+
+  /** One request, then follow-ups without the wake word, until nobody speaks. */
+  private async conversation(): Promise<void> {
+    let noSpeechMs = 5000;
+    for (;;) {
+      try {
+        const text = await this.listen(noSpeechMs, noSpeechMs === FOLLOW_UP_WINDOW_MS);
+        if (!text) return;
+        await this.respond(text.value, text.endOfSpeech);
+      } catch (err) {
+        this.log.error(`${(err as Error).message}; going back to waiting for the wake word`);
+        this.onChunk = () => undefined;
+        return;
+      }
+      noSpeechMs = FOLLOW_UP_WINDOW_MS;
     }
   }
 
-  /** Records one utterance; if nobody speaks within `noSpeechMs` we go back to sleep. */
-  private async listen(noSpeechMs: number): Promise<void> {
+  /**
+   * Records one utterance and transcribes it. Returns undefined (and logs why) when
+   * nobody spoke or nothing was understood, so Max never goes quiet without a reason.
+   */
+  private async listen(
+    noSpeechMs: number,
+    isFollowUp = false,
+  ): Promise<{ value: string; endOfSpeech: number } | undefined> {
     this.state = 'listen';
     const fmt = this.mic.format;
     const { vad } = this.cfg;
-    const endpointer = new Endpointer(fmt.rate, vad.rmsThreshold, vad.silenceMs, vad.maxUtteranceMs, noSpeechMs);
-    const session = await this.stt.open(fmt);
+    const grace = this.cfg.audio.wakeChime ? CHIME_GRACE_MS : 0;
+    const endpointer = new Endpointer(fmt.rate, vad.rmsThreshold, vad.silenceMs, vad.maxUtteranceMs, noSpeechMs + grace, grace);
+    let session: Awaited<ReturnType<SttService['open']>>;
+    try {
+      session = await this.stt.open(fmt);
+    } catch (err) {
+      throw new Error(`Speech-to-text service unreachable (${(err as Error).message}). Check: docker compose logs whisper`);
+    }
 
     const outcome = await new Promise<'end' | 'timeout'>((resolve) => {
       this.onChunk = (c) => {
@@ -83,16 +123,33 @@ export class ConversationService implements OnApplicationBootstrap {
 
     if (outcome === 'timeout') {
       session.abort();
-      return this.waitForWakeWord();
+      if (isFollowUp) {
+        this.log.log('No follow-up question; going back to waiting for the wake word');
+        return undefined;
+      }
+      this.log.log(
+        `No request heard (loudest sound: level ${endpointer.peakRms}, speech needs >= ${vad.rmsThreshold}).` +
+          (endpointer.peakRms > 0 && endpointer.peakRms < vad.rmsThreshold
+            ? ` If you did speak, lower VAD_RMS_THRESHOLD in .env to about ${Math.max(100, Math.round(endpointer.peakRms * 0.6))}.`
+            : ''),
+      );
+      return undefined;
     }
 
     const tEnd = Date.now();
-    const text = await session.finish();
-    const tStt = Date.now();
-    if (!text) return this.waitForWakeWord();
-    this.log.log(`You: "${text}"  (stt ${tStt - tEnd} ms)`);
-    await this.respond(text, tEnd);
-    return this.listen(FOLLOW_UP_WINDOW_MS);
+    let text: string;
+    try {
+      text = await withTimeout(session.finish(), STT_TIMEOUT_MS, 'speech-to-text took too long');
+    } catch (err) {
+      session.abort();
+      throw new Error(`Speech-to-text failed (${(err as Error).message}). Check: docker compose logs whisper`);
+    }
+    if (!text) {
+      this.log.log('Heard sound but could not make out any words. Try speaking a little closer to the microphone.');
+      return undefined;
+    }
+    this.log.log(`You: "${text}"  (stt ${Date.now() - tEnd} ms)`);
+    return { value: text, endOfSpeech: tEnd };
   }
 
   private async respond(text: string, tEndOfSpeech: number): Promise<void> {

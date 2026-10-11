@@ -100,4 +100,5 @@ fine for checking that the fallback works, but it's not the real experience.
 | `Cannot reach Home Assistant MCP` | Use the IP address in `HA_MCP_URL`; check the token; check the MCP Server integration is added |
 | `Connection refused` / no sound (Mac) | Is the sound server running? `pactl info`. Restart it with the command above |
 | Max never hears the wake word | Run the mic-check; on Mac, check the microphone permission for Terminal |
+| Max wakes (chime) but never answers | Run `docker compose logs --tail 30 max`. Every outcome is logged: "No request heard" (lower `VAD_RMS_THRESHOLD` as suggested), "could not make out any words", or a speech-to-text or voice service error naming the service to check |
 | Audio is choppy | Expected over a network bridge on some laptops. It disappears on the final Ubuntu machine |

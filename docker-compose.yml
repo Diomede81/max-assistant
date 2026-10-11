@@ -17,8 +17,12 @@ services:
       TTS_HOST: piper
       # Sound bridge (docs/DOCKER.md). Default suits Mac + Windows Docker Desktop.
       PULSE_SERVER: ${PULSE_SERVER:-tcp:host.docker.internal:4713}
+      CONTROL_PANEL_HOST: 0.0.0.0
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: [openwakeword, whisper, piper]
+    # Control panel (connect Office 365, WhatsApp...): http://localhost:8099, this computer only
+    ports: ["127.0.0.1:8099:8099"]
+    volumes: ["./config:/app/config:ro"]
 
   openwakeword:
     image: rhasspy/wyoming-openwakeword:latest

@@ -16,6 +16,7 @@
     "chat": "tsc -p tsconfig.json && node dist/tools/chat.js"
   },
   "dependencies": {
+    "@composio/core": "^0.22.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^12.0.1",

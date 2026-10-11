@@ -5,3 +5,4 @@ dist/
 wakewords/*.tflite
 !wakewords/hey_max.tflite
 data/
+config/mcp-servers.json

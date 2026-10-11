@@ -62,6 +62,7 @@ export class LlmService {
         throw err;
       }
       let text = '';
+      let reasoning = '';
       let firstToken = true;
       const calls: ChatCompletionMessageToolCall[] = [];
 
@@ -76,6 +77,8 @@ export class LlmService {
           text += delta.content;
           yield delta.content;
         }
+        const r = (delta as { reasoning_content?: string }).reasoning_content;
+        if (r) reasoning += r;
         for (const tc of delta.tool_calls ?? []) {
           const slot = (calls[tc.index] ??= {
             id: tc.id ?? `call_${tc.index}`,
@@ -93,6 +96,8 @@ export class LlmService {
       const assistant: ChatCompletionMessageParam = calls.length
         ? { role: 'assistant', content: text || null, tool_calls: calls }
         : { role: 'assistant', content: text };
+      // DeepSeek's thinking mode rejects follow-up requests unless its reasoning is sent back.
+      if (reasoning && calls.length) Object.assign(assistant, { reasoning_content: reasoning });
       messages.push(assistant);
       history.push(assistant);
       if (!calls.length) return;
@@ -122,23 +127,54 @@ export class LlmService {
 
   private async openStream(messages: ChatCompletionMessageParam[]) {
     const tools = [...this.builtin.tools, ...this.ha.openAiTools];
-    const body = (model: string) => ({
+    const body = (model: string, reasoningEffort?: string) => ({
       model,
       messages,
       stream: true as const,
       temperature: 0.3,
       max_tokens: 300,
       ...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
+      // Provider-specific values (e.g. DeepSeek's "none") aren't in the SDK's type list.
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort as 'low' } : {}),
     });
     try {
-      return await this.primary.chat.completions.create(body(this.cfg.llm.model), {
+      return await this.primary.chat.completions.create(body(this.cfg.llm.model, this.cfg.llm.reasoningEffort), {
         timeout: this.cfg.llm.timeoutMs,
         maxRetries: 0,
       });
     } catch (err) {
       if (!this.fallback) throw err;
       this.log.warn(`primary LLM failed (${(err as Error).message}); using fallback`);
-      return this.fallback.chat.completions.create(body(this.cfg.llm.fallbackModel!));
+      return this.fallback.chat.completions.create(
+        body(this.cfg.llm.fallbackModel!, this.cfg.llm.fallbackReasoningEffort),
+      );
     }
   }
+}
+
+/**
+ * Turns an AI provider error into a short spoken sentence plus a log hint, so Max says
+ * *why* he can't answer (rate limit, bad key, no credit...) instead of a generic apology.
+ */
+export function explainLlmError(err: unknown): { spoken: string; log: string } {
+  const e = err as { status?: number; message?: string; name?: string };
+  const msg = e.message ?? String(err);
+  switch (e.status) {
+    case 429:
+      return {
+        spoken: "I'm being rate limited by my AI service. Give me a minute and try again.",
+        log: `rate limited (429): ${msg}. Wait, use a paid tier, or set LLM_FALLBACK_* in .env`,
+      };
+    case 401:
+    case 403:
+      return { spoken: 'My AI service rejected the API key.', log: `key rejected (${e.status}): ${msg}. Check LLM_API_KEY` };
+    case 402:
+      return { spoken: 'My AI service account has run out of credit.', log: `out of credit (402): ${msg}. Top up the account` };
+    case 404:
+      return { spoken: "My AI service doesn't recognise the model name.", log: `model not found (404): ${msg}. Check LLM_MODEL` };
+  }
+  if (e.name === 'APIConnectionTimeoutError' || /timed? ?out/i.test(msg)) {
+    return { spoken: 'My AI service is taking too long to answer.', log: `timeout: ${msg}. Raise LLM_TIMEOUT_MS or pick a faster model` };
+  }
+  return { spoken: 'Sorry, I could not reach my brain just now.', log: msg };
 }

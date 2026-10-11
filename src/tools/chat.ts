@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
-import { LlmService } from '../llm/llm.service';
+import { LlmService, explainLlmError } from '../llm/llm.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
@@ -79,7 +79,8 @@ async function main(): Promise<void> {
         for (const s of splitter.push(fragment)) speech?.say(s);
       }
     } catch (err) {
-      process.stdout.write(`[error: ${(err as Error).message}]`);
+      const why = explainLlmError(err);
+      process.stdout.write(`${why.spoken}\n      [${why.log}]`);
     }
     for (const s of splitter.flush()) speech?.say(s);
     console.log(`\n      (first words after ${first ? first - started : '-'} ms, total ${Date.now() - started} ms)\n`);

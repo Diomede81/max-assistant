@@ -28,6 +28,9 @@ export interface AppConfig {
     fallbackBaseUrl?: string;
     fallbackApiKey?: string;
     fallbackModel?: string;
+    /** Sent as `reasoning_effort` when set, e.g. "none" to switch off DeepSeek's slow thinking mode. */
+    reasoningEffort?: string;
+    fallbackReasoningEffort?: string;
     timeoutMs: number;
     systemPrompt: string;
   };
@@ -82,6 +85,8 @@ export function loadConfig(): AppConfig {
       fallbackBaseUrl: env.LLM_FALLBACK_BASE_URL || undefined,
       fallbackApiKey: env.LLM_FALLBACK_API_KEY || 'ollama',
       fallbackModel: env.LLM_FALLBACK_MODEL || undefined,
+      reasoningEffort: env.LLM_REASONING_EFFORT || undefined,
+      fallbackReasoningEffort: env.LLM_FALLBACK_REASONING_EFFORT || undefined,
       timeoutMs: num(env.LLM_TIMEOUT_MS, 4000),
       systemPrompt:
         env.LLM_SYSTEM_PROMPT ??

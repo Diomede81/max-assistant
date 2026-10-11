@@ -59,11 +59,22 @@ The log lists what's offered, e.g.
 `[MCP:composio] 7 of 64 tools offered to Max: OUTLOOK_LIST_MESSAGES, …`. If an action you
 want is missing, add a pattern (e.g. `OUTLOOK_*CONTACT*`) and restart Max.
 
-## Adding more apps
+## Adding more apps (e.g. Firecrawl for web pages and search)
 
-Composio supports hundreds of apps (Slack, Notion, Google, Spotify, Todoist…). Add their
-names to `COMPOSIO_TOOLKITS` and suitable patterns to `COMPOSIO_ALLOWED_TOOLS`, restart,
-then click **Connect** in the control panel.
+Composio supports hundreds of apps (Firecrawl, Slack, Notion, Spotify, Todoist…).
+
+1. Add the app's name to `COMPOSIO_TOOLKITS` in `.env`, e.g. `COMPOSIO_TOOLKITS=outlook,whatsapp,firecrawl`
+2. Restart Max: `docker compose --profile max up -d`
+3. Open http://localhost:8099 and click **Connect** next to the new app (for API-key apps such
+   as Firecrawl, Composio asks for the key).
+
+A new app gets all its actions automatically. To narrow it down, add patterns for it to
+`COMPOSIO_ALLOWED_TOOLS` (e.g. `FIRECRAWL_SCRAPE*,FIRECRAWL_SEARCH*`).
+
+**Connected an app in Composio's own dashboard?** Max only uses connections made for his
+user (`COMPOSIO_USER_ID`, default `max-home`). The control panel warns when an app is connected
+under a different user or isn't in `COMPOSIO_TOOLKITS`. Connecting from Max's control panel
+always uses the right user.
 
 ## Other MCP servers
 

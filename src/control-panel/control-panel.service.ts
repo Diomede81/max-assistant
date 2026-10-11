@@ -63,7 +63,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     return {
       voice: this.cfg.voiceMode === 'realtime' ? `OpenAI Realtime (${rt.model}, "${rt.voice}")` : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
-      composio: { configured: this.composio.enabled, error: this.composio.lastError, apps },
+      composio: {
+        configured: this.composio.enabled,
+        error: this.composio.lastError,
+        apps,
+        ...(await this.composio.diagnostics()),
+        userId: this.cfg.composio.userId,
+      },
       servers: this.mcp.list.map((s) => ({
         name: s.config.name,
         connected: s.connected,

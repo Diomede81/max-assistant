@@ -7,6 +7,9 @@ export interface PanelData {
     configured: boolean;
     error?: string;
     apps: { slug: string; name: string; logo?: string; connected: boolean; toolsOffered: number }[];
+    notEnabled: string[];
+    otherUser: string[];
+    userId: string;
   };
   servers: { name: string; connected: boolean; offered: number; total: number; error?: string }[];
 }
@@ -46,6 +49,15 @@ export function renderPanel(d: PanelData): string {
       : `<li class="empty">${d.composio.error ? `Composio error: ${esc(d.composio.error)}` : 'Loading apps…'}</li>`
     : `<li class="empty">Add <code>COMPOSIO_API_KEY</code> to <code>.env</code> (from <a href="https://platform.composio.dev" target="_blank" rel="noopener">platform.composio.dev</a>) and restart Max to connect Office 365, WhatsApp and other apps.</li>`;
 
+  const hints = [
+    d.composio.notEnabled.length
+      ? `Connected in Composio but not enabled in Max: <b>${esc(d.composio.notEnabled.join(', '))}</b>. Add ${d.composio.notEnabled.length === 1 ? 'it' : 'them'} to <code>COMPOSIO_TOOLKITS</code> in <code>.env</code> and restart Max.`
+      : '',
+    d.composio.otherUser.length
+      ? `Connected in Composio under a different user, so Max can't use ${d.composio.otherUser.length === 1 ? 'it' : 'them'}: <b>${esc(d.composio.otherUser.join(', '))}</b>. Add the app to <code>COMPOSIO_TOOLKITS</code> and connect it here, or set <code>COMPOSIO_USER_ID</code> to the user you used (Max uses "${esc(d.composio.userId)}").`
+      : '',
+  ].filter(Boolean).map((h) => `<li class="hint">${h}</li>`).join('');
+
   const servers = d.servers
     .filter((s) => s.name !== 'composio')
     .map(
@@ -66,6 +78,7 @@ section{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .row:first-child{border-top:0;padding-top:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
+.hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:1px}
 .badge.ok{background:var(--okbg);color:var(--ok)}.badge.off{background:var(--offbg);color:var(--muted)}
@@ -79,7 +92,8 @@ form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-s
 <div class="top"><div><h1>Max</h1><p class="sub">Voice: ${esc(d.voice)}</p></div>
 <form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form></div>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
-<section><h2>Apps</h2><ul>${apps}</ul></section>
+<section><h2>Apps</h2><ul>${apps}${hints}</ul>
+<p class="meta add">To add another app (e.g. firecrawl, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
 ${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}

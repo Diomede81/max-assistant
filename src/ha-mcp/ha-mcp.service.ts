@@ -18,12 +18,18 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
   private client?: Client;
   private tools: ChatCompletionTool[] = [];
   private refreshTimer?: NodeJS.Timeout;
+  private lastError?: string;
+  private markFirstAttempt!: () => void;
+  /** Resolves once the first connection attempt has finished, successfully or not. */
+  private readonly firstAttempt = new Promise<void>((r) => (this.markFirstAttempt = r));
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
 
   async onModuleInit(): Promise<void> {
     if (!this.cfg.ha.token) {
+      this.lastError = 'HA_TOKEN is not set in .env';
       this.log.warn('HA_TOKEN not set: Home Assistant tools disabled');
+      this.markFirstAttempt();
       return;
     }
     // Don't block start-up on Home Assistant: connect (and reconnect) in the background,
@@ -41,11 +47,22 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
       await client.connect(transport);
       this.client = client;
       await this.refreshTools();
+      this.lastError = undefined;
     } catch (err) {
       this.client = undefined;
-      this.log.error(`Cannot reach Home Assistant MCP at ${this.cfg.ha.mcpUrl} (${(err as Error).message}); retrying in 10s`);
+      this.lastError = explainConnectionError(err, this.cfg.ha.mcpUrl);
+      this.log.error(`Home Assistant NOT connected: ${this.lastError}. Retrying in 10s`);
       setTimeout(() => void this.connect(), 10_000);
+    } finally {
+      this.markFirstAttempt();
     }
+  }
+
+  /** Waits (up to `timeoutMs`) for the first connection attempt, then reports the outcome. */
+  async status(timeoutMs = 10_000): Promise<{ connected: boolean; tools: number; error?: string }> {
+    await Promise.race([this.firstAttempt, new Promise((r) => setTimeout(r, timeoutMs))]);
+    const connected = Boolean(this.client) && this.tools.length > 0;
+    return { connected, tools: this.tools.length, error: connected ? undefined : this.lastError ?? 'still connecting' };
   }
 
   private async refreshOrReconnect(): Promise<void> {
@@ -90,4 +107,18 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
     clearInterval(this.refreshTimer);
     await this.client?.close();
   }
+}
+
+/** Turns low-level connection errors into an actionable sentence. */
+function explainConnectionError(err: unknown, url: string): string {
+  const e = err as { message?: string; code?: number; cause?: { code?: string } };
+  const msg = e.message ?? String(err);
+  const cause = e.cause?.code ?? '';
+  if (e.code === 401 || e.code === 403 || /401|unauthori[sz]ed/i.test(msg)) return 'the token was rejected (401). Create a new long-lived access token and set HA_TOKEN';
+  if (e.code === 404 || /404|not found/i.test(msg)) return `nothing at ${url} (404). Add the "Model Context Protocol Server" integration in Home Assistant and check the URL ends in /api/mcp`;
+  if (cause === 'ENOTFOUND' || cause === 'EAI_AGAIN') return `cannot resolve the address in HA_MCP_URL (${url}). Use the IP address, e.g. http://192.168.1.50:8123/api/mcp`;
+  if (cause === 'ECONNREFUSED' || cause === 'EHOSTUNREACH' || cause === 'ETIMEDOUT' || /fetch failed/i.test(msg)) {
+    return `cannot reach ${url} (${cause || msg}). Check the IP address and port 8123`;
+  }
+  return msg;
 }

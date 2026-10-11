@@ -12,6 +12,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
 import { LlmService } from '../llm/llm.service';
+import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
@@ -40,8 +41,12 @@ async function main(): Promise<void> {
   // Start buffering input immediately, so lines typed/pasted during start-up are not lost.
   const lines = rl[Symbol.asyncIterator]();
 
-  // Give the Home Assistant connection a moment to load its tools.
-  await new Promise((r) => setTimeout(r, 1500));
+  const ha = await app.get(HaMcpService).status();
+  console.log(
+    ha.connected
+      ? `\nHome Assistant: connected (${ha.tools} tools)`
+      : `\n!! Home Assistant: NOT connected - ${ha.error}\n!! Max can chat but cannot control devices. Fix .env and run again.`,
+  );
   console.log('\nType a request for Max (e.g. "turn on the kitchen lights"). Empty line or Ctrl+C to quit.\n');
 
   rl.setPrompt('You: ');

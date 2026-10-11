@@ -50,6 +50,21 @@ export class WyomingClient extends EventEmitter {
     if (payload) this.socket.write(payload);
   }
 
+  /** Sends `describe` and resolves with the service's `info` (lists installed models etc.). */
+  describe(timeoutMs = 3000): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('describe timed out')), timeoutMs);
+      const onEvent = (e: WyomingEvent) => {
+        if (e.type !== 'info') return;
+        clearTimeout(timer);
+        this.off('event', onEvent);
+        resolve(e.data);
+      };
+      this.on('event', onEvent);
+      this.send('describe');
+    });
+  }
+
   close(): void {
     this.socket?.end();
     this.socket = undefined;

@@ -8,6 +8,7 @@
 import { spawn } from 'node:child_process';
 import { loadConfig } from '../config';
 import { WyomingClient } from '../wyoming/wyoming-client';
+import { wakeWordNames } from '../wake-word/wake-word.service';
 
 try {
   process.loadEnvFile('.env');
@@ -20,6 +21,13 @@ async function main(): Promise<void> {
   const fmt = { rate: cfg.audio.sampleRate, width: 2, channels: 1 };
   const ww = new WyomingClient(cfg.wakeWord.host, cfg.wakeWord.port);
   await ww.connect();
+  const available = wakeWordNames(await ww.describe());
+  console.log(`Wake words installed: ${available.join(', ')}`);
+  const missing = cfg.wakeWord.names.filter((n) => !available.includes(n));
+  if (missing.length) {
+    console.log(`\n!! "${missing.join(', ')}" is NOT installed: the service will listen for "Okay Nabu" instead.`);
+    console.log(`!! Set WAKEWORD_NAMES in .env to one of: ${available.join(', ')}\n`);
+  }
   let detections = 0;
   ww.on('event', (e) => {
     if (e.type === 'detection') {

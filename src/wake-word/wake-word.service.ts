@@ -16,6 +16,38 @@ export class WakeWordService {
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
 
   /**
+   * Lists the wake words the openWakeWord service actually has. Important because the
+   * service silently falls back to "okay_nabu" when asked for a name it doesn't know.
+   */
+  async availableNames(): Promise<string[]> {
+    const client = new WyomingClient(this.cfg.wakeWord.host, this.cfg.wakeWord.port);
+    await client.connect();
+    try {
+      return wakeWordNames(await client.describe());
+    } finally {
+      client.close();
+    }
+  }
+
+  /** Logs a clear warning if a configured wake word isn't installed. */
+  async checkConfiguredNames(): Promise<void> {
+    try {
+      const available = await this.availableNames();
+      const missing = this.cfg.wakeWord.names.filter((n) => !available.includes(n));
+      this.log.log(`Wake words installed: ${available.join(', ')}`);
+      if (missing.length) {
+        this.log.warn(
+          `Wake word "${missing.join(', ')}" is NOT installed, so the service falls back to ` +
+            `"okay_nabu" (say "Okay Nabu"). Add the .tflite model to ./wakewords (training/README.md) ` +
+            `or set WAKEWORD_NAMES to one of: ${available.join(', ')}`,
+        );
+      }
+    } catch (err) {
+      this.log.warn(`Could not list installed wake words: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Opens a fresh detection session; call feed() with mic chunks until `detected` resolves.
    * (Wrapped in an object: returning the inner promise directly would make `await arm()`
    * wait for the wake word itself, before any audio had been fed.)
@@ -44,4 +76,10 @@ export class WakeWordService {
     this.client?.close();
     this.client = undefined;
   }
+}
+
+/** Extracts model names from a Wyoming `info` event: { wake: [{ models: [{ name }] }] }. */
+export function wakeWordNames(info: Record<string, unknown>): string[] {
+  const programs = (info.wake ?? []) as Array<{ models?: Array<{ name?: string }> }>;
+  return programs.flatMap((p) => (p.models ?? []).map((m) => String(m.name ?? ''))).filter(Boolean);
 }

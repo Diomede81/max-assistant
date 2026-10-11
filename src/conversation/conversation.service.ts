@@ -40,7 +40,7 @@ export class ConversationService implements OnApplicationBootstrap {
   onApplicationBootstrap(): void {
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();
-    void this.waitForWakeWord();
+    void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
   }
 
   private async waitForWakeWord(): Promise<void> {

@@ -39,6 +39,26 @@ and TV.
 If the free runtime disconnects part-way, reconnect and **Run all** again: the notebook
 skips the steps it already finished.
 
+> **Known bug in that notebook's last step (fix before downloading):** its `.tflite` conversion
+> (`onnx2tf`) swaps the model's input from `[1, 16, 96]` to `[1, 96, 16]`. The wake word
+> service then waits for ~8 s of continuous speech before checking, so the model **never
+> triggers**. Before running section 15, replace its line
+> `!onnx2tf -i "{out_path}" -o "{tf_dir}"` with:
+> ```python
+> import onnx
+> m = onnx.load(out_path); old = m.graph.input[0].name
+> for n in m.graph.node: n.input[:] = ['x' if i == old else i for i in n.input]
+> m.graph.input[0].name = 'x'; onnx.save(m, out_path)
+> get_ipython().system(f'onnx2tf -i "{out_path}" -o "{tf_dir}" -kat x')
+> ```
+> Already downloaded a broken `.tflite`? Keep the `.onnx` it also downloaded and convert that
+> again the same way (or ask for help: it takes a minute and no retraining).
+>
+> **Check any model** (run in the `max-assistant` folder; the input must be `[1, 16, 96]`):
+> ```bash
+> docker compose exec openwakeword sh -c '$(ls /app/.venv/bin/python3 2>/dev/null || echo python3) -c "from pyopen_wakeword import OpenWakeWord as W; m=W.from_model(\"/custom/hey_max.tflite\"); L,t=m.lib,m.input_tensor; print([L.TfLiteTensorDim(t,i) for i in range(L.TfLiteTensorNumDims(t))])"'
+> ```
+
 ## Option B: Train on your own Ubuntu machine (more control, needs an NVIDIA GPU)
 
 Use the detailed notebook

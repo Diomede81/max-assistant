@@ -29,19 +29,24 @@ export class WakeWordService {
     }
   }
 
-  /** Logs a clear warning if a configured wake word isn't installed. */
+  /**
+   * Logs which phrase will actually wake Max. If none of the configured wake words is
+   * installed, the service silently listens for "okay_nabu" instead, so say that loudly.
+   */
   async checkConfiguredNames(): Promise<void> {
     try {
       const available = await this.availableNames();
+      const active = this.cfg.wakeWord.names.filter((n) => available.includes(n));
       const missing = this.cfg.wakeWord.names.filter((n) => !available.includes(n));
       this.log.log(`Wake words installed: ${available.join(', ')}`);
       if (missing.length) {
         this.log.warn(
-          `Wake word "${missing.join(', ')}" is NOT installed, so the service falls back to ` +
-            `"okay_nabu" (say "Okay Nabu"). Add the .tflite model to ./wakewords (training/README.md) ` +
-            `or set WAKEWORD_NAMES to one of: ${available.join(', ')}`,
+          `WAKEWORD_NAMES contains "${missing.join(', ')}", which is NOT installed. ` +
+            `Check .env has only ONE WAKEWORD_NAMES line (the last one wins), or add the model to ./wakewords.`,
         );
       }
+      const phrases = (active.length ? active : ['okay_nabu']).map((n) => `"${n.replace(/_/g, ' ')}"`);
+      this.log.log(`>>> Say ${phrases.join(' or ')} to wake Max <<<`);
     } catch (err) {
       this.log.warn(`Could not list installed wake words: ${(err as Error).message}`);
     }

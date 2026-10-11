@@ -25,9 +25,12 @@ async function main(): Promise<void> {
   console.log(`Wake words installed: ${available.join(', ')}`);
   const missing = cfg.wakeWord.names.filter((n) => !available.includes(n));
   if (missing.length) {
-    console.log(`\n!! "${missing.join(', ')}" is NOT installed: the service will listen for "Okay Nabu" instead.`);
-    console.log(`!! Set WAKEWORD_NAMES in .env to one of: ${available.join(', ')}\n`);
+    console.log(`\n!! WAKEWORD_NAMES contains "${missing.join(', ')}", which is NOT installed.`);
+    console.log(`!! Check .env has only ONE WAKEWORD_NAMES line (the last one wins). Installed: ${available.join(', ')}\n`);
   }
+  const active = cfg.wakeWord.names.filter((n) => available.includes(n));
+  const phrases = (active.length ? active : ['okay_nabu']).map((n) => `"${n.replace(/_/g, ' ')}"`);
+  console.log(`>>> Say ${phrases.join(' or ')} <<<`);
   let detections = 0;
   ww.on('event', (e) => {
     if (e.type === 'detection') {

@@ -35,6 +35,21 @@ export interface AppConfig {
     systemPrompt: string;
   };
   ha: { mcpUrl: string; token: string };
+  /** 'pipeline' = wake word + STT + LLM + TTS (default); 'realtime' = OpenAI Realtime speech-to-speech */
+  voiceMode: 'pipeline' | 'realtime';
+  realtime: {
+    url: string;
+    apiKey: string;
+    model: string;
+    voice: string;
+    /** Extra delivery/personality instructions appended to the system prompt */
+    style: string;
+    silenceMs: number;
+    bargeIn: boolean;
+    transcribeModel?: string;
+    followUpMs: number;
+    maxSessionMs: number;
+  };
 }
 
 const num = (v: string | undefined, d: number) => (v ? Number(v) : d);
@@ -94,6 +109,22 @@ export function loadConfig(): AppConfig {
           'Use the Home Assistant tools to control or query devices, and your own tools for the time, ' +
           'timers and reminders. Never invent device names; ' +
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis.',
+    },
+    voiceMode: env.VOICE_MODE === 'realtime' ? 'realtime' : 'pipeline',
+    realtime: {
+      url: env.REALTIME_URL ?? 'wss://api.openai.com/v1/realtime',
+      apiKey: env.REALTIME_API_KEY || env.OPENAI_API_KEY || '',
+      model: env.REALTIME_MODEL ?? 'gpt-realtime-2',
+      voice: env.REALTIME_VOICE ?? 'cedar',
+      style:
+        env.REALTIME_STYLE ??
+        'Speak with a warm, calm British accent, like a witty butler. Keep replies short and natural; ' +
+          'never read out lists or long numbers unless asked.',
+      silenceMs: num(env.REALTIME_SILENCE_MS, 500),
+      bargeIn: env.REALTIME_BARGE_IN === 'on',
+      transcribeModel: env.REALTIME_TRANSCRIBE_MODEL || undefined,
+      followUpMs: num(env.REALTIME_FOLLOW_UP_MS, 8000),
+      maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 300) * 1000,
     },
     ha: {
       mcpUrl: env.HA_MCP_URL ?? 'http://homeassistant.local:8123/api/mcp',

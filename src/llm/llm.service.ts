@@ -5,8 +5,7 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
-import { HaMcpService } from '../ha-mcp/ha-mcp.service';
-import { BuiltinActionsService } from '../actions/builtin-actions.service';
+import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
 
 const MAX_TOOL_ROUNDS = 4;
@@ -30,8 +29,7 @@ export class LlmService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
-    private readonly ha: HaMcpService,
-    private readonly builtin: BuiltinActionsService,
+    private readonly tools: ToolRouterService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -44,7 +42,7 @@ export class LlmService {
     const messages: ChatCompletionMessageParam[] = [
       // The current time is included every turn so simple date questions need no tool call.
       { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
-      ...(this.ha.openAiTools.length ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
+      ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -55,7 +53,7 @@ export class LlmService {
       } catch (err) {
         // Some models try to call a device action even when Home Assistant is offline
         // (no tools sent); the provider then rejects the request. Say so plainly.
-        if (!this.ha.openAiTools.length && /tool/i.test((err as Error).message)) {
+        if (!this.tools.homeAssistantConnected && /tool/i.test((err as Error).message)) {
           yield "I can't reach Home Assistant right now, so I can't control your devices.";
           return;
         }
@@ -108,10 +106,7 @@ export class LlmService {
           if (c.type !== 'function') return { id: c.id, content: 'unsupported tool type' };
           try {
             const args = c.function.arguments ? JSON.parse(c.function.arguments) : {};
-            this.log.log(`tool ${c.function.name} ${JSON.stringify(args)}`);
-            const name = c.function.name;
-            const content = this.builtin.has(name) ? this.builtin.call(name, args) : await this.ha.call(name, args);
-            return { id: c.id, content };
+            return { id: c.id, content: await this.tools.call(c.function.name, args) };
           } catch (err) {
             return { id: c.id, content: `Error: ${(err as Error).message}` };
           }
@@ -126,7 +121,7 @@ export class LlmService {
   }
 
   private async openStream(messages: ChatCompletionMessageParam[]) {
-    const tools = [...this.builtin.tools, ...this.ha.openAiTools];
+    const tools = this.tools.tools;
     const body = (model: string, reasoningEffort?: string) => ({
       model,
       messages,

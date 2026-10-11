@@ -73,6 +73,11 @@ See [`deploy/max.service`](deploy/max.service).
 
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
+## Real-time voice (demo mode)
+
+Set `VOICE_MODE=realtime` to talk to Max through OpenAI's speech-to-speech model: the most natural
+conversation, typically under a second to respond, paid per minute. See **[docs/REALTIME.md](docs/REALTIME.md)**.
+
 ## Voice
 
 The default voice (Piper) is fast but robotic. For a natural voice, switch to **Kokoro**

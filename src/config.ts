@@ -5,6 +5,8 @@ export interface AppConfig {
     inputDevice: string;
     outputDevice: string;
     wakeChime: boolean;
+    /** Keep the mic muted this long after Max's voice should have finished (speaker/bridge latency). */
+    echoTailMs: number;
   };
   wakeWord: { host: string; port: number; names: string[] };
   vad: { rmsThreshold: number; silenceMs: number; maxUtteranceMs: number };
@@ -62,6 +64,7 @@ export function loadConfig(): AppConfig {
       inputDevice: env.AUDIO_INPUT_DEVICE ?? 'default',
       outputDevice: env.AUDIO_OUTPUT_DEVICE ?? 'default',
       wakeChime: (env.WAKE_CHIME ?? 'on') !== 'off',
+      echoTailMs: num(env.AUDIO_ECHO_TAIL_MS, 1000),
     },
     wakeWord: {
       host: env.WAKEWORD_HOST ?? '127.0.0.1',

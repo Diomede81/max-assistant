@@ -90,6 +90,11 @@ export class RealtimeClient extends EventEmitter {
     this.send({ type: 'input_audio_buffer.clear' });
   }
 
+  /** Stop the reply the model is currently generating (the user interrupted). */
+  cancelResponse(): void {
+    this.send({ type: 'response.cancel' });
+  }
+
   /** Ask the model to continue (e.g. after tool results) or to speak first. */
   requestResponse(): void {
     this.send({ type: 'response.create' });

@@ -46,6 +46,14 @@ services:
     volumes: ["./data/piper:/data"]
     ports: ["10200:10200"]
 
+  # Natural-sounding local voice (free). Enable with:  docker compose --profile max --profile kokoro up -d
+  # then set TTS_PROVIDER=openai in .env (see docs/VOICES.md). First start downloads the model (~350 MB).
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    profiles: ["kokoro"]
+    restart: unless-stopped
+    ports: ["8880:8880"]
+
   ollama:
     image: ollama/ollama:latest
     profiles: ["local-llm"]

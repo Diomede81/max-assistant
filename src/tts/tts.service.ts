@@ -12,9 +12,12 @@ interface Synthesis {
 }
 
 /**
- * Text-to-speech over Wyoming (Piper locally). Sentences are synthesised as soon as the
- * LLM produces them and played back in order, so Max starts talking after the first
- * sentence instead of waiting for the whole answer.
+ * Text-to-speech. Two providers, chosen with TTS_PROVIDER:
+ *  - piper:  local Piper over Wyoming (fast, robotic-ish)
+ *  - openai: any OpenAI-compatible /audio/speech API, e.g. Kokoro running locally in
+ *            Docker (natural, free) or OpenAI's cloud voices (most expressive, paid)
+ * Sentences are synthesised as soon as the LLM produces them and played back in order,
+ * so Max starts talking after the first sentence instead of waiting for the whole answer.
  */
 @Injectable()
 export class TtsService {
@@ -33,7 +36,7 @@ export class TtsService {
         try {
           await this.speaker.play(await s.format, s.audio);
         } catch (err) {
-          this.log.error(`Voice (text-to-speech) failed: ${(err as Error).message}. Check: docker compose logs piper`);
+          this.log.error(`Voice (text-to-speech) failed: ${(err as Error).message}. ${this.checkHint()}`);
         }
       }
     })();
@@ -52,7 +55,58 @@ export class TtsService {
     };
   }
 
+  private checkHint(): string {
+    return this.cfg.tts.provider === 'openai'
+      ? `Check TTS_BASE_URL / TTS_API_KEY / TTS_VOICE (and "docker compose logs kokoro" if using Kokoro)`
+      : 'Check: docker compose logs piper';
+  }
+
   private synthesize(text: string): Synthesis {
+    return this.cfg.tts.provider === 'openai' ? this.synthesizeOpenAi(text) : this.synthesizePiper(text);
+  }
+
+  /** OpenAI-compatible speech API, streamed as raw 16-bit mono PCM. */
+  private synthesizeOpenAi(text: string): Synthesis {
+    const audio = new AsyncQueue<Buffer>();
+    const { tts } = this.cfg;
+    const abort = new AbortController();
+    const format = new Promise<PcmFormat>((resolve, reject) => {
+      const timer = setTimeout(() => abort.abort(), SYNTH_TIMEOUT_MS);
+      const body: Record<string, unknown> = {
+        model: tts.model,
+        input: text,
+        voice: tts.voice ?? 'bm_george',
+        response_format: 'pcm',
+      };
+      if (tts.instructions) body.instructions = tts.instructions;
+      fetch(`${tts.baseUrl}/audio/speech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tts.apiKey}` },
+        body: JSON.stringify(body),
+        signal: abort.signal,
+      })
+        .then(async (res) => {
+          if (!res.ok || !res.body) {
+            const detail = (await res.text().catch(() => '')).slice(0, 200);
+            throw new Error(`speech API answered ${res.status}${detail ? `: ${detail}` : ''}`);
+          }
+          clearTimeout(timer);
+          resolve({ rate: tts.sampleRate, width: 2, channels: 1 });
+          for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+            audio.push(Buffer.from(chunk));
+          }
+          audio.close();
+        })
+        .catch((err: Error) => {
+          clearTimeout(timer);
+          audio.close();
+          reject(err.name === 'AbortError' ? new Error(`no audio from the speech API within ${SYNTH_TIMEOUT_MS / 1000}s`) : err);
+        });
+    });
+    return { format, audio };
+  }
+
+  private synthesizePiper(text: string): Synthesis {
     const audio = new AsyncQueue<Buffer>();
     const client = new WyomingClient(this.cfg.tts.host, this.cfg.tts.port);
     const format = new Promise<PcmFormat>((resolve, reject) => {

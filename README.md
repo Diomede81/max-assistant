@@ -71,6 +71,10 @@ See [`deploy/max.service`](deploy/max.service).
   "How long is left?", "Cancel the pasta timer". Max chimes and announces them out loud when they
   finish (no wake word needed). Timers are kept in memory, so they don't survive a restart.
 
+- **Email, calendar and other apps** (Office 365, and more) via Composio: connect them from the control
+  panel at http://localhost:8099. Sending, deleting and similar actions always need your spoken "yes".
+  See **[docs/APPS.md](docs/APPS.md)**.
+
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
 ## Real-time voice (demo mode)

@@ -37,6 +37,17 @@ export interface AppConfig {
     systemPrompt: string;
   };
   ha: { mcpUrl: string; token: string };
+  composio: {
+    apiKey: string;
+    /** Your identity inside Composio (any stable string); connections belong to it. */
+    userId: string;
+    /** Apps to offer, by Composio toolkit slug, e.g. outlook, whatsapp, slack. */
+    toolkits: string[];
+    /** Wildcard patterns of tools Max may use; keep it short for a voice assistant. */
+    allowedTools: string[];
+    callbackUrl: string;
+  };
+  controlPanel: { port: number; host: string; publicUrl: string };
   /** 'pipeline' = wake word + STT + LLM + TTS (default); 'realtime' = OpenAI Realtime speech-to-speech */
   voiceMode: 'pipeline' | 'realtime';
   realtime: {
@@ -57,6 +68,18 @@ export interface AppConfig {
 }
 
 const num = (v: string | undefined, d: number) => (v ? Number(v) : d);
+const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
+
+/**
+ * A voice assistant works best with a short list of tools. These cover reading and
+ * searching email, sending/replying, and the calendar (Outlook = Office 365), plus
+ * sending WhatsApp messages. Change with COMPOSIO_ALLOWED_TOOLS (use * as a wildcard).
+ */
+const DEFAULT_COMPOSIO_TOOLS = [
+  'OUTLOOK_*LIST*MESSAGE*', 'OUTLOOK_*SEARCH*', 'OUTLOOK_*GET*MESSAGE*', 'OUTLOOK_*SEND*',
+  'OUTLOOK_*REPLY*', 'OUTLOOK_*EVENT*', 'OUTLOOK_*CALENDAR*', 'OUTLOOK_*SCHEDULE*',
+  'WHATSAPP_SEND*', 'WHATSAPP_GET*',
+].join(',');
 
 export function loadConfig(): AppConfig {
   const env = process.env;
@@ -112,8 +135,22 @@ export function loadConfig(): AppConfig {
         env.LLM_SYSTEM_PROMPT ??
         'You are Max, a concise home assistant. Answer in one or two short spoken sentences. ' +
           'Use the Home Assistant tools to control or query devices, and your own tools for the time, ' +
-          'timers and reminders. Never invent device names; ' +
+          'timers and reminders, and the email, calendar and messaging tools when available. ' +
+          'Summarise emails and events briefly; never read out long text unless asked. Never invent device names; ' +
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis.',
+    },
+    composio: {
+      apiKey: env.COMPOSIO_API_KEY ?? '',
+      userId: env.COMPOSIO_USER_ID || 'max-home',
+      toolkits: list(env.COMPOSIO_TOOLKITS ?? 'outlook,whatsapp').map((t) => t.toLowerCase()),
+      allowedTools: list(env.COMPOSIO_ALLOWED_TOOLS ?? DEFAULT_COMPOSIO_TOOLS),
+      callbackUrl: env.COMPOSIO_CALLBACK_URL || `${env.CONTROL_PANEL_URL || 'http://localhost:8099'}/callback`,
+    },
+    controlPanel: {
+      port: num(env.CONTROL_PANEL_PORT, 8099),
+      // Only this computer by default; docker-compose publishes it on 127.0.0.1 only.
+      host: env.CONTROL_PANEL_HOST || '127.0.0.1',
+      publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
     },
     voiceMode: env.VOICE_MODE === 'realtime' ? 'realtime' : 'pipeline',
     realtime: {

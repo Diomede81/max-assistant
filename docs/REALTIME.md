@@ -42,10 +42,19 @@ and it copes well with "umm"s and rephrasing.
 | `REALTIME_STYLE` | Personality and delivery, e.g. `Speak with a warm, calm British accent, like a witty butler.` |
 | `REALTIME_SILENCE_MS` | How long a pause means "I'm done" (default 500). Lower = snappier, but may cut you off |
 | `REALTIME_FOLLOW_UP_MS` | How long Max keeps listening for a follow-up before hanging up (default 8000) |
+| `REALTIME_WAKE_INTERRUPT` | `on` (default): say the wake word while Max is talking to cut him off and ask something else. Works on normal speakers |
 | `REALTIME_BARGE_IN=on` | Lets you interrupt Max mid-sentence. **Use only with headphones** (or a speakerphone with echo cancellation): otherwise Max hears his own voice and interrupts himself |
 | `REALTIME_TRANSCRIBE_MODEL` | Set to e.g. `gpt-4o-mini-transcribe` to also log what you said (small extra cost) |
 
 Switch back any time with `VOICE_MODE=pipeline`.
+
+## Interrupting Max
+
+- **On speakers (default):** say **"Hey Jarvis"** while Max is talking. He stops at once, the rest of
+  his answer is cancelled, and he listens to what you say next ("Hey Jarvis… actually, just turn off
+  the lights"). Max never says the wake word himself, so his own voice can't trigger this.
+- **With headphones:** set `REALTIME_BARGE_IN=on` and simply start talking over him, like a phone call.
+  Don't use this on speakers: Max would hear his own voice and keep cutting himself off.
 
 ## Cost
 

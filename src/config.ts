@@ -48,6 +48,8 @@ export interface AppConfig {
     style: string;
     silenceMs: number;
     bargeIn: boolean;
+    /** Say the wake word while Max is talking to interrupt him (works on speakers, no echo issues). */
+    wakeInterrupt: boolean;
     transcribeModel?: string;
     followUpMs: number;
     maxSessionMs: number;
@@ -125,6 +127,7 @@ export function loadConfig(): AppConfig {
           'never read out lists or long numbers unless asked.',
       silenceMs: num(env.REALTIME_SILENCE_MS, 500),
       bargeIn: env.REALTIME_BARGE_IN === 'on',
+      wakeInterrupt: env.REALTIME_WAKE_INTERRUPT !== 'off',
       transcribeModel: env.REALTIME_TRANSCRIBE_MODEL || undefined,
       followUpMs: num(env.REALTIME_FOLLOW_UP_MS, 8000),
       maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 300) * 1000,

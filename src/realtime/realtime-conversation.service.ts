@@ -6,12 +6,15 @@ import { AsyncQueue } from '../wyoming/async-queue';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { TtsService } from '../tts/tts.service';
 import { describeNow } from '../actions/clock';
+import { WakeWordService } from '../wake-word/wake-word.service';
 import { RealtimeClient } from './realtime-client';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
 const CHIME_SKIP_MS = 400;
 const FIRST_TURN_WAIT_MS = 7000;
+/** After an interruption, listen again almost immediately (Max's audio has been cut). */
+const INTERRUPT_REOPEN_MS = 250;
 
 /**
  * One spoken conversation using OpenAI Realtime (speech in, speech out, no separate
@@ -28,6 +31,7 @@ export class RealtimeConversationService {
     private readonly speaker: SpeakerService,
     private readonly tools: ToolRouterService,
     private readonly tts: TtsService,
+    private readonly wake: WakeWordService,
   ) {}
 
   /**
@@ -54,8 +58,33 @@ export class RealtimeConversationService {
     const echoTail = this.cfg.audio.echoTailMs;
     const speaking = () => Date.now() < audioEndsAt;
     const deaf = () => Date.now() < audioEndsAt + echoTail;
+    // The wake word detector keeps listening during the conversation, even while Max talks,
+    // so "Hey Jarvis" interrupts him. Max never says the wake word, so his voice can't trigger it.
+    const micFormat = { rate: micRate, width: 2, channels: 1 };
+    let interrupt: () => void = () => undefined;
+    let wakeArmed = false;
+    let ended = false;
+    const armWake = async () => {
+      if (!rt.wakeInterrupt || ended) return;
+      try {
+        const { detected } = await this.wake.arm(micFormat);
+        wakeArmed = true;
+        detected
+          .then(() => {
+            wakeArmed = false;
+            interrupt();
+            void armWake();
+          })
+          .catch(() => (wakeArmed = false));
+      } catch (err) {
+        this.log.warn(`Wake word interruption unavailable: ${(err as Error).message}`);
+      }
+    };
+    void armWake();
+
     setMicHandler((chunk) => {
       const now = Date.now();
+      if (wakeArmed) this.wake.feed(chunk, micFormat);
       if (now < skipUntil) return;
       if (!rt.bargeIn && deaf()) return;
       const pcm = resampler.push(chunk);
@@ -99,16 +128,35 @@ export class RealtimeConversationService {
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
     let clearTimer: NodeJS.Timeout | undefined;
+    // Bumped on every interruption: queued replies from before it are dropped, not played.
+    let generation = 0;
+    let discardingCancelled = false;
+    // Whether the server is still sending the current reply (audio usually arrives faster
+    // than it plays, so the server has often finished before the user interrupts).
+    let responseActive = false;
+
+    interrupt = () => {
+      if (!speaking()) return; // only meaningful while Max is talking
+      generation++;
+      this.speaker.stop();
+      player?.close();
+      player = undefined;
+      if (responseActive) {
+        discardingCancelled = true; // ignore audio still in flight for the cancelled reply
+        client.cancelResponse();
+      }
+      client.clearInput();
+      clearTimeout(clearTimer);
+      busy = false;
+      audioEndsAt = Date.now() - echoTail + INTERRUPT_REOPEN_MS; // reopen the mic almost at once
+      lastActivity = Date.now();
+      this.log.log('Interrupted - Max stopped talking, listening to you');
+    };
 
     client.on('speech-started', () => {
       userSpeaking = true;
       lastActivity = Date.now();
-      if (rt.bargeIn && speaking()) {
-        this.speaker.stop(); // user interrupted Max
-        player?.close();
-        player = undefined;
-        audioEndsAt = Date.now();
-      }
+      if (rt.bargeIn) interrupt(); // headphones mode: just start talking
     });
     client.on('speech-stopped', () => {
       userSpeaking = false;
@@ -117,6 +165,8 @@ export class RealtimeConversationService {
       firstAudioThisTurn = true;
     });
     client.on('audio', (pcm: Buffer) => {
+      if (discardingCancelled) return;
+      responseActive = true;
       if (!player) {
         if (!rt.bargeIn && !speaking()) client.clearInput();
         if (firstAudioThisTurn && speechStoppedAt) {
@@ -124,16 +174,27 @@ export class RealtimeConversationService {
           firstAudioThisTurn = false;
         }
         const q = (player = new AsyncQueue<Buffer>());
-        // Queue behind any reply still playing, so two replies never overlap.
-        playing = playing.then(() => this.speaker.play(PCM24, q)).catch(() => undefined);
+        const gen = generation;
+        // Queue behind any reply still playing, so two replies never overlap; skip it if
+        // the user interrupted in the meantime.
+        playing = playing
+          .then(() => (gen === generation ? this.speaker.play(PCM24, q) : undefined))
+          .catch(() => undefined);
       }
       audioEndsAt = Math.max(audioEndsAt, Date.now()) + (pcm.length / (PCM24.rate * 2)) * 1000;
       player.push(pcm);
     });
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
+      responseActive = true;
       pendingTools.push(this.tools.call(c.name, c.args).then((out) => client.sendToolResult(c.callId, out)));
     });
     client.on('response-done', async (r: { toolCalls: number; status?: string; reason?: string }) => {
+      responseActive = false;
+      if (discardingCancelled) {
+        // The reply the user interrupted has now ended on the server side.
+        discardingCancelled = false;
+        if (r.status === 'cancelled') return;
+      }
       player?.close();
       player = undefined;
       // Discard anything the server buffered while Max was still audible (his own echo).
@@ -177,6 +238,8 @@ export class RealtimeConversationService {
       }, 200);
     });
 
+    ended = true;
+    this.wake.disarm();
     setMicHandler(() => undefined);
     clearTimeout(clearTimer);
     client.close();

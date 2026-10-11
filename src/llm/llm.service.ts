@@ -8,6 +8,9 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 
 const MAX_TOOL_ROUNDS = 4;
+const NO_TOOLS_NOTE =
+  'Home Assistant is currently NOT connected, so you have no tools and cannot control or read any device. ' +
+  'If asked to, say briefly that you cannot reach Home Assistant right now. Do not attempt any tool call.';
 
 /**
  * Talks to any OpenAI-compatible endpoint, which covers Groq, Cerebras, Gemini,
@@ -36,11 +39,25 @@ export class LlmService {
   async *respond(history: ChatCompletionMessageParam[]): AsyncGenerator<string> {
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: this.cfg.llm.systemPrompt },
+      ...(this.ha.openAiTools.length
+        ? []
+        : [{ role: 'system' as const, content: NO_TOOLS_NOTE }]),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const started = Date.now();
-      const stream = await this.openStream(messages);
+      let stream: Awaited<ReturnType<LlmService['openStream']>>;
+      try {
+        stream = await this.openStream(messages);
+      } catch (err) {
+        // Some models try to call a device action even when Home Assistant is offline
+        // (no tools sent); the provider then rejects the request. Say so plainly.
+        if (!this.ha.openAiTools.length && /tool/i.test((err as Error).message)) {
+          yield "I can't reach Home Assistant right now, so I can't control your devices.";
+          return;
+        }
+        throw err;
+      }
       let text = '';
       let firstToken = true;
       const calls: ChatCompletionMessageToolCall[] = [];

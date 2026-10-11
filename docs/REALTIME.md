@@ -1,7 +1,45 @@
-# Real-time voice (OpenAI Realtime)
+# Real-time voice (OpenAI Realtime or Gemini Live)
 
 In real-time mode, Max hears your voice directly and answers with his own voice, using one
-OpenAI model instead of three separate steps (speech-to-text → AI → text-to-speech).
+speech-to-speech model instead of three separate steps (speech-to-text → AI → text-to-speech).
+Two providers are supported:
+
+| | OpenAI Realtime | **Gemini Live** |
+|---|---|---|
+| Setting | `REALTIME_PROVIDER=openai` (default) | `REALTIME_PROVIDER=gemini` |
+| Default model / voice | `gpt-realtime-2` / `cedar` | `gemini-3.8-live` / `Charon` |
+| Approx. cost | ~$0.05–0.20 per minute of conversation | **~$0.01–0.02 per minute** |
+| Key from | platform.openai.com | aistudio.google.com |
+
+Everything else is identical in both: the local wake word, interrupting with "Hey Jarvis", echo
+protection, Home Assistant, timers, apps and the spoken "yes" before risky actions.
+
+## Gemini Live set-up (5 minutes)
+
+1. Go to https://aistudio.google.com → **Get API key** → **Create API key**, and enable billing
+   for the key's Google Cloud project (the free tier is too limited for voice).
+2. Add to `.env`:
+   ```
+   VOICE_MODE=realtime
+   REALTIME_PROVIDER=gemini
+   GEMINI_API_KEY=...your key...
+   ```
+   If you used OpenAI before, **remove or comment out `REALTIME_MODEL` and `REALTIME_VOICE`**
+   (OpenAI names like `cedar` don't exist on Gemini), or set Gemini ones.
+3. Restart: `docker compose --profile max up -d --build`
+4. Check: `docker compose logs max | grep "Voice mode"` shows
+   `Voice mode: Gemini Live (gemini-3.8-live, voice "Charon")`.
+
+**Gemini voices** (`REALTIME_VOICE`): `Charon` (male, informative), `Puck` (male, upbeat),
+`Fenrir`, `Orus`, `Kore` (female, firm), `Aoede`, `Leda`, `Zephyr` and more; try them in Google
+AI Studio's Live/Stream page. For a British accent, keep the British style in `REALTIME_STYLE`
+and optionally set `REALTIME_LANGUAGE=en-GB`.
+
+If a voice or model name isn't available to your account, the log shows Google's reason
+(e.g. `Could not start the Gemini Live session: …`) and Max carries on in wake-word mode.
+
+## Real-time vs normal mode
+
 The result is the most natural conversation Max can have: faster, with natural intonation,
 and it copes well with "umm"s and rephrasing.
 
@@ -10,16 +48,17 @@ and it copes well with "umm"s and rephrasing.
 | Feel | Good | Most natural, best for demos |
 | Response time | ~1–2 s | Typically under a second |
 | Cost | Pennies per day | Pay per minute of conversation (see below) |
-| Wake word | Local, free | Local, free (OpenAI is only connected **after** "Hey Jarvis") |
-| Home Assistant, time, timers | ✓ | ✓ (same actions) |
+| Wake word | Local, free | Local, free (the provider is only connected **after** "Hey Jarvis") |
+| Home Assistant, time, timers, apps | ✓ | ✓ (same actions) |
 | Works without internet | With a local fallback model | No |
 
-## Set it up (2 minutes)
+## OpenAI set-up
 
 1. Get an API key at https://platform.openai.com/api-keys. The account needs billing set up.
 2. Add to `.env`:
    ```
    VOICE_MODE=realtime
+   REALTIME_PROVIDER=openai
    REALTIME_API_KEY=sk-...your key...
    REALTIME_VOICE=cedar
    ```

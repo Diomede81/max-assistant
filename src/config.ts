@@ -51,8 +51,12 @@ export interface AppConfig {
   /** 'pipeline' = wake word + STT + LLM + TTS (default); 'realtime' = OpenAI Realtime speech-to-speech */
   voiceMode: 'pipeline' | 'realtime';
   realtime: {
+    /** 'openai' (gpt-realtime) or 'gemini' (Gemini Live, roughly 10x cheaper) */
+    provider: 'openai' | 'gemini';
     url: string;
     apiKey: string;
+    /** Optional BCP-47 language for the voice, e.g. en-GB (Gemini). */
+    language?: string;
     model: string;
     voice: string;
     /** Extra delivery/personality instructions appended to the system prompt */
@@ -83,6 +87,7 @@ const DEFAULT_COMPOSIO_TOOLS = [
 
 export function loadConfig(): AppConfig {
   const env = process.env;
+  const realtimeProvider = env.REALTIME_PROVIDER === 'gemini' ? 'gemini' : 'openai';
   return {
     audio: {
       sampleRate: num(env.AUDIO_SAMPLE_RATE, 16000),
@@ -154,10 +159,19 @@ export function loadConfig(): AppConfig {
     },
     voiceMode: env.VOICE_MODE === 'realtime' ? 'realtime' : 'pipeline',
     realtime: {
-      url: env.REALTIME_URL ?? 'wss://api.openai.com/v1/realtime',
-      apiKey: env.REALTIME_API_KEY || env.OPENAI_API_KEY || '',
-      model: env.REALTIME_MODEL ?? 'gpt-realtime-2',
-      voice: env.REALTIME_VOICE ?? 'cedar',
+      provider: realtimeProvider,
+      url:
+        env.REALTIME_URL ??
+        (realtimeProvider === 'gemini'
+          ? 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
+          : 'wss://api.openai.com/v1/realtime'),
+      apiKey:
+        realtimeProvider === 'gemini'
+          ? env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.REALTIME_API_KEY || ''
+          : env.REALTIME_API_KEY || env.OPENAI_API_KEY || '',
+      language: env.REALTIME_LANGUAGE || undefined,
+      model: env.REALTIME_MODEL ?? (realtimeProvider === 'gemini' ? 'gemini-3.8-live' : 'gpt-realtime-2'),
+      voice: env.REALTIME_VOICE ?? (realtimeProvider === 'gemini' ? 'Charon' : 'cedar'),
       style:
         env.REALTIME_STYLE ??
         'Speak with a warm, calm British accent, like a witty butler. Keep replies short and natural; ' +

@@ -25,6 +25,8 @@ export class MicrophoneService extends EventEmitter implements OnModuleDestroy {
     const args = ['-q', '-D', this.cfg.audio.inputDevice, '-f', 'S16_LE', '-c', '1',
       '-r', String(this.cfg.audio.sampleRate), '-t', 'raw', '--buffer-time=20000'];
     this.proc = spawn('arecord', args, { stdio: ['ignore', 'pipe', 'inherit'] });
+    this.proc.on('error', (err) =>
+      this.log.error(`Cannot start microphone (${err.message}). Install it with: sudo apt install alsa-utils`));
     this.proc.stdout!.on('data', (chunk: Buffer) => this.emit('chunk', chunk));
     this.proc.on('exit', (code) => {
       this.log.warn(`arecord exited (${code})`);

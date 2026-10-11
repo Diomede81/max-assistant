@@ -26,7 +26,7 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
     const transport = new StreamableHTTPClientTransport(new URL(this.cfg.ha.mcpUrl), {
       requestInit: { headers: { Authorization: `Bearer ${this.cfg.ha.token}` } },
     });
-    this.client = new Client({ name: 'jarvis-home', version: '0.1.0' });
+    this.client = new Client({ name: 'max-assistant', version: '0.1.0' });
     await this.client.connect(transport);
     await this.refreshTools();
   }

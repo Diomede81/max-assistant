@@ -4,6 +4,11 @@ services:
   openwakeword:
     image: rhasspy/wyoming-openwakeword:latest
     restart: unless-stopped
+    # Custom models (e.g. hey_max.tflite) go in ./wakewords - see training/README.md.
+    # Tuning: raise --threshold (0-1) if Max wakes up by mistake, lower it if he misses you.
+    #         --trigger-level 2 needs two consecutive hits: fewer false wakes, slightly slower.
+    command: --custom-model-dir /custom --threshold 0.5 --trigger-level 1
+    volumes: ["./wakewords:/custom"]
     ports: ["10400:10400"]
 
   whisper:

@@ -31,7 +31,8 @@ export class WyomingClient extends EventEmitter {
       socket.setNoDelay(true);
       socket.on('data', (chunk) => this.onData(chunk));
       socket.on('error', (err) => {
-        this.emit('error', err);
+        // Before connect, the rejected promise reports it; an unheard 'error' would crash Node.
+        if (this.listenerCount('error')) this.emit('error', err);
         reject(err);
       });
       socket.on('close', () => this.emit('close'));

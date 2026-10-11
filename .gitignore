@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 *.log
+wakewords/*.tflite
+!wakewords/hey_max.tflite
+data/

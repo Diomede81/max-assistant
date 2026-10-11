@@ -35,7 +35,7 @@ export function loadConfig(): AppConfig {
     wakeWord: {
       host: env.WAKEWORD_HOST ?? '127.0.0.1',
       port: num(env.WAKEWORD_PORT, 10400),
-      names: (env.WAKEWORD_NAMES ?? 'hey_jarvis').split(',').map((s) => s.trim()),
+      names: (env.WAKEWORD_NAMES ?? 'hey_max').split(',').map((s) => s.trim()),
     },
     vad: {
       rmsThreshold: num(env.VAD_RMS_THRESHOLD, 500),
@@ -62,7 +62,7 @@ export function loadConfig(): AppConfig {
       timeoutMs: num(env.LLM_TIMEOUT_MS, 4000),
       systemPrompt:
         env.LLM_SYSTEM_PROMPT ??
-        'You are Jarvis, a concise home assistant. Answer in one or two short spoken sentences. ' +
+        'You are Max, a concise home assistant. Answer in one or two short spoken sentences. ' +
           'Use the Home Assistant tools to control or query devices. Never invent device names; ' +
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis.',
     },

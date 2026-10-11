@@ -11,7 +11,7 @@ interface Synthesis {
 
 /**
  * Text-to-speech over Wyoming (Piper locally). Sentences are synthesised as soon as the
- * LLM produces them and played back in order, so Jarvis starts talking after the first
+ * LLM produces them and played back in order, so Max starts talking after the first
  * sentence instead of waiting for the whole answer.
  */
 @Injectable()

@@ -1,7 +1,7 @@
 /**
  * Cuts the LLM's token stream into speakable pieces. The first piece is released as
  * early as possible (a sentence end, or a comma after a few words) because it decides
- * how fast Jarvis *feels*.
+ * how fast Max *feels*.
  */
 export class SentenceSplitter {
   private buf = '';

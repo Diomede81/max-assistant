@@ -47,7 +47,7 @@ export class ConversationService implements OnApplicationBootstrap {
     this.state = 'wake';
     const fmt = this.mic.format;
     try {
-      const detected = await this.wake.arm(fmt);
+      const { detected } = await this.wake.arm(fmt);
       this.onChunk = (c) => this.wake.feed(c, fmt);
       this.log.log(`Listening for wake word: ${this.cfg.wakeWord.names.join(', ')}`);
       const name = await detected;
@@ -122,7 +122,7 @@ export class ConversationService implements OnApplicationBootstrap {
       speech.say(sentence);
     }
     if (firstSpoken) {
-      this.log.log(`Jarvis: "${reply.trim()}"  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
+      this.log.log(`Max: "${reply.trim()}"  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
     }
     await speech.done();
     this.lastTurnAt = Date.now();

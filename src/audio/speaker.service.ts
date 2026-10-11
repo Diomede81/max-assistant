@@ -21,7 +21,11 @@ export class SpeakerService {
       '-c', String(format.channels), '-r', String(format.rate), '-t', 'raw'],
       { stdio: ['pipe', 'ignore', 'inherit'] });
     this.current = proc;
-    const done = new Promise<void>((resolve) => proc.on('exit', () => resolve()));
+    const done = new Promise<void>((resolve) => {
+      proc.on('exit', () => resolve());
+      proc.on('error', () => resolve()); // aplay missing: logged by the caller's silence, not a crash
+    });
+    proc.stdin!.on('error', () => undefined); // player stopped mid-sentence (stop() or missing aplay)
     try {
       for await (const chunk of chunks) {
         if (proc.exitCode !== null || proc.killed) break;

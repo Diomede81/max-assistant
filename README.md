@@ -1,7 +1,7 @@
-# Jarvis Home
+# Max
 
-A private, low-latency, Jarvis-style voice assistant for **Home Assistant**, written in
-**TypeScript / NestJS**. Say *"Hey Jarvis"*, ask for something, and it controls your home
+**Max** is a private, low-latency voice assistant for **Home Assistant**, written in
+**TypeScript / NestJS**. Say *"Hey Max"*, ask for something, and Max controls your home
 through Home Assistant's built-in **MCP server**.
 
 ```
@@ -12,11 +12,11 @@ Mic → Wake word → End-of-speech → Speech-to-text → LLM ⇄ Home Assistan
 
 ## Why it feels fast
 
-- **Everything streams.** Audio goes to speech-to-text *while you talk*; Jarvis starts speaking
+- **Everything streams.** Audio goes to speech-to-text *while you talk*; Max starts speaking
   after the **first sentence** of the answer, not the whole answer.
 - **Fast-first-token LLMs** (Groq / Cerebras by default), with a **local fallback**
   (Ollama + Qwen3) if the internet or the provider is slow.
-- **Follow-up window:** after replying, Jarvis listens for 5 seconds without needing the wake word.
+- **Follow-up window:** after replying, Max listens for 5 seconds without needing the wake word.
 - **Every turn logs a latency breakdown**, so you can tune with numbers.
 
 ## Quick start (Ubuntu)
@@ -35,12 +35,16 @@ docker compose up -d
 # 4. Configure
 cp .env.example .env    # set HA_TOKEN, LLM_API_KEY (free Groq key: https://console.groq.com)
 
-# 5. Run
+# 5. Wake word: train "hey max" once (about 1 hour, free) - see training/README.md
+#    Until then, set WAKEWORD_NAMES=hey_jarvis in .env (built in) to try everything else.
 npm install
+npm run mic-check       # live mic levels + wake word detections, for tuning
+
+# 6. Run
 npm run dev
 ```
 
-Say **"Hey Jarvis… turn on the kitchen lights."**
+Say **"Hey Max… turn on the kitchen lights."**
 
 ### Optional: local LLM fallback (or fully offline)
 
@@ -52,7 +56,7 @@ Then set `LLM_FALLBACK_BASE_URL=http://127.0.0.1:11434/v1` and `LLM_FALLBACK_MOD
 (or point the *primary* at Ollama to run with no cloud at all).
 
 ### Run on boot
-See [`deploy/jarvis.service`](deploy/jarvis.service).
+See [`deploy/max.service`](deploy/max.service).
 
 ## Project layout
 
@@ -60,7 +64,8 @@ See [`deploy/jarvis.service`](deploy/jarvis.service).
 |---|---|
 | `audio/` | Microphone capture (`arecord`), playback (`aplay`), end-of-speech detection |
 | `wyoming/` | Client for Home Assistant's Wyoming voice protocol |
-| `wake-word/` | openWakeWord ("hey_jarvis" is built in) |
+| `wake-word/` | openWakeWord with the custom "hey max" model ([training guide](training/README.md)) |
+| `tools/` | `npm run mic-check`: live mic levels and wake word detections for tuning |
 | `stt/` | Speech-to-text (Whisper via Wyoming) |
 | `llm/` | Any OpenAI-compatible LLM, streaming + tool calls + fallback |
 | `ha-mcp/` | Home Assistant MCP client (`/api/mcp`, Streamable HTTP) |
@@ -69,7 +74,7 @@ See [`deploy/jarvis.service`](deploy/jarvis.service).
 
 ## Roadmap
 
-- [ ] Barge-in: say "stop" / interrupt Jarvis while it is speaking (needs echo cancellation)
+- [ ] Barge-in: say "stop" / interrupt Max while it is speaking (needs echo cancellation)
 - [ ] Silero VAD for noisy rooms
 - [ ] Cloud streaming STT/TTS providers (Deepgram, ElevenLabs Flash, Cartesia)
 - [ ] Native Anthropic (Claude) provider alongside the OpenAI-compatible one

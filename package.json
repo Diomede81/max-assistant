@@ -1,7 +1,7 @@
 {
-  "name": "jarvis-home",
+  "name": "max-assistant",
   "version": "0.1.0",
-  "description": "Low-latency, Jarvis-style voice assistant for Home Assistant (NestJS + MCP + Wyoming)",
+  "description": "Max: a low-latency voice assistant for Home Assistant (NestJS + MCP + Wyoming)",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -11,7 +11,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "dev": "tsc -p tsconfig.json && node dist/main.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mic-check": "tsc -p tsconfig.json && node dist/tools/mic-check.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

@@ -1,7 +1,7 @@
 # Technology research: low-latency voice assistant for Home Assistant
 
 *Web check: October 2026. Prices and model names change monthly, and many published
-benchmarks are vendor-run and disagree, so measure on your own setup (Jarvis logs
+benchmarks are vendor-run and disagree, so measure on your own setup (Max logs
 per-turn latency for exactly this reason).*
 
 ## 1. Language: TypeScript / NestJS is a sound choice
@@ -53,7 +53,7 @@ modes for voice, and **expose fewer entities** (30 entities ≈ 1,300 tokens of 
 
 | Component | Choice | Why |
 |---|---|---|
-| Wake word | **openWakeWord** (local, free, "hey_jarvis" built in) | ⚠️ Picovoice Porcupine's **free tier keys stopped working after 30 June 2026** (per Home Assistant community reports), so it now needs a paid licence |
+| Wake word | **openWakeWord** (local, free, custom "hey max" model, see training/README.md) | ⚠️ Picovoice Porcupine's **free tier keys stopped working after 30 June 2026** (per Home Assistant community reports), so it now needs a paid licence |
 | Speech-to-text | **Whisper** (local) → **Deepgram** (cloud) for speed | Deepgram pairs STT + TTS, cutting a hop |
 | Text-to-speech | **Piper** (local, fast) | Cloud upgrades below |
 

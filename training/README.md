@@ -15,18 +15,29 @@ and TV.
 
 ## Option A: Google Colab (recommended, no setup)
 
-1. Open the official openWakeWord training notebook:
-   **https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb**
+> **The official openWakeWord notebook no longer works on Colab** (it fails with
+> `No module named 'piper_phonemize'` / `torchvision==0.20.0` errors, because Colab moved to
+> a newer Python). Use the community-maintained notebook below instead: it's patched for
+> current Colab and exports the **`.tflite`** file Max needs. It's a third-party project, so
+> if it breaks in future, check its GitHub page for updates.
+
+1. Open the notebook:
+   **https://colab.research.google.com/github/amandamarielux/openwakeword_update_sept_2026/blob/main/wakeword_trainer_HA.ipynb**
+   (project page: https://github.com/amandamarielux/openwakeword_update_sept_2026)
 2. In Colab: **Runtime → Change runtime type → T4 GPU** (free tier is fine).
-3. Set the target phrase to **`hey max`**.
-4. **Check the pronunciation first.** The notebook plays a sample of the phrase. If it
-   doesn't sound like "hey Max", try phonetic spellings such as `hey maks` or `hay max`
-   until it does. This matters more than any other setting.
-5. Training settings. Start with the defaults. If you have time, raise the number of
-   examples and training steps for a more reliable model. Raise the false-activation
-   penalty if your test run wakes up on its own.
-6. **Runtime → Run all**, then wait (about 45–60 minutes).
-7. Download the **`.tflite`** file it produces and rename it to **`hey_max.tflite`**.
+3. Find the configuration cell (it contains `TARGET_PHRASE`) and set:
+   ```python
+   TARGET_PHRASE = ['hey max']
+   MODEL_NAME    = 'hey_max'
+   ```
+   `MODEL_NAME` must be exactly `hey_max`: it becomes the file name and the wake word name.
+4. **Runtime → Run all**, then leave the tab open and your computer awake. It takes
+   about 75–90 minutes on the free T4 (it downloads ~25 GB of training data inside Colab,
+   not to your computer).
+5. The last cell downloads **`hey_max.tflite`** (and a `.onnx` you don't need).
+
+If the free runtime disconnects part-way, reconnect and **Run all** again: the notebook
+skips the steps it already finished.
 
 ## Option B: Train on your own Ubuntu machine (more control, needs an NVIDIA GPU)
 

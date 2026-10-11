@@ -6,11 +6,14 @@ import type {
 } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
+import { BuiltinActionsService } from '../actions/builtin-actions.service';
+import { describeNow } from '../actions/clock';
 
 const MAX_TOOL_ROUNDS = 4;
-const NO_TOOLS_NOTE =
-  'Home Assistant is currently NOT connected, so you have no tools and cannot control or read any device. ' +
-  'If asked to, say briefly that you cannot reach Home Assistant right now. Do not attempt any tool call.';
+const NO_HA_NOTE =
+  'Home Assistant is currently NOT connected, so you cannot control or read any device. ' +
+  'If asked to, say briefly that you cannot reach Home Assistant right now. ' +
+  'You can still tell the date and time and manage timers and reminders.';
 
 /**
  * Talks to any OpenAI-compatible endpoint, which covers Groq, Cerebras, Gemini,
@@ -28,6 +31,7 @@ export class LlmService {
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly ha: HaMcpService,
+    private readonly builtin: BuiltinActionsService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -38,10 +42,9 @@ export class LlmService {
   /** Yields spoken text fragments. Mutates `history` with the assistant/tool turns. */
   async *respond(history: ChatCompletionMessageParam[]): AsyncGenerator<string> {
     const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: this.cfg.llm.systemPrompt },
-      ...(this.ha.openAiTools.length
-        ? []
-        : [{ role: 'system' as const, content: NO_TOOLS_NOTE }]),
+      // The current time is included every turn so simple date questions need no tool call.
+      { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
+      ...(this.ha.openAiTools.length ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -94,14 +97,16 @@ export class LlmService {
       history.push(assistant);
       if (!calls.length) return;
 
-      // Run all tool calls in parallel: they are independent Home Assistant actions.
+      // Run all tool calls in parallel: they are independent actions.
       const results = await Promise.all(
         calls.map(async (c) => {
           if (c.type !== 'function') return { id: c.id, content: 'unsupported tool type' };
           try {
             const args = c.function.arguments ? JSON.parse(c.function.arguments) : {};
             this.log.log(`tool ${c.function.name} ${JSON.stringify(args)}`);
-            return { id: c.id, content: await this.ha.call(c.function.name, args) };
+            const name = c.function.name;
+            const content = this.builtin.has(name) ? this.builtin.call(name, args) : await this.ha.call(name, args);
+            return { id: c.id, content };
           } catch (err) {
             return { id: c.id, content: `Error: ${(err as Error).message}` };
           }
@@ -116,7 +121,7 @@ export class LlmService {
   }
 
   private async openStream(messages: ChatCompletionMessageParam[]) {
-    const tools = this.ha.openAiTools;
+    const tools = [...this.builtin.tools, ...this.ha.openAiTools];
     const body = (model: string) => ({
       model,
       messages,

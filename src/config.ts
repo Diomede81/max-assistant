@@ -86,7 +86,8 @@ export function loadConfig(): AppConfig {
       systemPrompt:
         env.LLM_SYSTEM_PROMPT ??
         'You are Max, a concise home assistant. Answer in one or two short spoken sentences. ' +
-          'Use the Home Assistant tools to control or query devices. Never invent device names; ' +
+          'Use the Home Assistant tools to control or query devices, and your own tools for the time, ' +
+          'timers and reminders. Never invent device names; ' +
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis.',
     },
     ha: {

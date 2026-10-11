@@ -63,6 +63,16 @@ Then set `LLM_FALLBACK_BASE_URL=http://127.0.0.1:11434/v1` and `LLM_FALLBACK_MOD
 ### Run on boot
 See [`deploy/max.service`](deploy/max.service).
 
+## What Max can do
+
+- **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
+- **Date and time**: "What's the date?", "What time is it?"
+- **Timers and reminders**: "Set a pasta timer for 10 minutes", "Remind me in 20 minutes to call Mum",
+  "How long is left?", "Cancel the pasta timer". Max chimes and announces them out loud when they
+  finish (no wake word needed). Timers are kept in memory, so they don't survive a restart.
+
+Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
+
 ## Voice
 
 The default voice (Piper) is fast but robotic. For a natural voice, switch to **Kokoro**

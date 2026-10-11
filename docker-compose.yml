@@ -1,0 +1,35 @@
+# Local voice services (Home Assistant's own "Wyoming" stack) + optional local LLM.
+# Start with:  docker compose up -d            (add --profile local-llm for Ollama)
+services:
+  openwakeword:
+    image: rhasspy/wyoming-openwakeword:latest
+    restart: unless-stopped
+    ports: ["10400:10400"]
+
+  whisper:
+    image: rhasspy/wyoming-whisper:latest
+    restart: unless-stopped
+    # base-int8 is a good CPU default; use small-int8 for accuracy, tiny-int8 for speed.
+    command: --model base-int8 --language en
+    volumes: ["./data/whisper:/data"]
+    ports: ["10300:10300"]
+
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    restart: unless-stopped
+    # British male voice; browse others at https://rhasspy.github.io/piper-samples/
+    command: --voice en_GB-alan-medium
+    volumes: ["./data/piper:/data"]
+    ports: ["10200:10200"]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    volumes: ["./data/ollama:/root/.ollama"]
+    ports: ["11434:11434"]
+    # Uncomment for an NVIDIA GPU (needs nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]

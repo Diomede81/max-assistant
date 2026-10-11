@@ -5,10 +5,11 @@ import { MicrophoneService } from '../audio/microphone.service';
 import { Endpointer } from '../audio/endpointer';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { SttService } from '../stt/stt.service';
-import { LlmService } from '../llm/llm.service';
+import { LlmService, explainLlmError } from '../llm/llm.service';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from './sentence-splitter';
 import { TimerService, announcement } from '../actions/timer.service';
+import { RealtimeConversationService } from '../realtime/realtime-conversation.service';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -43,12 +44,16 @@ export class ConversationService implements OnApplicationBootstrap {
     private readonly llm: LlmService,
     private readonly tts: TtsService,
     private readonly timers: TimerService,
+    private readonly realtime: RealtimeConversationService,
   ) {}
 
   private readonly pendingAnnouncements: string[] = [];
   private announcing = false;
 
   onApplicationBootstrap(): void {
+    if (this.cfg.voiceMode === 'realtime') {
+      this.log.log(`Voice mode: OpenAI Realtime (${this.cfg.realtime.model}, voice "${this.cfg.realtime.voice}")`);
+    }
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
@@ -99,7 +104,15 @@ export class ConversationService implements OnApplicationBootstrap {
 
     this.log.log(`Wake word "${name}" detected - listening for your request`);
     if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
-    await this.conversation();
+    if (this.cfg.voiceMode === 'realtime') {
+      this.state = 'respond';
+      await this.realtime
+        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime)
+        .catch((err) => this.log.error(`Realtime conversation failed: ${(err as Error).message}`));
+      this.onChunk = () => undefined;
+    } else {
+      await this.conversation();
+    }
     return this.waitForWakeWord();
   }
 
@@ -200,9 +213,10 @@ export class ConversationService implements OnApplicationBootstrap {
         }
       }
     } catch (err) {
-      this.log.error(`LLM error: ${(err as Error).message}`);
+      const why = explainLlmError(err);
+      this.log.error(`LLM error: ${why.log}`);
       splitter.flush();
-      speech.say('Sorry, I could not reach my brain just now.');
+      speech.say(why.spoken);
     }
     for (const sentence of splitter.flush()) {
       if (!firstSpoken) firstSpoken = Date.now();

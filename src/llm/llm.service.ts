@@ -5,8 +5,7 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
-import { HaMcpService } from '../ha-mcp/ha-mcp.service';
-import { BuiltinActionsService } from '../actions/builtin-actions.service';
+import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
 
 const MAX_TOOL_ROUNDS = 4;
@@ -30,8 +29,7 @@ export class LlmService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
-    private readonly ha: HaMcpService,
-    private readonly builtin: BuiltinActionsService,
+    private readonly tools: ToolRouterService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -44,7 +42,7 @@ export class LlmService {
     const messages: ChatCompletionMessageParam[] = [
       // The current time is included every turn so simple date questions need no tool call.
       { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
-      ...(this.ha.openAiTools.length ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
+      ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -55,13 +53,14 @@ export class LlmService {
       } catch (err) {
         // Some models try to call a device action even when Home Assistant is offline
         // (no tools sent); the provider then rejects the request. Say so plainly.
-        if (!this.ha.openAiTools.length && /tool/i.test((err as Error).message)) {
+        if (!this.tools.homeAssistantConnected && /tool/i.test((err as Error).message)) {
           yield "I can't reach Home Assistant right now, so I can't control your devices.";
           return;
         }
         throw err;
       }
       let text = '';
+      let reasoning = '';
       let firstToken = true;
       const calls: ChatCompletionMessageToolCall[] = [];
 
@@ -76,6 +75,8 @@ export class LlmService {
           text += delta.content;
           yield delta.content;
         }
+        const r = (delta as { reasoning_content?: string }).reasoning_content;
+        if (r) reasoning += r;
         for (const tc of delta.tool_calls ?? []) {
           const slot = (calls[tc.index] ??= {
             id: tc.id ?? `call_${tc.index}`,
@@ -93,6 +94,8 @@ export class LlmService {
       const assistant: ChatCompletionMessageParam = calls.length
         ? { role: 'assistant', content: text || null, tool_calls: calls }
         : { role: 'assistant', content: text };
+      // DeepSeek's thinking mode rejects follow-up requests unless its reasoning is sent back.
+      if (reasoning && calls.length) Object.assign(assistant, { reasoning_content: reasoning });
       messages.push(assistant);
       history.push(assistant);
       if (!calls.length) return;
@@ -103,10 +106,7 @@ export class LlmService {
           if (c.type !== 'function') return { id: c.id, content: 'unsupported tool type' };
           try {
             const args = c.function.arguments ? JSON.parse(c.function.arguments) : {};
-            this.log.log(`tool ${c.function.name} ${JSON.stringify(args)}`);
-            const name = c.function.name;
-            const content = this.builtin.has(name) ? this.builtin.call(name, args) : await this.ha.call(name, args);
-            return { id: c.id, content };
+            return { id: c.id, content: await this.tools.call(c.function.name, args) };
           } catch (err) {
             return { id: c.id, content: `Error: ${(err as Error).message}` };
           }
@@ -121,24 +121,55 @@ export class LlmService {
   }
 
   private async openStream(messages: ChatCompletionMessageParam[]) {
-    const tools = [...this.builtin.tools, ...this.ha.openAiTools];
-    const body = (model: string) => ({
+    const tools = this.tools.tools;
+    const body = (model: string, reasoningEffort?: string) => ({
       model,
       messages,
       stream: true as const,
       temperature: 0.3,
       max_tokens: 300,
       ...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
+      // Provider-specific values (e.g. DeepSeek's "none") aren't in the SDK's type list.
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort as 'low' } : {}),
     });
     try {
-      return await this.primary.chat.completions.create(body(this.cfg.llm.model), {
+      return await this.primary.chat.completions.create(body(this.cfg.llm.model, this.cfg.llm.reasoningEffort), {
         timeout: this.cfg.llm.timeoutMs,
         maxRetries: 0,
       });
     } catch (err) {
       if (!this.fallback) throw err;
       this.log.warn(`primary LLM failed (${(err as Error).message}); using fallback`);
-      return this.fallback.chat.completions.create(body(this.cfg.llm.fallbackModel!));
+      return this.fallback.chat.completions.create(
+        body(this.cfg.llm.fallbackModel!, this.cfg.llm.fallbackReasoningEffort),
+      );
     }
   }
+}
+
+/**
+ * Turns an AI provider error into a short spoken sentence plus a log hint, so Max says
+ * *why* he can't answer (rate limit, bad key, no credit...) instead of a generic apology.
+ */
+export function explainLlmError(err: unknown): { spoken: string; log: string } {
+  const e = err as { status?: number; message?: string; name?: string };
+  const msg = e.message ?? String(err);
+  switch (e.status) {
+    case 429:
+      return {
+        spoken: "I'm being rate limited by my AI service. Give me a minute and try again.",
+        log: `rate limited (429): ${msg}. Wait, use a paid tier, or set LLM_FALLBACK_* in .env`,
+      };
+    case 401:
+    case 403:
+      return { spoken: 'My AI service rejected the API key.', log: `key rejected (${e.status}): ${msg}. Check LLM_API_KEY` };
+    case 402:
+      return { spoken: 'My AI service account has run out of credit.', log: `out of credit (402): ${msg}. Top up the account` };
+    case 404:
+      return { spoken: "My AI service doesn't recognise the model name.", log: `model not found (404): ${msg}. Check LLM_MODEL` };
+  }
+  if (e.name === 'APIConnectionTimeoutError' || /timed? ?out/i.test(msg)) {
+    return { spoken: 'My AI service is taking too long to answer.', log: `timeout: ${msg}. Raise LLM_TIMEOUT_MS or pick a faster model` };
+  }
+  return { spoken: 'Sorry, I could not reach my brain just now.', log: msg };
 }

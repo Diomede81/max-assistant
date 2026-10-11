@@ -35,7 +35,11 @@ export function loadConfig(): AppConfig {
     wakeWord: {
       host: env.WAKEWORD_HOST ?? '127.0.0.1',
       port: num(env.WAKEWORD_PORT, 10400),
-      names: (env.WAKEWORD_NAMES ?? 'hey_max').split(',').map((s) => s.trim()),
+      // Accept "Hey Jarvis", "hey-jarvis" or "hey_jarvis": model names use lowercase + underscores.
+      names: (env.WAKEWORD_NAMES ?? 'hey_jarvis')
+        .split(',')
+        .map((s) => s.trim().toLowerCase().replace(/^["']|["']$/g, '').replace(/[\s-]+/g, '_'))
+        .filter(Boolean),
     },
     vad: {
       rmsThreshold: num(env.VAD_RMS_THRESHOLD, 500),

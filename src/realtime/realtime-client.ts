@@ -85,6 +85,11 @@ export class RealtimeClient extends EventEmitter {
     this.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: callId, output } });
   }
 
+  /** Drop any audio the server has buffered but not yet acted on (e.g. Max's own echo). */
+  clearInput(): void {
+    this.send({ type: 'input_audio_buffer.clear' });
+  }
+
   /** Ask the model to continue (e.g. after tool results) or to speak first. */
   requestResponse(): void {
     this.send({ type: 'response.create' });

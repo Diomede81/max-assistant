@@ -130,6 +130,9 @@ export class ConversationService implements OnApplicationBootstrap {
         return;
       }
       noSpeechMs = FOLLOW_UP_WINDOW_MS;
+      // Let Max's voice finish coming out of the speakers before listening again, so he
+      // doesn't transcribe (and answer) the end of his own sentence.
+      await new Promise((r) => setTimeout(r, this.cfg.audio.echoTailMs));
     }
   }
 

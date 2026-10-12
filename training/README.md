@@ -69,6 +69,58 @@ Max will live in. Plan for roughly 20–30 GB of free disk space for the trainin
 
 ---
 
+## Training with your own voice (recommended if the coach scores you near 0)
+
+The model above learns only from computer-generated voices. If your voice or accent isn't
+like them, it may barely react to you. Adding your own recordings fixes that, and a few
+settings make the model stronger overall. Same Colab notebook, same ~90 minutes (a bit more
+with the larger settings).
+
+1. **Record yourself:** run `./scripts/wake-coach.sh` 3 or 4 times, in different rooms and at
+   different distances (and once per person in the house, if others will use Max). That gives
+   30–40 recordings in the `wake-coach` folder.
+2. **In the configuration cell** (the one with `TARGET_PHRASE`), use:
+   ```python
+   TARGET_PHRASE = ['hey max', 'hey maks', 'hey macks']   # spellings that sound like "max" in different accents
+   MODEL_NAME    = 'hey_max'
+   ```
+   and in the settings below it change:
+   ```python
+   'custom_negative_phrases': ['max', 'hey mike', 'hey mac', 'hey man', 'taxi', 'relax'],
+   'n_samples':       10000,   # was 2000: more voices to learn from
+   'n_samples_val':   2000,
+   'steps':           40000,   # was 20000
+   ```
+3. **Upload your recordings:** in Colab's Files panel (folder icon on the left), create a folder
+   `my_voice` and drag in all the `positive_*.wav` and `negative_*.wav` files from your
+   `wake-coach` folders (they can share the folder: rename duplicates if asked).
+4. **Add a cell** just *before* the "Augment + featurise" section (click there, then **+ Code**)
+   with:
+   ```python
+   import glob, shutil, yaml
+   import numpy as np, soundfile as sf
+   cfg = yaml.safe_load(open('/content/my_model.yaml'))
+   mine_pos = sorted(glob.glob('/content/my_voice/positive_*.wav'))
+   mine_neg = sorted(glob.glob('/content/my_voice/negative_*.wav'))
+
+   def trimmed(f):  # cut the silence around the phrase, like the generated examples
+       a, sr = sf.read(f, dtype='int16')
+       loud = np.where(np.abs(a.astype(float)) > max(300, np.abs(a).max() * 0.1))[0]
+       return (a[max(0, loud[0] - sr // 5): loud[-1] + sr // 5] if len(loud) else a), sr
+
+   # Each recording is reused many times; the next step mixes in different noise and rooms.
+   for i, f in enumerate(mine_pos):
+       a, sr = trimmed(f)
+       for k in range(40):
+           sf.write(f"{cfg['positive_clips_train_dir']}/my_voice_{i:03d}_{k:02d}.wav", a, sr)
+   for i, f in enumerate(mine_neg):
+       for k in range(10):
+           shutil.copy(f, f"{cfg['negative_clips_train_dir']}/my_voice_{i:03d}_{k:02d}.wav")
+   print(f'Added {len(mine_pos)} wake word and {len(mine_neg)} normal-speech recordings of you')
+   ```
+5. **Runtime → Run all**, and apply the `.tflite` fix from Option A before the last step.
+6. Install it as below, then run the coach again: you should see much higher scores.
+
 ## Install the model
 
 ```bash
@@ -77,20 +129,37 @@ docker compose restart openwakeword
 ```
 In `.env`, make sure you have `WAKEWORD_NAMES=hey_max`.
 
-## Test and tune (10 minutes, worth doing)
+## Test and tune: the wake word coach (5 minutes)
 
 ```bash
-npm run mic-check
+./scripts/wake-coach.sh
 ```
-This shows live microphone levels and prints every detection.
 
-| Test | Good result | If not |
+It asks you to say the wake word 10 times (normally, quieter, faster, from further away) and
+to read three ordinary sentences. Then it scores every attempt with the same engine Max uses:
+
+```
+clip                level    score  at good level
+positive_01         -9 dB     0.41           0.41   missed
+positive_02        -11 dB     0.62           0.62   WAKES
+...
+Result: woke on 4 of 10 attempts.
+ - The model does recognise you, just below the bar. Set WAKEWORD_THRESHOLD=0.35 in .env ...
+```
+
+**Score** is how sure the model is that it heard the wake word (0 to 1). Max wakes when it's
+above `WAKEWORD_THRESHOLD` (default 0.5). The coach tells you which of these applies:
+
+| What it finds | What it means | What to do |
 |---|---|---|
-| Say "hey Max" 10× at normal volume from where you usually sit | 9–10 detections | Lower `--threshold` in `docker-compose.yml` (e.g. 0.4), or retrain with more examples |
-| Talk normally / play TV for 10 minutes | 0 detections | Raise `--threshold` (e.g. 0.6–0.7), or set `--trigger-level 2` |
-| Say "Max" alone, or a similar name | Ideally 0 | Expected sometimes with a short phrase; raise the threshold |
+| Most scores just under the bar | The model knows your voice, the bar is too high | Set the `WAKEWORD_THRESHOLD` it suggests in `.env`, then `docker compose up -d openwakeword` |
+| Scores near 0 | The model doesn't recognise your voice: **no threshold will fix it** | Retrain with your own voice (below), or try a longer phrase |
+| "Your microphone is quiet" | The sound reaching Max is too faint | Raise the input volume, or sit closer |
+| A normal sentence would have woken him | Too sensitive | Keep or raise the threshold; `WAKEWORD_TRIGGER_LEVEL=2` also helps |
 
-After any change: `docker compose restart openwakeword`.
+Your recordings are kept in `wake-coach/<date>/` (not uploaded anywhere) for retraining.
+
+You can also watch live detections and microphone levels with `npm run mic-check`.
 
 The same screen helps set **`VAD_RMS_THRESHOLD`** in `.env` (how Max knows you've
 stopped talking). Pick a value roughly midway between the "quiet room" level and your

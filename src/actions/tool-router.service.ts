@@ -1,14 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
 import { matchesAny } from '../mcp/glob';
-import { BuiltinActionsService } from './builtin-actions.service';
+import { BuiltinActionsService, EXTERNAL_FLAG } from './builtin-actions.service';
+import { ModesService } from '../memory/modes.service';
+import { APP_CONFIG, AppConfig } from '../config';
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
 const CONFIRM_WINDOW_MS = 3 * 60 * 1000;
 const CONFIRM_PARAM = 'confirmed';
+/** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
+const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 
 /**
  * Every action Max can take, in one place: built-in actions (time, timers), Home
@@ -24,16 +28,24 @@ const CONFIRM_PARAM = 'confirmed';
 export class ToolRouterService {
   private readonly log = new Logger(ToolRouterService.name);
   private readonly pending = new Map<string, number>();
+  private externalContentAt = 0;
 
   constructor(
     private readonly ha: HaMcpService,
     private readonly builtin: BuiltinActionsService,
     private readonly mcp: McpServersService,
+    private readonly modes: ModesService,
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
   ) {}
+
+  /** Work apps (WORK_APPS) are only available in work mode. */
+  isLockedWorkApp(name: string): boolean {
+    return this.modes.mode !== 'work' && matchesAny(name.toUpperCase(), this.cfg.memory.workApps);
+  }
 
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
-    const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
+    const external = this.mcp.tools.filter((t) => !(t.type === 'function' && this.isLockedWorkApp(t.function.name))).map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
     return [...this.builtin.tools, ...this.ha.openAiTools, ...external];
   }
 
@@ -50,9 +62,14 @@ export class ToolRouterService {
   async call(name: string, args: Record<string, unknown>): Promise<string> {
     this.log.log(`tool ${name} ${JSON.stringify(args)}`);
     try {
-      if (this.builtin.has(name)) return this.builtin.call(name, args);
+      if (this.builtin.has(name)) {
+        const recent = Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS;
+        return await this.builtin.call(name, name === 'remember' && recent ? { ...args, [EXTERNAL_FLAG]: true } : args);
+      }
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
+      if (this.isLockedWorkApp(name)) return 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';
+      this.externalContentAt = Date.now();
 
       if (this.needsConfirmation(name)) {
         const { [CONFIRM_PARAM]: confirmed, ...rest } = args;

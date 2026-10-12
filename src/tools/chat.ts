@@ -17,6 +17,9 @@ import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
+import { MemoryService } from '../memory/memory.service';
+import { ModesService } from '../memory/modes.service';
+import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 
 try {
   process.loadEnvFile('.env');
@@ -57,6 +60,12 @@ async function main(): Promise<void> {
       ? `\nHome Assistant: connected (${ha.tools} tools)`
       : `\n!! Home Assistant: NOT connected - ${ha.error}\n!! Max can chat but cannot control devices. Fix .env and run again.`,
   );
+  const memory = app.get(MemoryService);
+  if (memory.enabled) {
+    const vaults = memory.snapshot().map((v) => `${v.name} ${v.status === 'open' ? `${v.items.length} facts` : `(${v.error})`}`);
+    console.log(`Memory: ${vaults.join(', ')}. ${app.get(ModesService).describe()}`);
+  }
+  const transcript: TranscriptLine[] = [];
   console.log('\nType a request for Max (e.g. "turn on the kitchen lights"). Empty line or Ctrl+C to quit.\n');
 
   rl.setPrompt('You: ');
@@ -67,6 +76,8 @@ async function main(): Promise<void> {
     const text = String(next.value).trim();
     if (!text) break;
     history.push({ role: 'user', content: text });
+    transcript.push({ who: 'user', text });
+    let reply = '';
     const started = Date.now();
     let first = 0;
     const speech = speak ? tts.session() : undefined;
@@ -76,6 +87,7 @@ async function main(): Promise<void> {
       for await (const fragment of llm.respond(history)) {
         if (!first) first = Date.now();
         process.stdout.write(fragment);
+        reply += fragment;
         for (const s of splitter.push(fragment)) speech?.say(s);
       }
     } catch (err) {
@@ -84,10 +96,16 @@ async function main(): Promise<void> {
     }
     for (const s of splitter.flush()) speech?.say(s);
     console.log(`\n      (first words after ${first ? first - started : '-'} ms, total ${Date.now() - started} ms)\n`);
+    if (reply.trim()) transcript.push({ who: 'max', text: reply.trim() });
     await speech?.done();
     rl.prompt();
   }
   rl.close();
+  if (memory.enabled) {
+    console.log('Filing this conversation in memory...');
+    await app.get(MemoryLearnerService).learn(transcript);
+    await memory.flush();
+  }
   await app.close();
   process.exit(0);
 }

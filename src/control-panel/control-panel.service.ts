@@ -4,6 +4,9 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService } from '../composio/composio.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
+import { KINDS, Kind, MemoryService } from '../memory/memory.service';
+import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
+import { PanelAuth } from './panel-auth';
 import { PanelData, renderPanel } from './page';
 
 /**
@@ -20,7 +23,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     private readonly composio: ComposioService,
     private readonly ha: HaMcpService,
     private readonly mcp: McpServersService,
-  ) {}
+    private readonly memory: MemoryService,
+    private readonly modes: ModesService,
+  ) {
+    this.auth = new PanelAuth(cfg.controlPanel.password);
+  }
+
+  private readonly auth: PanelAuth;
 
   onModuleInit(): void {
     const { port, host, publicUrl } = this.cfg.controlPanel;
@@ -36,6 +45,19 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    // Stop other websites open in the browser from posting to the panel (e.g. planting a "memory").
+    if (req.method === 'POST' && !sameOrigin(req)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
+      return;
+    }
+    // Password (PANEL_PASSWORD): everything except the login page needs a signed-in session.
+    if (url.pathname === '/login') return this.auth.handleLogin(req, res, readForm);
+    if (url.pathname === '/logout' && req.method === 'POST') return this.auth.logout(req, res);
+    if (!this.auth.allowed(req)) {
+      if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return this.redirect(res, '/login');
+      res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Sign in first');
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
     if (req.method === 'GET' && url.pathname.startsWith('/connect/')) {
@@ -53,7 +75,40 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       await Promise.all([this.mcp.refreshAll(), this.composio.refresh()]);
       return this.redirect(res, '/?refreshed=1');
     }
+    if (req.method === 'GET' && url.pathname === '/api/memory') {
+      return this.json(res, this.memory.snapshot().map((v) => ({ ...v, items: v.items.map(({ vec, ...i }) => i), episodes: v.episodes.map(({ vec, ...e }) => e) })));
+    }
+    if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
+    if (req.method === 'POST' && url.pathname === '/mode') {
+      const m = (await readForm(req)).get('mode') ?? '';
+      if (['personal', 'work', 'guest', 'auto'].includes(m)) this.modes.set(m as Mode | 'auto');
+      return this.redirect(res, '/#memory');
+    }
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+  }
+
+  private async memoryAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const f = await readForm(req);
+    const id = f.get('id') ?? '';
+    const vault = (VAULTS.includes(f.get('vault') as VaultName) ? f.get('vault') : 'personal') as VaultName;
+    const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}&vault=${vault}#memory`);
+    switch (action) {
+      case 'add': {
+        const kind = KINDS.includes(f.get('kind') as Kind) ? (f.get('kind') as Kind) : undefined;
+        const r = await this.memory.remember({ text: f.get('fact') ?? '', vault, kind, date: f.get('date') || undefined, source: 'panel' });
+        return back(r.ok ? 'Saved to memory.' : r.message, r.ok);
+      }
+      case 'delete':
+        if (f.get('type') === 'note') this.memory.deleteEpisode(id);
+        else this.memory.deleteItem(id);
+        return back('Removed from memory.');
+      case 'move':
+        return back(this.memory.moveItem(id, (f.get('to') as VaultName) ?? vault) ? 'Moved.' : 'Could not move that.');
+      case 'confirm':
+        return back(this.memory.confirmItem(id) ? 'Confirmed.' : 'Could not confirm that.');
+      default:
+        res.writeHead(404).end();
+    }
   }
 
   private async data(): Promise<PanelData> {
@@ -73,6 +128,24 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         ...(await this.composio.diagnostics()),
         userId: this.cfg.composio.userId,
       },
+      memory: this.memory.enabled
+        ? {
+            mode: this.modes.mode,
+            modeText: this.modes.describe(),
+            readable: this.modes.readable(),
+            vaults: this.memory.snapshot().map((v) => ({
+              name: v.name,
+              status: v.status,
+              error: v.error,
+              facts: [...v.items].reverse(),
+              notes: [...v.episodes].reverse().slice(0, 10),
+              totalNotes: v.episodes.length,
+            })),
+            autoLearn: this.cfg.memory.autoLearn,
+            passwordSet: this.auth.enabled,
+            workApps: this.cfg.memory.workApps,
+          }
+        : undefined,
       servers: this.mcp.list.map((s) => ({
         name: s.config.name,
         connected: s.connected,
@@ -86,6 +159,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const d = await this.data();
     if (url.searchParams.has('connected')) d.notice = { kind: 'ok', text: 'Signed in. Max can use this app now.' };
     else if (url.searchParams.has('refreshed')) d.notice = { kind: 'ok', text: 'Refreshed.' };
+    else if (url.searchParams.get('ok')) d.notice = { kind: 'ok', text: url.searchParams.get('ok')! };
+    if (d.memory) {
+      d.memory.selected = (VAULTS.includes(url.searchParams.get('vault') as VaultName) ? url.searchParams.get('vault') : 'personal') as VaultName;
+      d.memory.query = url.searchParams.get('q') ?? '';
+    }
     else if (url.searchParams.get('error')) d.notice = { kind: 'error', text: url.searchParams.get('error')! };
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderPanel(d));
   }
@@ -101,5 +179,27 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     this.server?.close();
+  }
+}
+
+const MAX_FORM_BYTES = 16 * 1024;
+
+async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > MAX_FORM_BYTES) throw new Error('Form too large');
+  }
+  return new URLSearchParams(body);
+}
+
+/** Browsers send Origin on form posts; it must be this panel's own address. */
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return !req.headers['sec-fetch-site'] || req.headers['sec-fetch-site'] === 'same-origin';
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
   }
 }

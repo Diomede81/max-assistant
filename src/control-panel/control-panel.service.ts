@@ -8,6 +8,7 @@ import { McpServersService } from '../mcp/mcp-servers.service';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
+import { ProjectsService, taskText } from '../memory/projects.service';
 import { PanelData, renderPanel } from './page';
 
 /**
@@ -27,6 +28,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     private readonly mcp: McpServersService,
     private readonly memory: MemoryService,
     private readonly modes: ModesService,
+    private readonly projects: ProjectsService,
   ) {
     this.auth = new PanelAuth(cfg.controlPanel.password);
   }
@@ -85,6 +87,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.json(res, this.memory.snapshot().map((v) => ({ ...v, items: v.items.map(({ vec, ...i }) => i), episodes: v.episodes.map(({ vec, ...e }) => e) })));
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
+    if (req.method === 'GET' && url.pathname === '/api/projects') {
+      return this.json(res, this.projects.all().map((p) => ({ ...p, memory: this.memory.projectMemory(p).facts.map(({ vec, ...f }) => f) })));
+    }
     if (req.method === 'GET' && url.pathname === '/api/memory/activity') return this.json(res, this.memory.recentActivity(500));
     if (req.method === 'POST' && url.pathname === '/activity/clear') {
       this.memory.clearActivity();
@@ -96,6 +102,51 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, '/#memory');
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+  }
+
+  private async projectAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const back = (msg: string, id?: string, ok = true) =>
+      this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}${id ? `&project=${encodeURIComponent(id)}` : ''}#projects`);
+    if (action === 'create') {
+      const vault = (VAULTS.includes(get('vault') as VaultName) ? get('vault') : 'personal') as VaultName;
+      const msg = this.projects.create(get('name'), vault, get('description'), get('people'), true);
+      const created = this.projects.all().find((p) => p.name.toLowerCase() === get('name').toLowerCase() && p.vault === vault);
+      return back(msg, created?.id, msg.startsWith('Created'));
+    }
+    const p = this.projects.byId(get('id'));
+    if (!p) return back('Project not found.', undefined, false);
+    const task = p.tasks.find((t) => t.id === get('task'));
+    switch (action) {
+      case 'update':
+        return back(this.projects.update(p, { status: get('status'), description: get('description'), rename: get('rename') }), p.id);
+      case 'delete':
+        if (get('confirm') !== 'yes') return back('Tick the box to confirm deleting the project.', p.id, false);
+        this.memory.deleteProject(p.id);
+        this.memory.activity('forgot', `Deleted project ${p.name} with its tasks and memory`, [p.vault]);
+        return back(`Deleted ${p.name}.`);
+      case 'person-add':
+        return back(this.projects.addPeople(p, get('people')), p.id);
+      case 'person-remove':
+        return back(this.projects.removePerson(p, get('name')), p.id);
+      case 'task-add': {
+        const due = get('date') ? (get('time') ? `${get('date')}T${get('time')}` : get('date')) : undefined;
+        return back(this.projects.addTask(p, { title: get('title'), due, assignee: get('assignee'), priority: get('priority') }), p.id);
+      }
+      case 'task-done':
+        return task ? back(this.projects.completeTask(p, task), p.id) : back('Task not found.', p.id, false);
+      case 'task-reopen':
+        return task ? back(this.projects.updateTask(p, task, { reopen: true }), p.id) : back('Task not found.', p.id, false);
+      case 'task-delete':
+        return task ? back(this.projects.deleteTask(p, task), p.id) : back('Task not found.', p.id, false);
+      case 'note-add': {
+        const r = await this.memory.remember({ text: get('fact'), vault: p.vault, projectId: p.id, source: 'panel' });
+        return back(r.ok ? 'Saved to the project memory.' : r.message, p.id, r.ok);
+      }
+      default:
+        res.writeHead(404).end();
+    }
   }
 
   private async memoryAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
@@ -162,6 +213,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             passwordSet: this.auth.enabled,
             workApps: this.cfg.memory.workApps,
             activity: this.memory.recentActivity(60),
+            projects: this.projects.all().map((p) => {
+              const mem = this.memory.projectMemory(p);
+              return {
+                id: p.id,
+                name: p.name,
+                vault: p.vault,
+                status: p.status,
+                description: p.description,
+                people: p.people,
+                tasks: p.tasks.map((t) => ({ ...t, text: taskText(t) })),
+                facts: mem.facts.slice(0, 50).map((x) => ({ id: x.id, text: x.text, updatedAt: x.updatedAt })),
+                notes: mem.notes.slice(0, 10).map((x) => ({ id: x.id, summary: x.summary, at: x.at })),
+              };
+            }),
           }
         : undefined,
       servers: this.mcp.list.map((s) => ({
@@ -181,6 +246,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (d.memory) {
       d.memory.selected = (VAULTS.includes(url.searchParams.get('vault') as VaultName) ? url.searchParams.get('vault') : 'personal') as VaultName;
       d.memory.query = url.searchParams.get('q') ?? '';
+      d.memory.project = url.searchParams.get('project') ?? undefined;
     }
     else if (url.searchParams.get('error')) d.notice = { kind: 'error', text: url.searchParams.get('error')! };
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderPanel(d));

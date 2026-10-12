@@ -113,4 +113,5 @@ Set a monthly spending limit in your OpenAI account settings before a demo.
 | `refused the connection (401)` | Wrong or revoked key in `REALTIME_API_KEY` |
 | `refused the connection (403/404)` / model errors | Your account may not have access to `REALTIME_MODEL`; try another realtime model from your OpenAI dashboard |
 | `Conversation ended (no request heard…)` | Speak within ~7 s of the wake word; check the mic with `mic-check` |
+| Gemini: `closed the connection: Request contains an invalid argument` right after you speak | Google rejected part of the set-up. Update Max (action descriptions are converted to Gemini's strict format). To check whether actions are the cause, set `REALTIME_TOOLS=off`, restart and ask a plain question |
 | Max cuts himself off / answers himself | Turn `REALTIME_BARGE_IN` off, or use headphones |

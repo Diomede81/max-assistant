@@ -104,3 +104,7 @@ services:
 
 volumes:
   max-data:
+    # A fixed name, so Max finds his memory whatever the folder is called (e.g. a fresh
+    # download unzips as "max-assistant-main"). Without it, Docker makes a new, empty store
+    # per folder name. Lost memories from an old folder: ./scripts/find-memory.sh
+    name: max-assistant_max-data

@@ -145,6 +145,29 @@ vaults whatever the mode.
 | `MEMORY_PROMPT_CHARS` | 2000 | Size of the core fact list |
 | `MEMORY` | on | `off` turns memory off |
 
+## What survives a restart
+
+Everything Max keeps is saved straight away to the `max-assistant_max-data` storage, which survives
+restarts, rebuilds and updates:
+
+- memories, conversation notes, projects and their tasks (the encrypted vaults);
+- **timers and reminders** (`timers.vault`, encrypted). Reminders can be set up to a year ahead
+  ("remind me on 3 March to renew the insurance"). If one came due while Max was switched off, he
+  tells you when he's back: *"While I was switched off, I missed your reminder…"* (reminders up to a
+  day late; kitchen timers up to 30 minutes).
+
+Only the current conversation itself is short-lived: after a restart, start a new one.
+
+**Memories gone after an update?** Earlier versions kept them in storage named after the folder Max
+ran from, so running Max from a differently named folder (e.g. a fresh download unzips as
+`max-assistant-main`) started an empty memory. That no longer happens. To find and bring back the old
+memories:
+
+```bash
+./scripts/find-memory.sh                      # lists every memory store and its files
+./scripts/find-memory.sh restore NAME         # copies that store into the one Max uses (keeps a backup)
+```
+
 ## Backup
 
 ```bash

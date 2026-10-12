@@ -88,7 +88,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     if (!this.cfg.face.enabled || fmt.width !== 2) return;
     const bytesPerFrame = fmt.channels * 2;
     const perSlice = Math.max(bytesPerFrame, Math.floor((fmt.rate * FRAME_MS) / 1000) * bytesPerFrame);
-    let t = Math.max(Date.now(), this.audioEndsAt);
+    // FACE_AUDIO_DELAY_MS: sound systems buffer a little before the speaker plays it.
+    let t = Math.max(Date.now() + this.cfg.face.audioDelayMs, this.audioEndsAt);
     for (let off = 0; off + bytesPerFrame <= chunk.length; off += perSlice) {
       const end = Math.min(chunk.length, off + perSlice);
       let sum = 0;

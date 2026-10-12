@@ -82,6 +82,21 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 - **Preview on your Mac:** with Max running in Docker on the Mac, open <http://localhost:8098/?demo> to
   see every expression.
 
+## Trying the face on your Mac (before the box arrives)
+
+With Max running in Docker on your Mac (`docker compose --profile max up -d --build`):
+
+1. Open <http://localhost:8098> in a browser and make the window square-ish.
+2. Say "Hey Max" and ask something. The face listens, thinks, and its mouth moves with his voice.
+3. Or test without the microphone: type to Max with voice output, keeping the face in the browser:
+   ```bash
+   docker compose stop max
+   docker compose run --rm --service-ports max node dist/tools/chat.js --speak
+   ```
+   (Afterwards: `docker compose --profile max up -d`.)
+4. If the mouth moves a little **before** you hear the words, set `FACE_AUDIO_DELAY_MS=200` in `.env`
+   (try 150–300) and restart Max. The Mac sound bridge buffers audio; the box usually needs less or none.
+
 ## Updating
 
 Copy the new version from your Mac with the same `rsync` command, then on the box:

@@ -12,6 +12,8 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
 import { MusicModule } from '../music/music.module';
+import { FaceModule } from '../face/face.module';
+import { FaceService } from '../face/face.service';
 import { LlmService, explainLlmError } from '../llm/llm.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TimerService, announcement } from '../actions/timer.service';
@@ -30,7 +32,8 @@ try {
 
 @Global()
 @Module({
-  imports: [LlmModule, TtsModule, MusicModule],
+  // The face screen follows typing mode too (with --speak the mouth moves with the voice).
+  imports: [LlmModule, TtsModule, MusicModule, FaceModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })
@@ -61,6 +64,7 @@ async function main(): Promise<void> {
       ? `\nHome Assistant: connected (${ha.tools} tools)`
       : `\n!! Home Assistant: NOT connected - ${ha.error}\n!! Max can chat but cannot control devices. Fix .env and run again.`,
   );
+  const face = app.get(FaceService);
   const memory = app.get(MemoryService);
   if (memory.enabled) {
     const vaults = memory.snapshot().map((v) => `${v.name} ${v.status === 'open' ? `${v.items.length} facts` : `(${v.error})`}`);
@@ -82,6 +86,7 @@ async function main(): Promise<void> {
     const started = Date.now();
     let first = 0;
     const speech = speak ? tts.session() : undefined;
+    face.setState('thinking');
     const splitter = new SentenceSplitter();
     process.stdout.write('Max: ');
     try {
@@ -98,6 +103,7 @@ async function main(): Promise<void> {
     for (const s of splitter.flush()) speech?.say(s);
     console.log(`\n      (first words after ${first ? first - started : '-'} ms, total ${Date.now() - started} ms)\n`);
     if (reply.trim()) transcript.push({ who: 'max', text: reply.trim() });
+    face.setState('idle');
     await speech?.done();
     rl.prompt();
   }

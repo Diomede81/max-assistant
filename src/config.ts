@@ -46,6 +46,8 @@ export interface AppConfig {
     sleep: string;
     /** Shared folder with the box's WiFi setup service (status + requests). */
     runDir: string;
+    /** Delay the mouth to match the sound system's buffering (ms). */
+    audioDelayMs: number;
   };
   music: {
     /** go-librespot API (the Spotify speaker running next to Max); empty = no music. */
@@ -260,6 +262,7 @@ export function loadConfig(): AppConfig {
       host: env.FACE_HOST || '127.0.0.1',
       sleep: env.FACE_SLEEP ?? '23:00-07:00',
       runDir: env.MAX_RUN_DIR || '/run/max',
+      audioDelayMs: num(env.FACE_AUDIO_DELAY_MS, 0),
     },
     music: {
       spotifyUrl: env.SPOTIFY_API_URL ?? '',

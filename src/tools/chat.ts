@@ -19,6 +19,7 @@ import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
 import { MemoryService } from '../memory/memory.service';
+import { ModesService } from '../memory/modes.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 
 try {
@@ -61,7 +62,10 @@ async function main(): Promise<void> {
       : `\n!! Home Assistant: NOT connected - ${ha.error}\n!! Max can chat but cannot control devices. Fix .env and run again.`,
   );
   const memory = app.get(MemoryService);
-  if (memory.enabled) console.log(`Memory: ${memory.facts.length} facts, ${memory.conversations.length} conversation notes (${app.get(APP_CONFIG).memory.file})`);
+  if (memory.enabled) {
+    const vaults = memory.snapshot().map((v) => `${v.name} ${v.status === 'open' ? `${v.items.length} facts` : `(${v.error})`}`);
+    console.log(`Memory: ${vaults.join(', ')}. ${app.get(ModesService).describe()}`);
+  }
   const transcript: TranscriptLine[] = [];
   console.log('\nType a request for Max (e.g. "turn on the kitchen lights"). Empty line or Ctrl+C to quit.\n');
 
@@ -99,7 +103,7 @@ async function main(): Promise<void> {
   }
   rl.close();
   if (memory.enabled) {
-    console.log('Saving a note of this conversation to memory...');
+    console.log('Filing this conversation in memory...');
     await app.get(MemoryLearnerService).learn(transcript);
     await memory.flush();
   }

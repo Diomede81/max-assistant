@@ -3,6 +3,10 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
 import { matchesAny } from '../mcp/glob';
+import { Inject } from '@nestjs/common';
+import { EXTERNAL_FLAG } from './builtin-actions.service';
+import { ModesService } from '../memory/modes.service';
+import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
 import { MusicService } from '../music/music.service';
 
@@ -10,6 +14,8 @@ import { MusicService } from '../music/music.service';
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
 const CONFIRM_WINDOW_MS = 3 * 60 * 1000;
 const CONFIRM_PARAM = 'confirmed';
+/** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
+const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 
 /**
  * Every action Max can take, in one place: built-in actions (time, timers), Home
@@ -25,13 +31,25 @@ const CONFIRM_PARAM = 'confirmed';
 export class ToolRouterService {
   private readonly log = new Logger(ToolRouterService.name);
   private readonly pending = new Map<string, number>();
+  private externalContentAt = 0;
 
   constructor(
+    private readonly modes: ModesService,
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly ha: HaMcpService,
     private readonly builtin: BuiltinActionsService,
     private readonly mcp: McpServersService,
     @Optional() private readonly music?: MusicService,
   ) {}
+
+  /** Work apps (WORK_APPS) are only available in work mode. */
+  isLockedWorkApp(name: string): boolean {
+    return this.modes.mode !== 'work' && matchesAny(name.toUpperCase(), this.cfg.memory.workApps);
+  }
+
+  onModuleInit(): void {
+    this.mcp.hide = (name) => this.isLockedWorkApp(name);
+  }
 
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
@@ -51,11 +69,16 @@ export class ToolRouterService {
 
   async call(name: string, args: Record<string, unknown>): Promise<string> {
     this.log.log(`tool ${name} ${JSON.stringify(args)}`);
+    if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
+      args = { ...args, [EXTERNAL_FLAG]: true };
+    }
     try {
       if (this.builtin.has(name)) return this.builtin.call(name, args);
       if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
+      if (this.isLockedWorkApp(name)) return 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';
+      this.externalContentAt = Date.now();
 
       if (this.needsConfirmation(name)) {
         const { [CONFIRM_PARAM]: confirmed, ...rest } = args;

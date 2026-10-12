@@ -55,17 +55,32 @@ export interface AppConfig {
     allowedTools: string[];
     callbackUrl: string;
   };
-  controlPanel: { port: number; host: string; publicUrl: string };
+  /** password: when set, the control panel asks for it (it shows Max's memory). */
+  controlPanel: { port: number; host: string; publicUrl: string; password: string };
   memory: {
     enabled: boolean;
-    /** JSON file holding facts and conversation notes (a Docker volume keeps it across restarts). */
-    file: string;
-    /** Write a short note (and pick up lasting facts) after each conversation, using the text AI model. */
+    /** Folder holding the encrypted vaults (a Docker volume keeps it across restarts). */
+    dir: string;
+    /** Encryption secret (MEMORY_KEY). Empty = generated once and kept in dir/memory.key. */
+    key: string;
+    /** Write a short note (and file lasting facts) after each conversation, using the text AI model. */
     autoLearn: boolean;
+    /** Roll old conversation notes up into weekly, then monthly digests (text AI model). */
+    digests: boolean;
     /** How many recent conversation notes Max sees at the start of a conversation. */
     recentConversations: number;
-    /** Upper limit on how much of the fact list goes into every conversation (characters). */
+    /** Upper limit on the core facts loaded into every conversation (characters). */
     promptChars: number;
+    /** e.g. "Mon-Fri 09:00-17:30"; Work mode is on automatically during these hours. "off" = never. */
+    workHours: string;
+    /** Wildcard patterns of work app actions (e.g. OUTLOOK_*): only offered in work mode, and what's learnt from them is filed under Work. */
+    workApps: string[];
+    /** Local embedding model for meaning search; empty = keyword search only. */
+    embedModel: string;
+    embedDtype: string;
+    modelDir: string;
+    modelCacheDir: string;
+    allowModelDownload: boolean;
   };
   /** 'pipeline' = wake word + STT + LLM + TTS (default); 'realtime' = OpenAI Realtime speech-to-speech */
   voiceMode: 'pipeline' | 'realtime';
@@ -179,13 +194,23 @@ export function loadConfig(): AppConfig {
       // Only this computer by default; docker-compose publishes it on 127.0.0.1 only.
       host: env.CONTROL_PANEL_HOST || '127.0.0.1',
       publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
+      password: env.PANEL_PASSWORD ?? '',
     },
     memory: {
       enabled: env.MEMORY !== 'off',
-      file: env.MEMORY_FILE || 'data/memory.json',
+      dir: env.MEMORY_DIR || 'data',
+      key: env.MEMORY_KEY ?? '',
       autoLearn: env.MEMORY_AUTO_LEARN !== 'off',
-      recentConversations: num(env.MEMORY_RECENT_CONVERSATIONS, 5),
-      promptChars: num(env.MEMORY_PROMPT_CHARS, 3000),
+      digests: env.MEMORY_DIGESTS !== 'off',
+      recentConversations: num(env.MEMORY_RECENT_CONVERSATIONS, 3),
+      promptChars: num(env.MEMORY_PROMPT_CHARS, 2000),
+      workHours: env.WORK_HOURS ?? 'Mon-Fri 09:00-17:30',
+      workApps: list(env.WORK_APPS ?? '').map((p) => p.toUpperCase()),
+      embedModel: env.MEMORY_EMBED_MODEL ?? 'Xenova/all-MiniLM-L6-v2',
+      embedDtype: env.MEMORY_EMBED_DTYPE || 'q8',
+      modelDir: env.MEMORY_MODEL_DIR || 'models',
+      modelCacheDir: env.MEMORY_MODEL_CACHE || 'data/models-cache',
+      allowModelDownload: env.MEMORY_MODEL_DOWNLOAD !== 'off',
     },
     voiceMode: env.VOICE_MODE === 'realtime' ? 'realtime' : 'pipeline',
     realtime: {

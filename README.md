@@ -75,10 +75,10 @@ See [`deploy/max.service`](deploy/max.service).
   panel at http://localhost:8099. Sending, deleting and similar actions always need your spoken "yes".
   See **[docs/APPS.md](docs/APPS.md)**.
 
-- **Memory**: "Remember that Sofia's birthday is 14 March", "When is Sofia's birthday?", "Forget the
-  boiler service". Max also writes a one-line note after each conversation and picks up lasting details
-  you mention, so he knows today what you talked about yesterday. See and edit everything he knows on
-  the control panel. See **[docs/MEMORY.md](docs/MEMORY.md)**.
+- **Memory**: Max remembers people, preferences, routines, dates and work projects, filed in three
+  encrypted vaults (Personal, Household, Work). Work memory is locked outside your work hours, guest mode
+  hides personal details, and he searches by meaning, so knowledge scales without slowing him down.
+  "Remember that…", "What do you know about…", "Forget…", "Work mode". See **[docs/MEMORY.md](docs/MEMORY.md)**.
 
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 

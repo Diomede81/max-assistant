@@ -9,6 +9,7 @@ import { describeCapabilities } from '../actions/capabilities';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
 import { MemoryService } from '../memory/memory.service';
+import { SoulService } from '../soul/soul.service';
 
 const MAX_TOOL_ROUNDS = 4;
 const NO_HA_NOTE =
@@ -33,6 +34,7 @@ export class LlmService {
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly tools: ToolRouterService,
     private readonly memory: MemoryService,
+    private readonly soul: SoulService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -50,7 +52,7 @@ export class LlmService {
       this.memory.enabled && typeof lastUser?.content === 'string' ? await this.memory.relevant(lastUser.content, included) : '';
     const messages: ChatCompletionMessageParam[] = [
       // The current time is included every turn so simple date questions need no tool call.
-      { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
+      { role: 'system', content: `${this.soul.systemPrompt()}\nCurrent local time: ${describeNow()}.` },
       ...(core ? [{ role: 'system' as const, content: core }] : []),
       ...(related ? [{ role: 'system' as const, content: related }] : []),
       ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),

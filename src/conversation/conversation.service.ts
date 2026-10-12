@@ -57,7 +57,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
   @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
-  private readonly pendingAnnouncements: string[] = [];
+  private readonly pendingAnnouncements: { text: string; timer: boolean }[] = [];
   private announcing = false;
 
   onApplicationBootstrap(): void {
@@ -70,7 +70,7 @@ export class ConversationService implements OnApplicationBootstrap {
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
     // the current conversation ends (never in the middle of an answer).
     this.timers.on('fired', (t) => {
-      this.pendingAnnouncements.push(announcement(t));
+      this.pendingAnnouncements.push({ text: announcement(t), timer: !t.say });
       if (this.state === 'wake') void this.flushAnnouncements();
     });
     void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
@@ -82,7 +82,9 @@ export class ConversationService implements OnApplicationBootstrap {
     await this.music?.duckStart();
     try {
       while (this.pendingAnnouncements.length) {
-        const text = this.pendingAnnouncements.shift()!;
+        const { text, timer } = this.pendingAnnouncements.shift()!;
+        if (timer) this.face?.setEmotion('surprised', 5000);
+        else this.face?.said(text);
         this.log.log(`Announcing: "${text}"`);
         await this.tts.chime().catch(() => undefined);
         await this.tts.chime().catch(() => undefined);
@@ -252,6 +254,7 @@ export class ConversationService implements OnApplicationBootstrap {
         reply += fragment;
         for (const sentence of splitter.push(fragment)) {
           if (!firstSpoken) firstSpoken = Date.now();
+          this.face?.said(sentence);
           speech.say(sentence);
         }
       }
@@ -259,10 +262,12 @@ export class ConversationService implements OnApplicationBootstrap {
       const why = explainLlmError(err);
       this.log.error(`LLM error: ${why.log}`);
       splitter.flush();
+      this.face?.setEmotion('concerned');
       speech.say(why.spoken);
     }
     for (const sentence of splitter.flush()) {
       if (!firstSpoken) firstSpoken = Date.now();
+      this.face?.said(sentence);
       speech.say(sentence);
     }
     if (firstSpoken) {

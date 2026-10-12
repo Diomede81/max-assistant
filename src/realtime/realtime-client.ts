@@ -142,6 +142,10 @@ export class RealtimeClient extends EventEmitter implements VoiceClient {
       case 'response.audio.delta':
         if (e.delta) this.emit('audio', Buffer.from(e.delta, 'base64'));
         break;
+      case 'response.output_audio_transcript.delta':
+      case 'response.audio_transcript.delta':
+        if (e.delta) this.emit('assistant-text', e.delta);
+        break;
       case 'response.output_audio_transcript.done':
       case 'response.audio_transcript.done':
         if (e.transcript) this.emit('assistant-transcript', e.transcript);

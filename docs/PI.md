@@ -75,12 +75,36 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   box tries your known networks again.
 - **The face:**
 
-  ![Max's face: idle with a timer, listening, thinking (work mode), speaking with music, asleep, WiFi setup](img/face-states.png)
+  ![Max's face: idle with a timer, listening, thinking (work mode), speaking happily, curious, speaking with concern, asleep, WiFi setup](img/face-states.jpg)
 
-  It's asleep at night (23:00–07:00, `FACE_SLEEP` in `.env`), shows the time, timers counting
-  down around the edge, what's playing, and a WORK or GUEST badge in those modes.
+  - **Lip-sync:** his voice is analysed 20 times a second for its sound shape, so the mouth makes
+    an open "a", a wide "ee", a round "oo", shows teeth on "s" and closes on "m".
+  - **Expressions follow what he says:** apologies and problems look concerned, good news looks
+    happy, questions look curious, "let me check" looks focused, timers and reminders look
+    surprised. The expression relaxes back to neutral a few seconds after he finishes.
+  - **Natural movement:** blinking, quick glances, breathing, a head tilt when he listens, and eyes
+    that look up and away while he thinks.
+  - It's asleep at night (23:00–07:00, `FACE_SLEEP` in `.env`), shows the time, timers counting
+    down around the edge, what's playing, and a WORK or GUEST badge in those modes.
 - **Preview on your Mac:** with Max running in Docker on the Mac, open <http://localhost:8098/?demo> to
-  see every expression.
+  see every expression. To hold one, use its name, e.g. `?demo=happy`, `?demo=speaking-concerned`
+  or `?demo=asleep`.
+
+## Trying the face on your Mac (before the box arrives)
+
+With Max running in Docker on your Mac (`docker compose --profile max up -d --build`):
+
+1. Open <http://localhost:8098> in a browser and make the window square-ish.
+2. Say "Hey Max" and ask something. The face listens, thinks, and its mouth moves with his voice.
+   Try "what's the weather?" then something he can't do: his expression changes with the answer.
+3. Or test without the microphone: type to Max with voice output, keeping the face in the browser:
+   ```bash
+   docker compose stop max
+   docker compose run --rm --service-ports max node dist/tools/chat.js --speak
+   ```
+   (Afterwards: `docker compose --profile max up -d`.)
+4. If the mouth moves a little **before** you hear the words, set `FACE_AUDIO_DELAY_MS=200` in `.env`
+   (try 150–300) and restart Max. The Mac sound bridge buffers audio; the box usually needs less or none.
 
 ## Updating
 

@@ -19,7 +19,7 @@ const APPS: Record<string, string> = {
   TODOIST: 'Todoist: tasks',
 };
 
-const BUILTIN = new Set(['get_current_datetime', 'set_timer', 'list_timers', 'cancel_timer', 'remember', 'forget', 'recall']);
+const BUILTIN = new Set(['get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'remember', 'forget', 'recall']);
 
 /**
  * A short briefing of what Max can reach right now, built from the actions actually

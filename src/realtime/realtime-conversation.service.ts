@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config';
+import { describeCapabilities } from '../actions/capabilities';
 import { SpeakerService } from '../audio/speaker.service';
 import { Resampler } from '../audio/resampler';
 import { AsyncQueue } from '../wyoming/async-queue';
@@ -11,7 +12,6 @@ import { RealtimeClient } from './realtime-client';
 import { GeminiLiveClient } from './gemini-live-client';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
 import { matchesAny } from '../mcp/glob';
-import { describeCapabilities } from '../actions/capabilities';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */

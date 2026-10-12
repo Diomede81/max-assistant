@@ -5,9 +5,9 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
+import { describeCapabilities } from '../actions/capabilities';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
-import { describeCapabilities } from '../actions/capabilities';
 
 const MAX_TOOL_ROUNDS = 4;
 const NO_HA_NOTE =

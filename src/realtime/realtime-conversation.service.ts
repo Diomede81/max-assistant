@@ -16,6 +16,7 @@ import { matchesAny } from '../mcp/glob';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
 import { MemoryService } from '../memory/memory.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
+import { SoulService } from '../soul/soul.service';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -36,6 +37,8 @@ const INTERRUPT_REOPEN_MS = 250;
 export class RealtimeConversationService {
   private readonly log = new Logger('Realtime');
   @Optional() @Inject(FaceService) private readonly face?: FaceService;
+
+  @Optional() @Inject(SoulService) private readonly soul?: SoulService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -69,7 +72,7 @@ export class RealtimeConversationService {
       model: rt.model,
       voice: rt.voice,
       instructions:
-        `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
+        `${this.soul?.systemPrompt() ?? this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
         (this.memory.enabled ? `\n${this.memory.promptSection()}` : '') +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
       tools: rt.tools

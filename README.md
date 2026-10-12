@@ -75,6 +75,10 @@ See [`deploy/max.service`](deploy/max.service).
   panel at http://localhost:8099. Sending, deleting and similar actions always need your spoken "yes".
   See **[docs/APPS.md](docs/APPS.md)**.
 
+- **His own identity**: a "soul" you write (his story, personality, how he talks; he starts as an
+  easy-going friend) plus a journal of what he learns about himself living with you. Edit both on the
+  control panel. See **[docs/SOUL.md](docs/SOUL.md)**.
+
 - **Memory**: Max remembers people, preferences, routines, dates and work projects, filed in three
   encrypted vaults (Personal, Household, Work). Work memory is locked outside your work hours, guest mode
   hides personal details, and he searches by meaning, so knowledge scales without slowing him down.

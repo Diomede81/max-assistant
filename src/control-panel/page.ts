@@ -13,6 +13,7 @@ export interface PanelData {
     userId: string;
   };
   servers: { name: string; connected: boolean; offered: number; total: number; error?: string }[];
+  soul?: { text: string; maxChars: number; journal?: { id: string; at: string; text: string; source: string }[] };
   memory?: {
     mode: string;
     modeText: string;
@@ -54,6 +55,24 @@ export interface PanelProject {
   tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string }[];
   facts: { id: string; text: string; updatedAt: string }[];
   notes: { id: string; summary: string; at: string }[];
+}
+
+function soulSection(s: NonNullable<PanelData['soul']>): string {
+  const journal = s.journal
+    ? s.journal.length
+      ? s.journal
+          .map((e) => `<li class="row"><div><div>${esc(e.text)}</div><div class="meta">${esc(day(e.at))} · ${e.source === 'panel' ? 'added here' : 'Max noted this'}</div></div>${post('/soul/journal-delete', { id: e.id }, 'Forget')}</li>`)
+          .join('')
+      : '<li class="empty">Nothing yet. After conversations, Max notes things that shape who he is here: nicknames, running jokes, how you like him to talk.</li>'
+    : '';
+  return `<section id="soul"><h2>Max's soul</h2>
+<p class="meta">Who Max is: his story, personality and way of talking. Write it as Max ("I'm Max…"). He reads it at the start of every conversation. Notes between <code>&lt;!--</code> and <code>--&gt;</code> are for you and hidden from him.</p>
+<form method="post" action="/soul/save"><textarea name="text" rows="22" maxlength="${s.maxChars}" spellcheck="true" aria-label="Max's soul">${esc(s.text)}</textarea>
+<div class="acts" style="margin-top:8px"><button class="btn" type="submit">Save</button></div></form>
+<form class="addfact danger" method="post" action="/soul/reset"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Go back to the starter soul (your text is replaced)</label><button class="btn secondary" type="submit">Reset</button></form>
+${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you. Encrypted like his memory.</p><ul>${journal}</ul>
+<form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><button class="btn secondary" type="submit">Add</button></form>` : ''}
+</section>`;
 }
 
 const STATUS: Record<string, string> = { active: 'Active', on_hold: 'On hold', done: 'Finished' };
@@ -262,6 +281,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
+textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
@@ -282,6 +302,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 ${musicSection(d.music)}
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
+${d.soul ? soulSection(d.soul) : ''}
 ${d.memory ? projectsSection(d.memory) : ''}
 ${d.memory ? memorySection(d.memory) : ''}
 ${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}

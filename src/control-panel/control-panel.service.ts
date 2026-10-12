@@ -10,6 +10,7 @@ import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
 import { ProjectsService, taskText } from '../memory/projects.service';
 import { PanelData, renderPanel } from './page';
+import { SOUL_MAX_CHARS, SoulService } from '../soul/soul.service';
 
 /**
  * A small web page (default http://localhost:8099) to see what Max is connected to and
@@ -20,6 +21,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ControlPanel');
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
+  @Optional() @Inject(SoulService) private readonly soul?: SoulService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -87,6 +89,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.json(res, this.memory.snapshot().map((v) => ({ ...v, items: v.items.map(({ vec, ...i }) => i), episodes: v.episodes.map(({ vec, ...e }) => e) })));
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
       return this.json(res, this.projects.all().map((p) => ({ ...p, memory: this.memory.projectMemory(p).facts.map(({ vec, ...f }) => f) })));
@@ -144,6 +147,29 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         const r = await this.memory.remember({ text: get('fact'), vault: p.vault, projectId: p.id, source: 'panel' });
         return back(r.ok ? 'Saved to the project memory.' : r.message, p.id, r.ok);
       }
+      default:
+        res.writeHead(404).end();
+    }
+  }
+
+  private async soulAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#soul`);
+    if (!this.soul) return back('Not available.', false);
+    // The soul can be a page or two of text: allow a bigger form for it.
+    const f = await readForm(req, SOUL_MAX_CHARS * 4 + 1024);
+    switch (action) {
+      case 'save': {
+        const msg = this.soul.save(f.get('text') ?? '');
+        return back(msg, msg.startsWith('Saved'));
+      }
+      case 'reset':
+        if (f.get('confirm') !== 'yes') return back('Tick the box to confirm going back to the starter soul.', false);
+        this.soul.reset();
+        return back('Back to the starter soul.');
+      case 'journal-add':
+        return this.soul.addEntry(f.get('text') ?? '', 'panel') ? back('Added to Max\'s journal.') : back('Nothing added (empty, or already there).', false);
+      case 'journal-delete':
+        return back(this.soul.removeEntry(f.get('id') ?? '') ? 'Removed from Max\'s journal.' : 'Could not find that entry.');
       default:
         res.writeHead(404).end();
     }
@@ -229,6 +255,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             }),
           }
         : undefined,
+      soul: this.soul && {
+        text: this.soul.text,
+        maxChars: SOUL_MAX_CHARS,
+        journal: this.memory.enabled ? this.soul.entries() : undefined,
+      },
       servers: this.mcp.list.map((s) => ({
         name: s.config.name,
         connected: s.connected,
@@ -268,11 +299,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
 const MAX_FORM_BYTES = 16 * 1024;
 
-async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
+async function readForm(req: IncomingMessage, maxBytes = MAX_FORM_BYTES): Promise<URLSearchParams> {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > MAX_FORM_BYTES) throw new Error('Form too large');
+    if (body.length > maxBytes) throw new Error('Form too large');
   }
   return new URLSearchParams(body);
 }

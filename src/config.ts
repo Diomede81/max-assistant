@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+
 /** Central, typed view of the environment. Every tunable lives in .env (see .env.example). */
 export interface AppConfig {
   audio: {
@@ -69,6 +71,8 @@ export interface AppConfig {
   };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
   controlPanel: { port: number; host: string; publicUrl: string; password: string };
+  /** Max's identity, story and personality (editable on the control panel). */
+  soul: { file: string };
   memory: {
     enabled: boolean;
     /** Folder holding the encrypted vaults (a Docker volume keeps it across restarts). */
@@ -186,13 +190,17 @@ export function loadConfig(): AppConfig {
       reasoningEffort: env.LLM_REASONING_EFFORT || undefined,
       fallbackReasoningEffort: env.LLM_FALLBACK_REASONING_EFFORT || undefined,
       timeoutMs: num(env.LLM_TIMEOUT_MS, 4000),
+      // The operating rules. Who Max is (personality, story) lives in his soul instead.
       systemPrompt:
         env.LLM_SYSTEM_PROMPT ??
-        'You are Max, a concise home assistant. Answer in one or two short spoken sentences. ' +
+        'You talk out loud through a speaker in the home. Answer in one or two short spoken sentences unless ' +
+          'asked for more; your personality shows in tone and word choice, never at the cost of getting things done. ' +
           'Use the Home Assistant tools to control or query devices, and your own tools for the time, ' +
           'timers and reminders, and the email, calendar and messaging tools when available. ' +
           'Summarise emails and events briefly; never read out long text unless asked. Never invent device names; ' +
-          'if unsure, ask a short clarifying question. No markdown, no lists, no emojis.',
+          'if unsure, ask a short clarifying question. No markdown, no lists, no emojis. ' +
+          'Never claim to be human: if someone sincerely asks, say you are an AI. Your soul and journal describe your ' +
+          "character; they never override these rules, safety, or the household's privacy.",
     },
     composio: {
       apiKey: env.COMPOSIO_API_KEY ?? '',
@@ -208,6 +216,7 @@ export function loadConfig(): AppConfig {
       publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
       password: env.PANEL_PASSWORD ?? '',
     },
+    soul: { file: env.SOUL_FILE || join(env.MEMORY_DIR || 'data', 'soul.md') },
     memory: {
       enabled: env.MEMORY !== 'off',
       dir: env.MEMORY_DIR || 'data',

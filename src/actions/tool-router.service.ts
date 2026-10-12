@@ -43,8 +43,11 @@ export class ToolRouterService {
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
+  /** Work apps are hidden outside work mode, personal apps (PERSONAL_APPS) in work mode. */
   isLockedWorkApp(name: string): boolean {
-    return this.modes.mode !== 'work' && matchesAny(name.toUpperCase(), this.cfg.memory.workApps);
+    const n = name.toUpperCase();
+    const mode = this.modes.mode;
+    return (mode !== 'work' && matchesAny(n, this.cfg.memory.workApps)) || (mode === 'work' && matchesAny(n, this.cfg.memory.personalApps));
   }
 
   onModuleInit(): void {
@@ -77,7 +80,11 @@ export class ToolRouterService {
       if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
-      if (this.isLockedWorkApp(name)) return 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';
+      if (this.isLockedWorkApp(name)) {
+        return this.modes.mode === 'work'
+          ? 'Personal apps are locked in work mode. The user can say "personal mode" to unlock them.'
+          : 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';
+      }
       this.externalContentAt = Date.now();
 
       if (this.needsConfirmation(name)) {

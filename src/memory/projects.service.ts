@@ -68,8 +68,11 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
       .filter((x) => x.score >= 0.5)
       .sort((a, b) => b.score - a.score);
     if (!scored.length) {
-      const locked = this.modes.mode !== 'work' && this.memory.projectsIn(['work']).some((p) => normalise(p.name).includes(q));
-      return { error: locked ? `That's a work project, and work mode is off. Say "work mode" to open it.` : `No project called "${name}". Projects: ${names(pool) || 'none yet'}.` };
+      const closed = VAULTS.filter((v) => !this.modes.readable().includes(v));
+      // Guests aren't told that a private project exists at all.
+      const locked = this.modes.mode === 'guest' ? undefined : this.memory.projectsIn(closed).find((p) => normalise(p.name).includes(q));
+      const switchTo = locked?.vault === 'work' ? 'work mode' : 'personal mode';
+      return { error: locked ? `That's a ${locked.vault} project, and ${switchTo} is off. Say "${switchTo}" to open it.` : `No project called "${name}". Projects: ${names(pool) || 'none yet'}.` };
     }
     if (scored.length > 1 && scored[1].score === scored[0].score) {
       return { error: `Several projects match: ${scored.filter((x) => x.score === scored[0].score).map((x) => x.p.name).join(', ')}. Ask which one.` };
@@ -330,6 +333,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
   }
 
   private lockedHint(): string {
+    if (this.modes.mode === 'guest') return ''; // not even a count for visitors
     const hidden = this.memory.projectsIn(VAULTS.filter((v) => !this.modes.readable().includes(v))).filter((p) => p.status !== 'done').length;
     return hidden ? `\n(${hidden} more project${hidden === 1 ? ' is' : 's are'} locked in ${label(this.modes.mode).toLowerCase()}.)` : '';
   }

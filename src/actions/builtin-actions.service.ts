@@ -93,7 +93,7 @@ export class BuiltinActionsService {
             }),
             tool(
               'set_mode',
-              'Switch memory mode. personal: work memory locked. work: everything open. guest: only household info, ' +
+              'Switch mode. personal: personal + household memory, work locked. work: work + household memory, personal locked. guest: only household info, ' +
                 'for when visitors are around. auto: follow the work-hours schedule again.',
               { mode: { type: 'string', enum: ['personal', 'work', 'guest', 'auto'] } },
               ['mode'],

@@ -91,6 +91,8 @@ export interface AppConfig {
     workHours: string;
     /** Wildcard patterns of work app actions (e.g. OUTLOOK_*): only offered in work mode, and what's learnt from them is filed under Work. */
     workApps: string[];
+    /** The reverse: personal app actions (e.g. WHATSAPP_*) hidden in work mode. */
+    personalApps: string[];
     /** Local embedding model for meaning search; empty = keyword search only. */
     embedModel: string;
     embedDtype: string;
@@ -227,6 +229,7 @@ export function loadConfig(): AppConfig {
       promptChars: num(env.MEMORY_PROMPT_CHARS, 2000),
       workHours: env.WORK_HOURS ?? 'Mon-Fri 09:00-17:30',
       workApps: list(env.WORK_APPS ?? '').map((p) => p.toUpperCase()),
+      personalApps: list(env.PERSONAL_APPS ?? '').map((p) => p.toUpperCase()),
       embedModel: env.MEMORY_EMBED_MODEL ?? 'Xenova/all-MiniLM-L6-v2',
       embedDtype: env.MEMORY_EMBED_DTYPE || 'q8',
       modelDir: env.MEMORY_MODEL_DIR || 'models',

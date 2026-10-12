@@ -13,7 +13,7 @@ export interface PanelData {
     userId: string;
   };
   servers: { name: string; connected: boolean; offered: number; total: number; error?: string }[];
-  soul?: { text: string; maxChars: number; journal?: { id: string; at: string; text: string; source: string }[] };
+  soul?: { docs: Record<string, string>; doc: string; maxChars: number; journal?: { id: string; at: string; text: string; source: string; mode?: string }[] };
   memory?: {
     mode: string;
     modeText: string;
@@ -57,21 +57,32 @@ export interface PanelProject {
   notes: { id: string; summary: string; at: string }[];
 }
 
+const SOUL_TABS: [string, string, string][] = [
+  ['soul', 'Who Max is', 'His identity, story and personality, in every mode. Write it as Max ("I\'m Max…").'],
+  ['personal', 'Personal mode', 'How he behaves when work mode is off. In personal mode he only sees personal and household memories.'],
+  ['work', 'Work mode', 'How he behaves in work hours (WORK_HOURS) or after "work mode". In work mode he only sees work and household memories.'],
+  ['guest', 'Guest mode', 'How he behaves when visitors are around ("guest mode"). He only sees household memories.'],
+];
+
 function soulSection(s: NonNullable<PanelData['soul']>): string {
+  const [doc, , help] = SOUL_TABS.find((t) => t[0] === s.doc) ?? SOUL_TABS[0];
+  const tabs = SOUL_TABS.map(([d, name]) => `<a class="tab ${d === doc ? 'on' : ''}" href="/?doc=${d}#soul">${name}</a>`).join('');
+  const modeBadge = (m?: string) => `<span class="badge off">${m === 'work' ? 'Work' : 'Personal'}</span>`;
   const journal = s.journal
     ? s.journal.length
       ? s.journal
-          .map((e) => `<li class="row"><div><div>${esc(e.text)}</div><div class="meta">${esc(day(e.at))} · ${e.source === 'panel' ? 'added here' : 'Max noted this'}</div></div>${post('/soul/journal-delete', { id: e.id }, 'Forget')}</li>`)
+          .map((e) => `<li class="row"><div><div>${esc(e.text)} ${modeBadge(e.mode)}</div><div class="meta">${esc(day(e.at))} · ${e.source === 'panel' ? 'added here' : 'Max noted this'}</div></div>${post('/soul/journal-delete', { id: e.id }, 'Forget')}</li>`)
           .join('')
       : '<li class="empty">Nothing yet. After conversations, Max notes things that shape who he is here: nicknames, running jokes, how you like him to talk.</li>'
     : '';
   return `<section id="soul"><h2>Max's soul</h2>
-<p class="meta">Who Max is: his story, personality and way of talking. Write it as Max ("I'm Max…"). He reads it at the start of every conversation. Notes between <code>&lt;!--</code> and <code>--&gt;</code> are for you and hidden from him.</p>
-<form method="post" action="/soul/save"><textarea name="text" rows="22" maxlength="${s.maxChars}" spellcheck="true" aria-label="Max's soul">${esc(s.text)}</textarea>
+<div class="tabs">${tabs}</div>
+<p class="meta">${esc(help)} Notes between <code>&lt;!--</code> and <code>--&gt;</code> are for you and hidden from him.</p>
+<form method="post" action="/soul/save">${hidden('doc', doc)}<textarea name="text" rows="${doc === 'soul' ? 22 : 10}" maxlength="${s.maxChars}" spellcheck="true" aria-label="${esc(doc)}">${esc(s.docs[doc] ?? '')}</textarea>
 <div class="acts" style="margin-top:8px"><button class="btn" type="submit">Save</button></div></form>
-<form class="addfact danger" method="post" action="/soul/reset"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Go back to the starter soul (your text is replaced)</label><button class="btn secondary" type="submit">Reset</button></form>
-${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you. Encrypted like his memory.</p><ul>${journal}</ul>
-<form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><button class="btn secondary" type="submit">Add</button></form>` : ''}
+<form class="addfact danger" method="post" action="/soul/reset">${hidden('doc', doc)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Go back to the starter version of this page (your text is replaced)</label><button class="btn secondary" type="submit">Reset</button></form>
+${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you, kept separately for personal and work mode (each mode only sees its own). Encrypted like his memory.</p><ul>${journal}</ul>
+<form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><select name="mode" aria-label="Mode"><option value="personal">Personal</option><option value="work">Work</option></select><button class="btn secondary" type="submit">Add</button></form>` : ''}
 </section>`;
 }
 
@@ -200,7 +211,7 @@ ${post('/memory/delete', { id: f.id, vault: v.name }, 'Forget')}</div></li>`,
   return `<section id="memory"><h2>Memory</h2>
 ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.</p>'}
 <div class="name">${esc(m.modeText)}</div>
-<p class="meta">Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: everything open · Guest: only Household. Say "Max, work mode", "personal mode" or "guest mode".</p>
+<p class="meta">Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: Personal vault locked · Guest: only Household. Household is shared. Say "Max, work mode", "personal mode" or "guest mode".</p>
 <div class="modes">${modes}</div>
 <div class="tabs">${tabs}</div>
 <form class="search" method="get" action="/#memory">${hidden('vault', v.name)}<input name="q" value="${esc(m.query ?? '')}" placeholder="Search ${VAULT_LABEL[v.name]}…"><button class="btn secondary" type="submit">Search</button></form>
@@ -281,7 +292,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
-textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical}
+textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}

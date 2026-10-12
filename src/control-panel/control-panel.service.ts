@@ -10,7 +10,7 @@ import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
 import { ProjectsService, taskText } from '../memory/projects.service';
 import { PanelData, renderPanel } from './page';
-import { SOUL_MAX_CHARS, SoulService } from '../soul/soul.service';
+import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
 /**
  * A small web page (default http://localhost:8099) to see what Max is connected to and
@@ -153,21 +153,22 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async soulAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
-    const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#soul`);
-    if (!this.soul) return back('Not available.', false);
     // The soul can be a page or two of text: allow a bigger form for it.
     const f = await readForm(req, SOUL_MAX_CHARS * 4 + 1024);
+    const doc = (SOUL_DOCS.includes(f.get('doc') as SoulDoc) ? f.get('doc') : 'soul') as SoulDoc;
+    const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}&doc=${doc}#soul`);
+    if (!this.soul) return back('Not available.', false);
     switch (action) {
       case 'save': {
-        const msg = this.soul.save(f.get('text') ?? '');
+        const msg = this.soul.save(f.get('text') ?? '', doc);
         return back(msg, msg.startsWith('Saved'));
       }
       case 'reset':
-        if (f.get('confirm') !== 'yes') return back('Tick the box to confirm going back to the starter soul.', false);
-        this.soul.reset();
-        return back('Back to the starter soul.');
+        if (f.get('confirm') !== 'yes') return back('Tick the box to confirm going back to the starter version.', false);
+        this.soul.reset(doc);
+        return back('Back to the starter version.');
       case 'journal-add':
-        return this.soul.addEntry(f.get('text') ?? '', 'panel') ? back('Added to Max\'s journal.') : back('Nothing added (empty, or already there).', false);
+        return this.soul.addEntry(f.get('text') ?? '', 'panel', f.get('mode') === 'work' ? 'work' : 'personal') ? back('Added to Max\'s journal.') : back('Nothing added (empty, or already there).', false);
       case 'journal-delete':
         return back(this.soul.removeEntry(f.get('id') ?? '') ? 'Removed from Max\'s journal.' : 'Could not find that entry.');
       default:
@@ -256,7 +257,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       soul: this.soul && {
-        text: this.soul.text,
+        docs: Object.fromEntries(SOUL_DOCS.map((d) => [d, this.soul!.read(d)])) as Record<SoulDoc, string>,
+        doc: 'soul',
         maxChars: SOUL_MAX_CHARS,
         journal: this.memory.enabled ? this.soul.entries() : undefined,
       },
@@ -279,6 +281,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       d.memory.query = url.searchParams.get('q') ?? '';
       d.memory.project = url.searchParams.get('project') ?? undefined;
     }
+    if (d.soul && SOUL_DOCS.includes(url.searchParams.get('doc') as SoulDoc)) d.soul.doc = url.searchParams.get('doc') as SoulDoc;
     else if (url.searchParams.get('error')) d.notice = { kind: 'error', text: url.searchParams.get('error')! };
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderPanel(d));
   }

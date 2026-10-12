@@ -17,6 +17,7 @@ import { SentenceSplitter } from '../conversation/sentence-splitter';
 import { MemoryService } from '../memory/memory.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { SoulService } from '../soul/soul.service';
+import { ModesService } from '../memory/modes.service';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -39,6 +40,7 @@ export class RealtimeConversationService {
   @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
+  @Optional() @Inject(ModesService) private readonly modes?: ModesService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -160,6 +162,7 @@ export class RealtimeConversationService {
     let busy = false;
     let turns = 0;
     let closed = false;
+    const startMode = this.modes?.mode;
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
@@ -289,6 +292,9 @@ export class RealtimeConversationService {
         const limit = turns === 0 ? FIRST_TURN_WAIT_MS : rt.followUpMs;
         let why: string | undefined;
         if (closed) why = 'connection closed';
+        // Switched mode: end once he's confirmed it, so the next conversation starts in the new
+        // mode with only that mode's memories (nothing from this one carries over).
+        else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;
         else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
         else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
@@ -311,7 +317,7 @@ export class RealtimeConversationService {
     client.close();
     player?.close();
     await playing;
-    void this.learner.learn(transcript);
+    void this.learner.learn(transcript, startMode);
     this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); waiting for the wake word`);
   }
 

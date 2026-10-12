@@ -1,0 +1,13 @@
+[Unit]
+Description=Max WiFi setup (setup network + page when offline)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Environment=MAX_RUN_DIR=/run/max
+ExecStart=/usr/bin/python3 /usr/local/lib/max/max-wifi-setup.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

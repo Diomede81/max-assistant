@@ -102,6 +102,13 @@ The Max box can be a Spotify speaker: "Hey Max, play my running playlist", "skip
 appears as **Max** in the Spotify app on any phone, and the music turns down while Max talks (needs
 Spotify Premium). See **[docs/MUSIC.md](docs/MUSIC.md)**.
 
+## The Max box
+
+A Raspberry Pi 5 with a round screen showing Max's animated face, a 4-microphone array with echo
+cancellation, and a proper speaker, in a 3D-printed case. If it ever loses WiFi, it shows a QR code to
+set it up from your phone. See **[docs/PI.md](docs/PI.md)** for the setup (and `hardware/enclosure/`
+for the case, once added).
+
 ## Project layout
 
 | Module | Responsibility |

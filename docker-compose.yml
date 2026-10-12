@@ -18,12 +18,14 @@ services:
       # Sound bridge (docs/DOCKER.md). Default suits Mac + Windows Docker Desktop.
       PULSE_SERVER: ${PULSE_SERVER:-tcp:host.docker.internal:4713}
       CONTROL_PANEL_HOST: 0.0.0.0
+      FACE_HOST: 0.0.0.0
       # Max's Spotify speaker (the "spotify" service below); ignored when it isn't running.
       SPOTIFY_API_URL: http://spotify:3678
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: [openwakeword, whisper, piper]
     # Control panel (connect Office 365, WhatsApp...): http://localhost:8099, this computer only
-    ports: ["127.0.0.1:8099:8099"]
+    # Face screen preview: http://localhost:8098 (add ?demo to see every expression)
+    ports: ["127.0.0.1:8099:8099", "127.0.0.1:8098:8098"]
     # max-data holds Max's memory (facts + conversation notes); kept across restarts/rebuilds.
     volumes: ["./config:/app/config:ro", "max-data:/app/data"]
 

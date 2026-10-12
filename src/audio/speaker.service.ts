@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { FaceService } from '../face/face.service';
 import { ChildProcess, spawn } from 'node:child_process';
 import { APP_CONFIG, AppConfig } from '../config';
 
@@ -12,6 +13,8 @@ export interface PcmFormat {
 @Injectable()
 export class SpeakerService {
   private current?: ChildProcess;
+  /** The box's face moves its mouth with whatever plays (optional: not in typing mode). */
+  @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
 
@@ -29,6 +32,7 @@ export class SpeakerService {
     try {
       for await (const chunk of chunks) {
         if (proc.exitCode !== null || proc.killed) break;
+        this.face?.audio(chunk, format);
         proc.stdin!.write(chunk);
       }
     } finally {
@@ -39,6 +43,7 @@ export class SpeakerService {
   }
 
   stop(): void {
+    this.face?.audioStop();
     this.current?.kill();
     this.current = undefined;
   }

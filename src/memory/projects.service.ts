@@ -319,7 +319,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
           if (!open.includes(vault)) continue; // e.g. a work task outside work mode: wait
           t.reminded = true;
           changed = true;
-          const text = `${p.name}: ${t.title}${t.assignee ? ` (${t.assignee})` : ''} is due now`;
+          const text = `Reminder: ${p.name}: ${t.title}${t.assignee ? ` (${t.assignee})` : ''} is due now.`;
           this.log.log(`Reminder: ${text}`);
           this.memory.activity('shared', 'Task reminder announced', [vault], [text]);
           this.emit('reminder', text);

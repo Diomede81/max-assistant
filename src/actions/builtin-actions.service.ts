@@ -32,21 +32,30 @@ export class BuiltinActionsService {
       tool('get_current_datetime', 'Get the current local date, day of the week and time.', {}),
       tool(
         'set_timer',
-        'Start a countdown timer or a reminder. Give EITHER a duration as days/hours/minutes/seconds (any combination), ' +
-          'OR "at" for a set date and time ("remind me tomorrow at 9", "on Friday at 18:30"). ' +
-          'Use "name" for a timer ("pasta"), or "reminder" for what to remind the user about ("call Mum"). ' +
-          'Max announces it out loud when it finishes. Timers and reminders are saved and survive restarts.',
+        'Start a countdown TIMER, e.g. "set a timer for 10 minutes", "pasta timer for 8 minutes". Only for countdowns: ' +
+          'when the user says "remind me" or "reminder", use set_reminder instead. Max announces it when it finishes.',
         {
-          at: { type: 'string', description: 'Local date and time for a reminder, YYYY-MM-DDTHH:MM (optional; use instead of a duration)' },
-          days: { type: 'number', description: 'Days (optional)' },
           hours: { type: 'number', description: 'Hours (optional)' },
           minutes: { type: 'number', description: 'Minutes (optional)' },
           seconds: { type: 'number', description: 'Seconds (optional)' },
           name: { type: 'string', description: 'Short timer name, e.g. "pasta" (optional)' },
-          reminder: { type: 'string', description: 'What to remind the user about, e.g. "call Mum" (optional)' },
         },
       ),
-      tool('list_timers', 'List running timers and reminders with the time left on each.', {}),
+      tool(
+        'set_reminder',
+        'Set a REMINDER: whenever the user says "remind me" or asks for a reminder. A reminder needs two things: WHAT it is ' +
+          'for and WHEN. If the user hasn\'t said what it is for, ask ("What should I remind you about?"); if they haven\'t ' +
+          'said when, ask ("When would you like the reminder?"). Only call this once you know both. Then confirm both ' +
+          'back briefly. Reminders are saved, survive restarts and can be up to a year ahead.',
+        {
+          about: { type: 'string', description: 'What to remind the user about, in their words, e.g. "call Mum"' },
+          at: { type: 'string', description: 'Local date and time, YYYY-MM-DDTHH:MM (use this OR a delay)' },
+          days: { type: 'number', description: 'Delay in days (optional)' },
+          hours: { type: 'number', description: 'Delay in hours (optional)' },
+          minutes: { type: 'number', description: 'Delay in minutes (optional)' },
+        },
+      ),
+      tool('list_timers', 'List the running timers and the upcoming reminders.', {}),
       tool(
         'cancel_timer',
         'Cancel a running timer or reminder by its name or reminder text, or all of them.',
@@ -163,25 +172,36 @@ export class BuiltinActionsService {
         : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
       set_timer: (a) => {
+        const total = num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);
+        if (total <= 0) return 'No duration given: ask the user how long the timer should be.';
+        const t = this.timers.start(total, str(a.name));
+        return `Started ${describe(t)} for ${spokenDuration(t.durationSeconds)}; it ends ${spokenWhen(t.endsAt)}.`;
+      },
+      set_reminder: (a) => {
+        const about = str(a.about);
         const when = str(a.at);
-        const total = num(a.days) * 86400 + num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);
+        const delay = num(a.days) * 86400 + num(a.hours) * 3600 + num(a.minutes) * 60;
+        // Models sometimes skip the question: refuse until both parts are known, and say what to ask.
+        if (!about && !when && delay <= 0) return 'Not set yet: ask the user what the reminder is for and when they want it.';
+        if (!about) return 'Not set yet: ask the user what the reminder is for ("What should I remind you about?"), then call again with "about".';
+        if (!when && delay <= 0) return `Not set yet: ask the user when they want to be reminded to ${about}, then call again.`;
+        let at: number | undefined;
         if (when) {
-          const at = parseLocal(when);
+          at = parseLocal(when);
           if (at === undefined) return 'That date and time could not be understood; use YYYY-MM-DDTHH:MM.';
-          const t = this.timers.start(0, str(a.name), str(a.reminder), at);
-          return `Set ${describe(t)} for ${spokenWhen(t.endsAt)}.`;
         }
-        const t = this.timers.start(total, str(a.name), str(a.reminder));
-        return t.durationSeconds >= 86400
-          ? `Set ${describe(t)} for ${spokenWhen(t.endsAt)}.`
-          : `Started ${describe(t)} for ${spokenDuration(t.durationSeconds)}; it ends ${spokenWhen(t.endsAt)}.`;
+        const t = this.timers.start(delay, undefined, about, at);
+        return `Reminder set: "${t.reminder}" ${spokenWhen(t.endsAt)}. Confirm both to the user.`;
       },
       list_timers: () => {
         const all = this.timers.list();
-        if (!all.length) return 'There are no timers or reminders running.';
-        return all
-          .map((t) => `${describe(t)}: ${t.endsAt - Date.now() < 86400_000 ? `${spokenDuration(this.timers.remainingSeconds(t))} left, ` : ''}${spokenWhen(t.endsAt)}`)
-          .join('; ');
+        const timers = all.filter((t) => !t.reminder);
+        const reminders = all.filter((t) => t.reminder);
+        if (!all.length) return 'There are no timers or reminders.';
+        return [
+          timers.length ? `Timers: ${timers.map((t) => `${describe(t)}, ${spokenDuration(this.timers.remainingSeconds(t))} left`).join('; ')}.` : 'No timers.',
+          reminders.length ? `Reminders: ${reminders.map((t) => `"${t.reminder}" ${spokenWhen(t.endsAt)}`).join('; ')}.` : 'No reminders.',
+        ].join(' ');
       },
       cancel_timer: (a) => {
         const running = this.timers.list();

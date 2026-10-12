@@ -28,7 +28,9 @@ export interface WifiStatus {
 export interface FaceInfo {
   state: FaceState;
   mode: string;
+  /** Countdown timers (shown as a ring). Reminders are separate: no countdown, just the next one. */
   timers: { label: string; endsAt: number; total: number }[];
+  reminder?: { text: string; at: number };
   music?: { title: string; artist: string };
   wifi?: WifiStatus & { qrSvg?: string };
   offline: boolean;
@@ -164,7 +166,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     return {
       state,
       mode: this.modes?.mode ?? 'personal',
-      timers: (this.timerService?.list() ?? []).map((t) => ({ label: describeTimer(t), endsAt: t.endsAt, total: t.durationSeconds * 1000 })),
+      timers: (this.timerService?.list() ?? []).filter((t) => !t.reminder).map((t) => ({ label: describeTimer(t), endsAt: t.endsAt, total: t.durationSeconds * 1000 })),
+      reminder: this.nextReminder(),
       music: this.music,
       wifi: this.wifi,
       offline,
@@ -192,6 +195,12 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   private mouthOpen = false;
   private wasSpeaking = false;
   private announcedSpeaking = false;
+
+  /** The next reminder due in the coming 12 hours, for a small line under the clock. */
+  private nextReminder(): FaceInfo['reminder'] {
+    const r = (this.timerService?.list() ?? []).find((t) => t.reminder && t.endsAt - Date.now() < 12 * 3600_000);
+    return r?.reminder ? { text: r.reminder, at: r.endsAt } : undefined;
+  }
 
   private async tickInfo(): Promise<void> {
     await this.readWifi();

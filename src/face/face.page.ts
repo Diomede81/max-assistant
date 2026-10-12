@@ -91,6 +91,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       info = {
         state, emotion, mode: state === 'thinking' ? 'work' : 'personal', offline: false,
         timers: label === 'Idle' ? [{ label: '"pasta" timer', endsAt: Date.now() + 252000, total: 600000 }] : [],
+        reminder: label === 'Happy' ? { text: 'call Mum', at: Date.now() + 2 * 3600000 } : undefined,
         music: label === 'Speaking' ? { title: 'Yellow', artist: 'Coldplay' } : undefined,
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
       };
@@ -480,8 +481,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     if (state !== 'setup') {
       if (timer) {
         const left = Math.max(0, Math.round((timer.endsAt - Date.now()) / 1000));
-        text = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
-        sub = timer.label.replace(/^"(.*)" timer$/, '$1').replace(/^reminder "(.*)"$/, '$1');
+        const mm = Math.floor(left / 60) % 60, ss = String(left % 60).padStart(2, '0');
+        text = left >= 3600 ? Math.floor(left / 3600) + ':' + String(mm).padStart(2, '0') + ':' + ss : Math.floor(left / 60) + ':' + ss;
+        sub = timer.label.replace(/^"(.*)" timer$/, '$1');
         const frac = timer.total ? Math.max(0, Math.min(1, (timer.endsAt - Date.now()) / timer.total)) : 0;
         g.lineWidth = 8 * s; g.lineCap = 'round'; g.strokeStyle = rgb(0.85);
         g.beginPath(); g.arc(cx, cy, R - 12 * s, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); g.stroke();
@@ -490,6 +492,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       } else if (state === 'idle' || state === 'sleeping' || state === 'offline') {
         text = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
         if (state === 'offline') sub = 'Reconnecting…';
+        else if (info.reminder) {
+          // Reminders aren't countdowns: just the next one, with a bell, under the clock.
+          const at = new Date(info.reminder.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+          sub = '🔔 ' + at + ' · ' + info.reminder.text.charAt(0).toUpperCase() + info.reminder.text.slice(1);
+        }
       }
     }
     if (text) {

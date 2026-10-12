@@ -11,6 +11,7 @@ import { RealtimeClient } from './realtime-client';
 import { GeminiLiveClient } from './gemini-live-client';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
 import { matchesAny } from '../mcp/glob';
+import { describeCapabilities } from '../actions/capabilities';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -72,6 +73,14 @@ export class RealtimeConversationService {
       language: rt.language,
       vadThreshold: this.cfg.vad.rmsThreshold,
     };
+    // Tell the model which apps it can reach, from the actions actually offered this session.
+    const capabilities = describeCapabilities(options.tools);
+    if (capabilities) options.instructions += `\n${capabilities}`;
+    this.log.log(
+      `Actions offered this session: ${options.tools.length}` +
+        (rt.tools ? '' : ' (REALTIME_TOOLS=off)') +
+        (capabilities ? '' : ' - no email/web apps among them, so Max will say he has no access'),
+    );
     const client: VoiceClient = rt.provider === 'gemini' ? new GeminiLiveClient(options) : new RealtimeClient(options);
     const resampler = new Resampler(micRate, client.inputRate);
     const skipUntil = chimed ? started + CHIME_SKIP_MS : 0;

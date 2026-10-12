@@ -7,6 +7,7 @@ import type {
 import { APP_CONFIG, AppConfig } from '../config';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
+import { describeCapabilities } from '../actions/capabilities';
 
 const MAX_TOOL_ROUNDS = 4;
 const NO_HA_NOTE =
@@ -43,6 +44,7 @@ export class LlmService {
       // The current time is included every turn so simple date questions need no tool call.
       { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
       ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
+      ...this.capabilities(),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -118,6 +120,11 @@ export class LlmService {
         history.push(msg);
       }
     }
+  }
+
+  private capabilities(): ChatCompletionMessageParam[] {
+    const text = describeCapabilities(this.tools.tools);
+    return text ? [{ role: 'system', content: text }] : [];
   }
 
   private async openStream(messages: ChatCompletionMessageParam[]) {

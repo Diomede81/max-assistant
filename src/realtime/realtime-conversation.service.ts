@@ -10,6 +10,7 @@ import { WakeWordService } from '../wake-word/wake-word.service';
 import { RealtimeClient } from './realtime-client';
 import { GeminiLiveClient } from './gemini-live-client';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
+import { matchesAny } from '../mcp/glob';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -62,7 +63,9 @@ export class RealtimeConversationService {
       instructions:
         `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
-      tools: rt.tools ? this.tools.tools : [],
+      tools: rt.tools
+        ? this.tools.tools.filter((t) => !(t.type === 'function' && matchesAny(t.function.name, rt.excludeTools)))
+        : [],
       silenceMs: rt.silenceMs,
       interruptResponse: rt.bargeIn,
       transcribeModel: rt.transcribeModel,
@@ -233,7 +236,7 @@ export class RealtimeConversationService {
       if (/invalid argument/i.test(err.message) && rt.tools) {
         this.log.warn(
           `${providerName} rejected part of the session set-up (${options.tools.length} actions offered). ` +
-            'To check whether an action description is the cause, set REALTIME_TOOLS=off in .env and restart.',
+            'Find out which part with: docker compose run --rm max node dist/tools/gemini-check.js',
         );
       }
     });

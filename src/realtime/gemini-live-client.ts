@@ -116,41 +116,7 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
   }
 
   private setup(): void {
-    const { opts } = this;
-    const speechConfig: Record<string, unknown> = { voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voice } } };
-    if (opts.language) speechConfig.languageCode = opts.language;
-    this.send({
-      setup: {
-        model: opts.model.startsWith('models/') ? opts.model : `models/${opts.model}`,
-        generationConfig: { responseModalities: ['AUDIO'], speechConfig },
-        systemInstruction: { parts: [{ text: opts.instructions }] },
-        // Strict OpenAPI-style schemas: Gemini Live rejects many JSON Schema keywords with
-        // "Request contains an invalid argument" once the model tries to use the tools.
-        ...(opts.tools.length
-          ? {
-              tools: [
-                {
-                  functionDeclarations: opts.tools
-                    .filter((t) => t.type === 'function')
-                    .map((t) => {
-                      const fn = t.type === 'function' ? t.function : { name: '', description: '', parameters: {} };
-                      const params = toGeminiSchema(fn.parameters);
-                      const hasParams = Object.keys((params.properties as object) ?? {}).length > 0;
-                      return {
-                        name: fn.name,
-                        description: (fn.description ?? '').slice(0, 1000) || fn.name,
-                        ...(hasParams ? { parameters: params } : {}),
-                      };
-                    }),
-                },
-              ],
-            }
-          : {}),
-        realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: opts.silenceMs } },
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-      },
-    });
+    this.send({ setup: buildGeminiSetup(this.opts) });
   }
 
   private handle(m: Record<string, any>): void {
@@ -210,4 +176,45 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
   private send(msg: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
+}
+
+/** Which optional parts of the set-up to include (all by default); used by the diagnostic tool. */
+export interface GeminiSetupParts {
+  voice?: boolean;
+  language?: boolean;
+  transcription?: boolean;
+  vad?: boolean;
+}
+
+/** Builds the BidiGenerateContent `setup` message. */
+export function buildGeminiSetup(opts: VoiceClientOptions, parts: GeminiSetupParts = {}): Record<string, unknown> {
+  const p = { voice: true, language: true, transcription: true, vad: true, ...parts };
+  const speechConfig: Record<string, unknown> = {};
+  if (p.voice) speechConfig.voiceConfig = { prebuiltVoiceConfig: { voiceName: opts.voice } };
+  if (p.language && opts.language) speechConfig.languageCode = opts.language;
+  return {
+    model: opts.model.startsWith('models/') ? opts.model : `models/${opts.model}`,
+    generationConfig: { responseModalities: ['AUDIO'], ...(Object.keys(speechConfig).length ? { speechConfig } : {}) },
+    systemInstruction: { parts: [{ text: opts.instructions }] },
+    // Strict OpenAPI-style schemas: Gemini Live rejects many JSON Schema keywords with
+    // "Request contains an invalid argument" once the model tries to use the tools.
+    ...(opts.tools.length ? { tools: [{ functionDeclarations: geminiDeclarations(opts.tools) }] } : {}),
+    ...(p.vad ? { realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: opts.silenceMs } } } : {}),
+    ...(p.transcription ? { inputAudioTranscription: {}, outputAudioTranscription: {} } : {}),
+  };
+}
+
+export function geminiDeclarations(tools: VoiceClientOptions['tools']): Record<string, unknown>[] {
+  return tools
+    .filter((t) => t.type === 'function')
+    .map((t) => {
+      const fn = t.type === 'function' ? t.function : { name: '', description: '', parameters: {} };
+      const params = toGeminiSchema(fn.parameters);
+      const hasParams = Object.keys((params.properties as object) ?? {}).length > 0;
+      return {
+        name: fn.name,
+        description: (fn.description ?? '').slice(0, 1000) || fn.name,
+        ...(hasParams ? { parameters: params } : {}),
+      };
+    });
 }

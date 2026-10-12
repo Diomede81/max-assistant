@@ -22,7 +22,8 @@ services:
     depends_on: [openwakeword, whisper, piper]
     # Control panel (connect Office 365, WhatsApp...): http://localhost:8099, this computer only
     ports: ["127.0.0.1:8099:8099"]
-    volumes: ["./config:/app/config:ro"]
+    # max-data holds Max's memory (facts + conversation notes); kept across restarts/rebuilds.
+    volumes: ["./config:/app/config:ro", "max-data:/app/data"]
 
   openwakeword:
     image: rhasspy/wyoming-openwakeword:latest
@@ -69,3 +70,6 @@ services:
     #   resources:
     #     reservations:
     #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+volumes:
+  max-data:

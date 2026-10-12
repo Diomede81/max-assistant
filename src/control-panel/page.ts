@@ -12,6 +12,34 @@ export interface PanelData {
     userId: string;
   };
   servers: { name: string; connected: boolean; offered: number; total: number; error?: string }[];
+  memory?: {
+    facts: { id: string; text: string; source: string; createdAt: string }[];
+    conversations: { id: string; at: string; summary: string }[];
+    totalConversations: number;
+    autoLearn: boolean;
+  };
+}
+
+const SOURCE: Record<string, string> = { you: 'You asked Max', auto: 'Learnt in conversation', panel: 'Added here' };
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const delBtn = (kind: string, id: string) =>
+  `<form method="post" action="/memory/delete"><input type="hidden" name="kind" value="${kind}"><input type="hidden" name="id" value="${esc(id)}"><button class="btn secondary" type="submit">Forget</button></form>`;
+
+function memorySection(m: NonNullable<PanelData['memory']>): string {
+  const facts = m.facts.length
+    ? m.facts
+        .map((f) => `<li class="row"><div><div>${esc(f.text)}</div><div class="meta">${esc(SOURCE[f.source] ?? f.source)} · ${esc(day(f.createdAt))}</div></div>${delBtn('fact', f.id)}</li>`)
+        .join('')
+    : '<li class="empty">Nothing yet. Say "Hey Max, remember that…", or add a fact below.</li>';
+  const convs = m.conversations.length
+    ? m.conversations
+        .map((c) => `<li class="row"><div><div>${esc(c.summary)}</div><div class="meta">${esc(day(c.at))}</div></div>${delBtn('conversation', c.id)}</li>`)
+        .join('')
+    : `<li class="empty">${m.autoLearn ? 'Max writes a one-line note after each conversation worth remembering.' : 'Conversation notes are off (MEMORY_AUTO_LEARN=off).'}</li>`;
+  return `<section id="memory"><h2>Memory · what Max knows</h2><ul>${facts}</ul>
+<form class="addfact" method="post" action="/memory/add"><input name="fact" maxlength="300" required placeholder="e.g. Sofia's birthday is 14 March"><button class="btn" type="submit">Remember</button></form>
+<p class="meta">Max sees these in every conversation. Passwords, PINs and codes are never stored.</p></section>
+<section><h2>Recent conversations${m.totalConversations > m.conversations.length ? ` (latest ${m.conversations.length} of ${m.totalConversations})` : ''}</h2><ul>${convs}</ul></section>`;
 }
 
 const esc = (s: unknown) =>
@@ -78,6 +106,7 @@ section{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .row:first-child{border-top:0;padding-top:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
+.addfact{display:flex;gap:8px;margin:12px 0 8px}.addfact input{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:1px}
@@ -96,6 +125,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <p class="meta add">To add another app (e.g. firecrawl, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
+${d.memory ? memorySection(d.memory) : ''}
 ${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
 <p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>
 </main></body></html>`;

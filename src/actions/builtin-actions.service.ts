@@ -2,19 +2,23 @@ import { Injectable } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { describeNow, spokenDuration, timeZone } from './clock';
 import { TimerService, describe } from './timer.service';
+import { MemoryService } from '../memory/memory.service';
 
 type Handler = (args: Record<string, unknown>) => string;
 
 /**
- * Actions Max can do on his own, without Home Assistant: tell the date/time and manage
- * timers and reminders. Offered to the AI model next to the Home Assistant tools.
+ * Actions Max can do on his own, without Home Assistant: tell the date/time, manage
+ * timers and reminders, and remember things between conversations. Offered to the AI model next to the Home Assistant tools.
  */
 @Injectable()
 export class BuiltinActionsService {
   private readonly handlers: Record<string, Handler>;
   readonly tools: ChatCompletionTool[];
 
-  constructor(private readonly timers: TimerService) {
+  constructor(
+    private readonly timers: TimerService,
+    private readonly memory: MemoryService,
+  ) {
     this.tools = [
       tool('get_current_datetime', 'Get the current local date, day of the week and time.', {}),
       tool(
@@ -39,9 +43,33 @@ export class BuiltinActionsService {
           all: { type: 'boolean', description: 'Cancel every timer and reminder (optional)' },
         },
       ),
+      ...(memory.enabled
+        ? [
+            tool(
+              'remember',
+              'Save a lasting fact to long-term memory (people, preferences, routines, important dates). One short ' +
+                'self-contained sentence with real names and dates, e.g. "Sofia\'s birthday is 14 March".',
+              { fact: { type: 'string', description: 'The fact to remember' } },
+            ),
+            tool('forget', 'Remove a fact from long-term memory.', {
+              about: { type: 'string', description: 'Words from the fact to forget, e.g. "boiler service"' },
+              all: { type: 'boolean', description: 'Forget every matching fact (optional)' },
+            }),
+            tool('recall', 'Search long-term memory: all saved facts and notes from past conversations.', {
+              query: { type: 'string', description: 'What to look for, e.g. "boiler" or "Sofia birthday"' },
+            }),
+          ]
+        : []),
     ];
 
     this.handlers = {
+      ...(memory.enabled
+        ? {
+            remember: (a: Record<string, unknown>) => memory.remember(str(a.fact) ?? '', 'you').message,
+            forget: (a: Record<string, unknown>) => memory.forget(str(a.about) ?? '', a.all === true),
+            recall: (a: Record<string, unknown>) => memory.recall(str(a.query) ?? ''),
+          }
+        : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
       set_timer: (a) => {
         const total = num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);

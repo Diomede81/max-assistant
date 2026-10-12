@@ -7,6 +7,7 @@ import type {
 import { APP_CONFIG, AppConfig } from '../config';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
+import { MemoryService } from '../memory/memory.service';
 
 const MAX_TOOL_ROUNDS = 4;
 const NO_HA_NOTE =
@@ -30,6 +31,7 @@ export class LlmService {
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly tools: ToolRouterService,
+    private readonly memory: MemoryService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -42,6 +44,7 @@ export class LlmService {
     const messages: ChatCompletionMessageParam[] = [
       // The current time is included every turn so simple date questions need no tool call.
       { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
+      ...(this.memory.enabled ? [{ role: 'system' as const, content: this.memory.promptSection() }] : []),
       ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
       ...history,
     ];

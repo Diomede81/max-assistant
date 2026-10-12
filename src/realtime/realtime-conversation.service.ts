@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { FaceService } from '../face/face.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { describeCapabilities } from '../actions/capabilities';
 import { SpeakerService } from '../audio/speaker.service';
@@ -33,6 +34,7 @@ const INTERRUPT_REOPEN_MS = 250;
 @Injectable()
 export class RealtimeConversationService {
   private readonly log = new Logger('Realtime');
+  @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -144,6 +146,7 @@ export class RealtimeConversationService {
     }
     connected = true;
     for (const pcm of early.splice(0)) client.sendAudio(pcm);
+    this.face?.setState('listening');
     this.log.log(`Connected to ${providerName} ${rt.model} (voice "${rt.voice}") in ${Date.now() - started} ms - talk now`);
 
     let player: AsyncQueue<Buffer> | undefined;
@@ -185,11 +188,13 @@ export class RealtimeConversationService {
     };
 
     client.on('speech-started', () => {
+      this.face?.setState('listening');
       userSpeaking = true;
       lastActivity = Date.now();
       if (rt.bargeIn) interrupt(); // headphones mode: just start talking
     });
     client.on('speech-stopped', () => {
+      this.face?.setState('thinking');
       userSpeaking = false;
       busy = true;
       speechStoppedAt = Date.now();
@@ -244,6 +249,7 @@ export class RealtimeConversationService {
       }
       turns++;
       busy = false;
+      this.face?.setState('listening');
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
     client.on('user-transcript', (t: string) => {
@@ -288,6 +294,7 @@ export class RealtimeConversationService {
     });
 
     ended = true;
+    this.face?.setState('idle');
     this.wake.disarm();
     setMicHandler(() => undefined);
     clearTimeout(clearTimer);

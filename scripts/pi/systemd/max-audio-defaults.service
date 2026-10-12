@@ -1,0 +1,11 @@
+[Unit]
+Description=Max: use the mic board as default speaker and microphone
+After=wireplumber.service pipewire-pulse.service
+Wants=wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/max-audio-defaults
+
+[Install]
+WantedBy=default.target

@@ -37,6 +37,16 @@ export interface AppConfig {
     systemPrompt: string;
   };
   ha: { mcpUrl: string; token: string };
+  face: {
+    enabled: boolean;
+    /** The face page for the box's screen (kiosk browser): http://localhost:<port> */
+    port: number;
+    host: string;
+    /** "23:00-07:00": Max dozes on screen during these hours when idle. "off" = never. */
+    sleep: string;
+    /** Shared folder with the box's WiFi setup service (status + requests). */
+    runDir: string;
+  };
   music: {
     /** go-librespot API (the Spotify speaker running next to Max); empty = no music. */
     spotifyUrl: string;
@@ -243,6 +253,13 @@ export function loadConfig(): AppConfig {
     ha: {
       mcpUrl: env.HA_MCP_URL ?? 'http://homeassistant.local:8123/api/mcp',
       token: env.HA_TOKEN ?? '',
+    },
+    face: {
+      enabled: env.FACE !== 'off',
+      port: num(env.FACE_PORT, 8098),
+      host: env.FACE_HOST || '127.0.0.1',
+      sleep: env.FACE_SLEEP ?? '23:00-07:00',
+      runDir: env.MAX_RUN_DIR || '/run/max',
     },
     music: {
       spotifyUrl: env.SPOTIFY_API_URL ?? '',

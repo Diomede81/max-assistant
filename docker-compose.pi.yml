@@ -1,0 +1,23 @@
+# Max box (Raspberry Pi) additions. scripts/pi/setup.sh uses it:
+#   docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
+# - Sound goes straight to the Pi's PipeWire (the mic board), no sound bridge needed.
+# - Max shares /run/max with the box's WiFi setup service (QR code on the face).
+# - The control panel is reachable from your home network at http://max.local:8099,
+#   so set PANEL_PASSWORD in .env.
+services:
+  max:
+    environment:
+      PULSE_SERVER: unix:/run/user/${MAX_UID:-1000}/pulse/native
+      MAX_RUN_DIR: /run/max
+      CONTROL_PANEL_URL: ${CONTROL_PANEL_URL:-http://max.local:8099}
+    volumes:
+      - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
+      - /run/max:/run/max
+    ports: !override
+      - "8099:8099"
+      - "127.0.0.1:8098:8098"
+  spotify:
+    environment:
+      PULSE_SERVER: unix:/run/user/${MAX_UID:-1000}/pulse/native
+    volumes:
+      - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse

@@ -9,3 +9,4 @@ config/mcp-servers.json
 spotify/state.json
 spotify/lockfile
 spotify/*.tmp
+__pycache__/

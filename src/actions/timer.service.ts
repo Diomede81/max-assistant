@@ -10,6 +10,8 @@ export interface Timer {
   reminder?: string;
   durationSeconds: number;
   endsAt: number;
+  /** Set for plain announcements (not a timer): said exactly as written. */
+  say?: string;
   handle: NodeJS.Timeout;
 }
 
@@ -68,7 +70,7 @@ export class TimerService extends EventEmitter implements OnModuleDestroy {
 
   /** Says something out loud like a reminder (e.g. a project task falling due). */
   announce(text: string): void {
-    this.emit('fired', { id: 0, reminder: text, durationSeconds: 0, endsAt: Date.now() } as unknown as Timer);
+    this.emit('fired', { id: 0, say: text, durationSeconds: 0, endsAt: Date.now() } as unknown as Timer);
   }
 
   private fire(id: number): void {
@@ -92,6 +94,7 @@ export function describe(t: Pick<Timer, 'name' | 'reminder'>): string {
 
 /** What Max says when a timer goes off. */
 export function announcement(t: Timer): string {
+  if (t.say) return t.say;
   if (t.reminder) return `Reminder: ${t.reminder}.`;
   return t.name ? `Your ${t.name} timer is done.` : `Time's up. The timer you set for ${spokenDuration(t.durationSeconds)} is done.`;
 }

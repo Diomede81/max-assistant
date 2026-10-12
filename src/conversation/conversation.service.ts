@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { MusicService } from '../music/music.service';
+import { FaceService } from '../face/face.service';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { MicrophoneService } from '../audio/microphone.service';
@@ -53,6 +54,8 @@ export class ConversationService implements OnApplicationBootstrap {
 
   /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
+  /** The box's screen: idle / listening / thinking (speaking follows the audio). */
+  @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
   private readonly pendingAnnouncements: string[] = [];
   private announcing = false;
@@ -95,6 +98,7 @@ export class ConversationService implements OnApplicationBootstrap {
 
   private async waitForWakeWord(): Promise<void> {
     this.state = 'wake';
+    this.face?.setState('idle');
     if (this.pendingAnnouncements.length) void this.flushAnnouncements();
     const fmt = this.mic.format;
     let name: string;
@@ -113,6 +117,7 @@ export class ConversationService implements OnApplicationBootstrap {
     }
 
     this.log.log(`Wake word "${name}" detected - listening for your request`);
+    this.face?.setState('listening');
     if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
     // Turn any music down while we talk (in parallel with the chime, so no added delay).
     const ducked = this.music?.duckStart();
@@ -176,6 +181,7 @@ export class ConversationService implements OnApplicationBootstrap {
     isFollowUp = false,
   ): Promise<{ value: string; endOfSpeech: number } | undefined> {
     this.state = 'listen';
+    this.face?.setState('listening');
     const fmt = this.mic.format;
     const { vad } = this.cfg;
     const grace = this.cfg.audio.wakeChime ? CHIME_GRACE_MS : 0;
@@ -231,6 +237,7 @@ export class ConversationService implements OnApplicationBootstrap {
 
   private async respond(text: string, tEndOfSpeech: number): Promise<void> {
     this.state = 'respond';
+    this.face?.setState('thinking');
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });

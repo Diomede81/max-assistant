@@ -338,6 +338,14 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     return this.api('POST', '/player/volume', { volume: Math.round(v) });
   }
 
+  /** What's playing right now, for the face screen (undefined when stopped or paused). */
+  async nowPlaying(): Promise<{ title: string; artist: string } | undefined> {
+    if (this.state !== 'ready') return undefined;
+    const s = await this.status().catch(() => undefined);
+    if (!s || s.stopped || s.paused || !s.track) return undefined;
+    return { title: s.track.name, artist: s.track.artist_names.join(', ') };
+  }
+
   private status(): Promise<Status | undefined> {
     return this.api<Status>('GET', '/status');
   }

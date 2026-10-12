@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Max box setup for a Raspberry Pi 5 running Raspberry Pi OS (64-bit, Bookworm or later).
+#
+# Run once, from the max-assistant folder on the Pi:
+#     sudo ./scripts/pi/setup.sh
+#
+# It is safe to run again (after updates, or to change the screen type). What it does:
+#   1. Installs Docker, the sound system (PipeWire), the kiosk browser and NetworkManager tools
+#   2. Names the box "max" (reachable as max.local on your network)
+#   3. Sets up sound so the ReSpeaker mic board is the default microphone and speaker
+#   4. Configures the round screen and shows Max's face full-screen at boot
+#   5. Installs WiFi setup mode (the "Max-Setup" network with a QR code on the face)
+#   6. Builds and starts Max (and the Spotify speaker if enabled in .env)
+#
+# Options (environment variables):
+#   MAX_SCREEN=dsi|hdmi|none   which round screen is fitted (asked if not set)
+#   MAX_HOSTNAME=max           network name of the box
+#   MAX_SKIP_START=1           install everything but don't build/start Max yet
+set -euo pipefail
+
+say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33m!!  %s\033[0m\n' "$*"; }
+die()  { printf '\033[1;31mXX  %s\033[0m\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "Run with sudo: sudo ./scripts/pi/setup.sh"
+USER_NAME="${SUDO_USER:-}"
+[ -n "$USER_NAME" ] && [ "$USER_NAME" != root ] || die "Run with sudo from your normal user account (not as root)."
+USER_ID="$(id -u "$USER_NAME")"
+USER_GID="$(id -g "$USER_NAME")"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+[ -f "$REPO/docker-compose.yml" ] || die "Run this from inside the max-assistant folder."
+[ "$(uname -m)" = aarch64 ] || warn "This is meant for 64-bit Raspberry Pi OS (aarch64); continuing anyway."
+grep -q 'Raspberry Pi 5' /proc/device-tree/model 2>/dev/null || warn "This doesn't look like a Raspberry Pi 5; continuing anyway."
+. /etc/os-release
+CONFIG_TXT=/boot/firmware/config.txt; [ -f "$CONFIG_TXT" ] || CONFIG_TXT=/boot/config.txt
+
+SCREEN="${MAX_SCREEN:-}"
+if [ -z "$SCREEN" ]; then
+  echo "Which screen is fitted?  1) round DSI (ribbon cable)   2) round HDMI   3) none"
+  read -r -p "Choose 1, 2 or 3 [1]: " choice </dev/tty || choice=1
+  case "${choice:-1}" in 2) SCREEN=hdmi ;; 3) SCREEN=none ;; *) SCREEN=dsi ;; esac
+fi
+
+# ---------------------------------------------------------------- 1. packages
+say "Installing system packages (this takes a few minutes)"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+CHROMIUM=chromium; apt-cache show chromium >/dev/null 2>&1 || CHROMIUM=chromium-browser
+apt-get install -y -q ca-certificates curl git python3 network-manager avahi-daemon \
+  pipewire pipewire-pulse wireplumber pulseaudio-utils cage "$CHROMIUM" fonts-noto-color-emoji
+if ! command -v docker >/dev/null; then
+  say "Installing Docker"
+  curl -fsSL https://get.docker.com | sh
+fi
+usermod -aG docker,audio,video,render,input "$USER_NAME" || true
+
+# ---------------------------------------------------------------- 2. name on the network
+NAME="${MAX_HOSTNAME:-max}"
+if [ "$(hostname)" != "$NAME" ]; then
+  say "Naming the box \"$NAME\" (reachable as $NAME.local)"
+  hostnamectl set-hostname "$NAME"
+  sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$NAME/" /etc/hosts || true
+  grep -q "127.0.1.1" /etc/hosts || echo -e "127.0.1.1\t$NAME" >> /etc/hosts
+fi
+
+# ---------------------------------------------------------------- 3. sound
+say "Setting up sound (PipeWire, mic board as default)"
+loginctl enable-linger "$USER_NAME"   # sound runs at boot, without anyone logging in
+install -m 755 "$REPO/scripts/pi/max-audio-defaults.sh" /usr/local/bin/max-audio-defaults
+install -D -m 644 "$REPO/scripts/pi/systemd/max-audio-defaults.service" /etc/systemd/user/max-audio-defaults.service
+USER_SYSTEMCTL=(sudo -u "$USER_NAME" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user)
+sleep 2
+"${USER_SYSTEMCTL[@]}" daemon-reload || true
+"${USER_SYSTEMCTL[@]}" enable --now pipewire pipewire-pulse wireplumber || warn "Could not start PipeWire yet; it starts after a reboot."
+"${USER_SYSTEMCTL[@]}" enable max-audio-defaults.service || true
+
+# ---------------------------------------------------------------- 4. screen + face
+say "Setting up the screen ($SCREEN)"
+sed -i '/# max-box screen/,+1d' "$CONFIG_TXT"
+if [ "$SCREEN" = dsi ]; then
+  # Waveshare 4inch DSI LCD (C), round 720x720. If the screen stays blank after the reboot,
+  # check Waveshare's wiki for this model: on a Pi 5 the line may need ",dsi0" or ",dsi1"
+  # added, depending on which display connector the ribbon cable uses.
+  printf '# max-box screen\ndtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC\n' >> "$CONFIG_TXT"
+fi
+if [ "$SCREEN" != none ]; then
+  install -m 755 "$REPO/scripts/pi/max-face-kiosk.sh" /usr/local/bin/max-face-kiosk
+  sed "s/__USER__/$USER_NAME/" "$REPO/scripts/pi/systemd/max-face.service" > /etc/systemd/system/max-face.service
+  systemctl disable getty@tty1.service 2>/dev/null || true
+  systemctl set-default graphical.target
+  systemctl enable max-face.service
+  # Never blank the console underneath the face.
+  CMDLINE=/boot/firmware/cmdline.txt; [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
+  grep -q 'consoleblank=0' "$CMDLINE" || sed -i 's/$/ consoleblank=0/' "$CMDLINE"
+else
+  systemctl disable max-face.service 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------- 5. WiFi setup mode
+say "Installing WiFi setup mode"
+install -D -m 755 "$REPO/scripts/pi/max-wifi-setup.py" /usr/local/lib/max/max-wifi-setup.py
+install -m 644 "$REPO/scripts/pi/systemd/max-wifi.service" /etc/systemd/system/max-wifi.service
+# Shared folder between the WiFi service and Max (status for the face, requests from the screen).
+echo "d /run/max 0775 $USER_NAME $USER_NAME -" > /etc/tmpfiles.d/max.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/max.conf
+# While the setup network is up, answer every web address with the setup page (captive portal).
+mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+echo "address=/#/10.42.0.1" > /etc/NetworkManager/dnsmasq-shared.d/max-captive.conf
+systemctl daemon-reload
+systemctl enable --now max-wifi.service
+
+# ---------------------------------------------------------------- SD card care
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=50M\n' > /etc/systemd/journald.conf.d/max.conf
+systemctl restart systemd-journald || true
+
+# ---------------------------------------------------------------- 6. Max
+cd "$REPO"
+if [ ! -f .env ]; then
+  cp .env.example .env
+  chown "$USER_NAME:$USER_NAME" .env
+  warn "Created .env from the example. Copy your real .env from your Mac (see docs/PI.md), then run this script again."
+  MAX_SKIP_START=1
+fi
+set_env() { grep -q "^$1=" .env && sed -i "s|^$1=.*|$1=$2|" .env || echo "$1=$2" >> .env; }
+set_env MAX_UID "$USER_ID"
+set_env MAX_GID "$USER_GID"
+grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
+grep -q '^PANEL_PASSWORD=.\+' .env || warn "PANEL_PASSWORD is not set in .env. On the box the control panel is reachable from your home network, so set one."
+grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
+
+if [ "${MAX_SKIP_START:-}" != 1 ]; then
+  say "Building and starting Max (the first build takes 10-15 minutes on a Pi 5)"
+  docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
+fi
+
+say "Done."
+echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"
+echo "  Logs: cd $REPO && docker compose logs -f max"
+echo "  WiFi setup: hold the screen for 5 seconds, or it starts by itself if the box is offline for a minute."
+[ "$SCREEN" = dsi ] && echo "  Reboot now to activate the screen: sudo reboot"
+exit 0

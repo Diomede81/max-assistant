@@ -11,6 +11,8 @@ import { RealtimeClient } from './realtime-client';
 import { GeminiLiveClient } from './gemini-live-client';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
 import { matchesAny } from '../mcp/glob';
+import { MemoryService } from '../memory/memory.service';
+import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -37,6 +39,8 @@ export class RealtimeConversationService {
     private readonly tools: ToolRouterService,
     private readonly tts: TtsService,
     private readonly wake: WakeWordService,
+    private readonly memory: MemoryService,
+    private readonly learner: MemoryLearnerService,
   ) {}
 
   /**
@@ -62,6 +66,7 @@ export class RealtimeConversationService {
       voice: rt.voice,
       instructions:
         `${this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
+        (this.memory.enabled ? `\n${this.memory.promptSection()}` : '') +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
       tools: rt.tools
         ? this.tools.tools.filter((t) => !(t.type === 'function' && matchesAny(t.function.name, rt.excludeTools)))
@@ -149,6 +154,8 @@ export class RealtimeConversationService {
     // Whether the server is still sending the current reply (audio usually arrives faster
     // than it plays, so the server has often finished before the user interrupts).
     let responseActive = false;
+    // What was said, for the conversation note saved to memory afterwards.
+    const transcript: TranscriptLine[] = [];
 
     interrupt = () => {
       if (!speaking()) return; // only meaningful while Max is talking
@@ -201,6 +208,7 @@ export class RealtimeConversationService {
     });
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
       responseActive = true;
+      transcript.push({ who: 'action', text: c.name });
       pendingTools.push(this.tools.call(c.name, c.args).then((out) => client.sendToolResult(c.callId, out)));
     });
     client.on('response-done', async (r: { toolCalls: number; status?: string; reason?: string }) => {
@@ -229,8 +237,14 @@ export class RealtimeConversationService {
       busy = false;
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
-    client.on('user-transcript', (t: string) => this.log.log(`You: "${t}"`));
-    client.on('assistant-transcript', (t: string) => this.log.log(`Max: "${t}"`));
+    client.on('user-transcript', (t: string) => {
+      this.log.log(`You: "${t}"`);
+      transcript.push({ who: 'user', text: t });
+    });
+    client.on('assistant-transcript', (t: string) => {
+      this.log.log(`Max: "${t}"`);
+      transcript.push({ who: 'max', text: t });
+    });
     client.on('error', (err: Error) => {
       this.log.error(`${providerName}: ${err.message}`);
       if (/invalid argument/i.test(err.message) && rt.tools) {
@@ -271,6 +285,7 @@ export class RealtimeConversationService {
     client.close();
     player?.close();
     await playing;
+    void this.learner.learn(transcript);
     this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); waiting for the wake word`);
   }
 

@@ -10,6 +10,7 @@ import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from './sentence-splitter';
 import { TimerService, announcement } from '../actions/timer.service';
 import { RealtimeConversationService } from '../realtime/realtime-conversation.service';
+import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -35,6 +36,7 @@ export class ConversationService implements OnApplicationBootstrap {
   private onChunk: (chunk: Buffer) => void = () => undefined;
   private history: ChatCompletionMessageParam[] = [];
   private lastTurnAt = 0;
+  private transcript: TranscriptLine[] = [];
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -45,6 +47,7 @@ export class ConversationService implements OnApplicationBootstrap {
     private readonly tts: TtsService,
     private readonly timers: TimerService,
     private readonly realtime: RealtimeConversationService,
+    private readonly learner: MemoryLearnerService,
   ) {}
 
   private readonly pendingAnnouncements: string[] = [];
@@ -119,6 +122,16 @@ export class ConversationService implements OnApplicationBootstrap {
 
   /** One request, then follow-ups without the wake word, until nobody speaks. */
   private async conversation(): Promise<void> {
+    this.transcript = [];
+    try {
+      await this.conversationTurns();
+    } finally {
+      // Filed in memory in the background once the conversation is over.
+      void this.learner.learn(this.transcript);
+    }
+  }
+
+  private async conversationTurns(): Promise<void> {
     let noSpeechMs = 5000;
     for (;;) {
       try {
@@ -203,6 +216,8 @@ export class ConversationService implements OnApplicationBootstrap {
     this.state = 'respond';
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
     this.history.push({ role: 'user', content: text });
+    this.transcript.push({ who: 'user', text });
+    const historyStart = this.history.length;
 
     const speech = this.tts.session();
     const splitter = new SentenceSplitter();
@@ -229,6 +244,12 @@ export class ConversationService implements OnApplicationBootstrap {
     if (firstSpoken) {
       this.log.log(`Max: "${reply.trim()}"  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
     }
+    for (const m of this.history.slice(historyStart)) {
+      if (m.role === 'assistant' && 'tool_calls' in m && m.tool_calls) {
+        for (const c of m.tool_calls) if (c.type === 'function') this.transcript.push({ who: 'action', text: c.function.name });
+      }
+    }
+    if (reply.trim()) this.transcript.push({ who: 'max', text: reply.trim() });
     await speech.done();
     this.lastTurnAt = Date.now();
     this.trimHistory();

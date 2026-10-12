@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   const haNames = new Set(app.get(HaMcpService).openAiTools.map((t) => (t.type === 'function' ? t.function.name : '')));
   const nameOf = (t: ChatCompletionTool) => (t.type === 'function' ? t.function.name : '');
   const groups: Record<string, ChatCompletionTool[]> = {
-    'built-in (time, timers)': all.filter((t) => builtinNames.has(nameOf(t))),
+    'built-in (time, timers, memory)': all.filter((t) => builtinNames.has(nameOf(t))),
     'Home Assistant': all.filter((t) => haNames.has(nameOf(t))),
     'apps (Composio / MCP servers)': all.filter((t) => !builtinNames.has(nameOf(t)) && !haNames.has(nameOf(t))),
   };

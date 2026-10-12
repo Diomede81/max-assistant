@@ -48,6 +48,17 @@ export interface AppConfig {
     callbackUrl: string;
   };
   controlPanel: { port: number; host: string; publicUrl: string };
+  memory: {
+    enabled: boolean;
+    /** JSON file holding facts and conversation notes (a Docker volume keeps it across restarts). */
+    file: string;
+    /** Write a short note (and pick up lasting facts) after each conversation, using the text AI model. */
+    autoLearn: boolean;
+    /** How many recent conversation notes Max sees at the start of a conversation. */
+    recentConversations: number;
+    /** Upper limit on how much of the fact list goes into every conversation (characters). */
+    promptChars: number;
+  };
   /** 'pipeline' = wake word + STT + LLM + TTS (default); 'realtime' = OpenAI Realtime speech-to-speech */
   voiceMode: 'pipeline' | 'realtime';
   realtime: {
@@ -160,6 +171,13 @@ export function loadConfig(): AppConfig {
       // Only this computer by default; docker-compose publishes it on 127.0.0.1 only.
       host: env.CONTROL_PANEL_HOST || '127.0.0.1',
       publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
+    },
+    memory: {
+      enabled: env.MEMORY !== 'off',
+      file: env.MEMORY_FILE || 'data/memory.json',
+      autoLearn: env.MEMORY_AUTO_LEARN !== 'off',
+      recentConversations: num(env.MEMORY_RECENT_CONVERSATIONS, 5),
+      promptChars: num(env.MEMORY_PROMPT_CHARS, 3000),
     },
     voiceMode: env.VOICE_MODE === 'realtime' ? 'realtime' : 'pipeline',
     realtime: {

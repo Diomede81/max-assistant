@@ -11,13 +11,13 @@ import { createInterface } from 'node:readline';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
+import { MusicModule } from '../music/music.module';
 import { LlmService, explainLlmError } from '../llm/llm.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
-import { MusicModule } from '../music/music.module';
 
 try {
   process.loadEnvFile('.env');

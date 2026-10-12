@@ -9,6 +9,8 @@ import { TimerService, describe as describeTimer } from '../actions/timer.servic
 import { ModesService } from '../memory/modes.service';
 import { MusicService } from '../music/music.service';
 import type { PcmFormat } from '../audio/speaker.service';
+import { analyse, CLOSED, Mouth } from './visemes';
+import { Emotion, emotionFor } from './emotion';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -30,6 +32,7 @@ export interface FaceInfo {
   music?: { title: string; artist: string };
   wifi?: WifiStatus & { qrSvg?: string };
   offline: boolean;
+  emotion: Emotion;
 }
 
 const FRAME_MS = 50;
@@ -46,8 +49,10 @@ const MUSIC_MS = 5000;
 export class FaceService extends EventEmitter implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Face');
   private base: BaseState = 'idle';
-  /** Mouth levels (0..1) scheduled against the clock, one per 50 ms of audio. */
-  private levels: { at: number; v: number }[] = [];
+  /** Mouth shapes scheduled against the clock, one per 50 ms of audio. */
+  private levels: { at: number; v: Mouth }[] = [];
+  private emotion: Emotion = 'neutral';
+  private emotionUntil = 0;
   private audioEndsAt = 0;
   private timers: NodeJS.Timeout[] = [];
   private music?: { title: string; artist: string };
@@ -92,20 +97,41 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     let t = Math.max(Date.now() + this.cfg.face.audioDelayMs, this.audioEndsAt);
     for (let off = 0; off + bytesPerFrame <= chunk.length; off += perSlice) {
       const end = Math.min(chunk.length, off + perSlice);
-      let sum = 0;
-      let n = 0;
-      for (let i = off; i + 1 < end; i += bytesPerFrame) {
-        const v = chunk.readInt16LE(i);
-        sum += v * v;
-        n++;
+      const samples = new Float32Array(Math.floor((end - off) / bytesPerFrame));
+      for (let i = 0; i < samples.length; i++) {
+        // Mix channels down to mono.
+        let v = 0;
+        for (let c = 0; c < fmt.channels; c++) v += chunk.readInt16LE(off + i * bytesPerFrame + c * 2);
+        samples[i] = v / fmt.channels / 32768;
       }
-      const rms = n ? Math.sqrt(sum / n) / 32768 : 0;
-      // Speech sits around 0.02-0.2 RMS; map to a lively 0..1 mouth opening.
-      this.levels.push({ at: t, v: Math.min(1, Math.pow(rms * 6, 0.7)) });
-      t += ((end - off) / bytesPerFrame / fmt.rate) * 1000;
+      this.levels.push({ at: t, v: analyse(samples, fmt.rate) });
+      t += (samples.length / fmt.rate) * 1000;
     }
     this.audioEndsAt = t;
     if (this.levels.length > 4000) this.levels.splice(0, this.levels.length - 4000);
+  }
+
+  /**
+   * What Max is saying (a sentence, a reply, or a chunk of live transcript). His expression
+   * follows it: happy for good news, concerned for problems, curious for questions.
+   */
+  said(text: string): void {
+    const e = emotionFor(text);
+    if (!e) return;
+    // Replies arrive a few sentences at a time: the first cue sets the tone, so a quick
+    // "Sorry, I can't. Anything else?" stays concerned rather than flicking to curious.
+    const now = Date.now();
+    if (now - this.saidAt < 2500 && e !== 'concerned') return;
+    this.saidAt = now;
+    this.setEmotion(e, 6000);
+  }
+  private saidAt = 0;
+
+  setEmotion(e: Emotion, holdMs = 6000): void {
+    this.emotionUntil = Date.now() + holdMs;
+    if (e === this.emotion) return;
+    this.emotion = e;
+    void this.tickInfo();
   }
 
   /** Audio was cut off (interrupted). */
@@ -142,21 +168,28 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       music: this.music,
       wifi: this.wifi,
       offline,
+      emotion: this.emotion,
     };
   }
 
   private tickLevel(): void {
     const now = Date.now();
     while (this.levels.length > 1 && this.levels[1].at <= now) this.levels.shift();
-    const cur = this.levels[0] && this.levels[0].at <= now && now < this.audioEndsAt ? this.levels[0].v : 0;
-    if (cur > 0 || this.lastLevel > 0) this.emit('level', cur);
-    this.lastLevel = cur;
+    const cur = this.levels[0] && this.levels[0].at <= now && now < this.audioEndsAt ? this.levels[0].v : CLOSED;
+    const open = cur.o + cur.w + cur.r + cur.s > 0;
+    if (open || this.mouthOpen) this.emit('level', cur);
+    this.mouthOpen = open;
     if (!this.speaking && this.wasSpeaking) void this.tickInfo();
     this.wasSpeaking = this.speaking;
     if (this.speaking && !this.announcedSpeaking) void this.tickInfo();
     this.announcedSpeaking = this.speaking;
+    // Expressions fade back to neutral once the moment has passed (and he's finished talking).
+    if (this.emotion !== 'neutral' && now > this.emotionUntil && !this.speaking) {
+      this.emotion = 'neutral';
+      void this.tickInfo();
+    }
   }
-  private lastLevel = 0;
+  private mouthOpen = false;
   private wasSpeaking = false;
   private announcedSpeaking = false;
 

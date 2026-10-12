@@ -2,11 +2,12 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { FaceInfo, FaceService } from './face.service';
+import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
 
 /**
  * Serves the face page for the box's screen and streams Max's state to it (Server-Sent
- * Events): `info` when anything changes, `level` 20 times a second while he talks.
+ * Events): `info` when anything changes, `level` (mouth shape) 20 times a second while he talks.
  * Listens on this machine only (FACE_HOST / FACE_PORT, default 127.0.0.1:8098).
  */
 @Injectable()
@@ -28,7 +29,8 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     this.server.on('error', (err) => this.log.error(`Face screen server unavailable: ${err.message}`));
     this.server.listen(port, host, () => this.log.log(`Face screen: http://localhost:${port}`));
     this.face.on('info', (info: FaceInfo) => this.broadcast('info', info));
-    this.face.on('level', (v: number) => this.broadcast('level', Math.round(v * 100) / 100));
+    const r = (v: number) => Math.round(v * 100) / 100;
+    this.face.on('level', (m: Mouth) => this.broadcast('level', { o: r(m.o), w: r(m.w), r: r(m.r), s: r(m.s) }));
     this.heartbeat = setInterval(() => this.broadcast('info', this.face.info()), 15_000);
   }
 

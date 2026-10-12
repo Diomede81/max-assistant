@@ -51,6 +51,8 @@ async function main(): Promise<void> {
 
   app.get(TimerService).on('fired', (t) => {
     const text = announcement(t);
+    if (t.say) face.said(text);
+    else face.setEmotion('surprised', 5000);
     process.stdout.write(`\n*** ${text} ***\nYou: `);
     if (speak) {
       const s = tts.session();
@@ -94,13 +96,19 @@ async function main(): Promise<void> {
         if (!first) first = Date.now();
         process.stdout.write(fragment);
         reply += fragment;
-        for (const s of splitter.push(fragment)) speech?.say(s);
+        for (const s of splitter.push(fragment)) {
+          face.said(s);
+          speech?.say(s);
+        }
       }
     } catch (err) {
       const why = explainLlmError(err);
       process.stdout.write(`${why.spoken}\n      [${why.log}]`);
     }
-    for (const s of splitter.flush()) speech?.say(s);
+    for (const s of splitter.flush()) {
+      face.said(s);
+      speech?.say(s);
+    }
     console.log(`\n      (first words after ${first ? first - started : '-'} ms, total ${Date.now() - started} ms)\n`);
     if (reply.trim()) transcript.push({ who: 'max', text: reply.trim() });
     face.setState('idle');

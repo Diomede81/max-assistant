@@ -13,6 +13,7 @@ import { RealtimeClient } from './realtime-client';
 import { GeminiLiveClient } from './gemini-live-client';
 import type { VoiceClient, VoiceClientOptions } from './voice-client';
 import { matchesAny } from '../mcp/glob';
+import { SentenceSplitter } from '../conversation/sentence-splitter';
 import { MemoryService } from '../memory/memory.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 
@@ -256,7 +257,13 @@ export class RealtimeConversationService {
       this.log.log(`You: "${t}"`);
       transcript.push({ who: 'user', text: t });
     });
+    // His expression follows his words as they're spoken, a sentence at a time.
+    const sentences = new SentenceSplitter();
+    client.on('assistant-text', (t: string) => {
+      for (const s of sentences.push(t)) this.face?.said(s);
+    });
     client.on('assistant-transcript', (t: string) => {
+      for (const s of sentences.flush()) this.face?.said(s);
       this.log.log(`Max: "${t}"`);
       transcript.push({ who: 'max', text: t });
     });

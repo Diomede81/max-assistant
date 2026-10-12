@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { MusicService } from '../music/music.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService } from '../composio/composio.service';
@@ -14,6 +15,7 @@ import { PanelData, renderPanel } from './page';
 export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ControlPanel');
   private server?: Server;
+  @Optional() @Inject(MusicService) private readonly music?: MusicService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -38,6 +40,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (req.method === 'POST' && url.pathname === '/music/check') {
+      await this.music?.poll();
+      return this.redirect(res, '/#music');
+    }
     if (req.method === 'GET' && url.pathname.startsWith('/connect/')) {
       const toolkit = decodeURIComponent(url.pathname.slice('/connect/'.length));
       if (!this.cfg.composio.toolkits.includes(toolkit)) return this.redirect(res, '/?error=Unknown%20app');
@@ -50,7 +56,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, failed ? '/?error=Sign-in%20was%20not%20completed' : '/?connected=1');
     }
     if (req.method === 'POST' && url.pathname === '/refresh') {
-      await Promise.all([this.mcp.refreshAll(), this.composio.refresh()]);
+      await Promise.all([this.mcp.refreshAll(), this.composio.refresh(), this.music?.poll()]);
       return this.redirect(res, '/?refreshed=1');
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
@@ -61,6 +67,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const apps = this.composio.enabled ? await this.composio.apps().catch(() => []) : [];
     const ha = await this.ha.status(0);
     return {
+      music: this.music && {
+        state: this.music.state,
+        account: this.music.account,
+        pairing: this.music.pairing,
+        error: this.music.lastError,
+      },
       voice:
         this.cfg.voiceMode === 'realtime'
           ? `${rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'} (${rt.model}, "${rt.voice}")`

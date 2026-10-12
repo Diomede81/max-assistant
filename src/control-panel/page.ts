@@ -1,5 +1,6 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 export interface PanelData {
+  music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
   voice: string;
   notice?: { kind: 'ok' | 'error'; text: string };
   homeAssistant: { connected: boolean; tools: number; error?: string };
@@ -94,9 +95,31 @@ form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-s
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 <section><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. firecrawl, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
+${musicSection(d.music)}
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
 ${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
 <p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>
 </main></body></html>`;
+}
+
+function musicSection(m: PanelData['music']): string {
+  if (!m || m.state === 'off') return '';
+  const check = '<form method="post" action="/music/check"><button class="btn secondary" type="submit">Check again</button></form>';
+  let body: string;
+  if (m.state === 'ready') {
+    body = `<li class="row"><div><div class="name">Spotify ${badge(true, 'Ready')}</div>
+      <div class="meta">Signed in as ${esc(m.account)}. Say "Hey Max, play…", or pick <b>Max</b> as the speaker in the Spotify app.</div></div></li>`;
+  } else if (m.state === 'pairing') {
+    body = `<li class="row"><div><div class="name">Spotify ${badge(false, '', 'Sign-in needed')}</div>
+      <div class="meta">${
+        m.pairing
+          ? `One-time step: open the link, sign in to Spotify and approve "Max". If asked, the code is <b>${esc(m.pairing.code)}</b>.`
+          : 'Waiting for a sign-in code from the Spotify speaker…'
+      }</div></div>${m.pairing ? `<a class="btn" href="${esc(m.pairing.url)}" target="_blank" rel="noopener">Sign in to Spotify</a>` : check}</li>`;
+  } else {
+    body = `<li class="row"><div><div class="name">Spotify ${badge(false, '', 'Not running')}</div>
+      <div class="meta">Start the Spotify speaker: <code>docker compose --profile music up -d</code> (needs Spotify Premium). ${esc(m.error ?? '')}</div></div>${check}</li>`;
+  }
+  return `<section id="music"><h2>Music</h2><ul>${body}</ul></section>`;
 }

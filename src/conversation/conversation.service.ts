@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
+import { MusicService } from '../music/music.service';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { MicrophoneService } from '../audio/microphone.service';
@@ -47,6 +48,9 @@ export class ConversationService implements OnApplicationBootstrap {
     private readonly realtime: RealtimeConversationService,
   ) {}
 
+  /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
+  @Optional() @Inject(MusicService) private readonly music?: MusicService;
+
   private readonly pendingAnnouncements: string[] = [];
   private announcing = false;
 
@@ -69,6 +73,7 @@ export class ConversationService implements OnApplicationBootstrap {
   private async flushAnnouncements(): Promise<void> {
     if (this.announcing) return;
     this.announcing = true;
+    await this.music?.duckStart();
     try {
       while (this.pendingAnnouncements.length) {
         const text = this.pendingAnnouncements.shift()!;
@@ -81,6 +86,7 @@ export class ConversationService implements OnApplicationBootstrap {
       }
     } finally {
       this.announcing = false;
+      await this.music?.duckEnd();
     }
   }
 
@@ -105,6 +111,18 @@ export class ConversationService implements OnApplicationBootstrap {
 
     this.log.log(`Wake word "${name}" detected - listening for your request`);
     if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    // Turn any music down while we talk (in parallel with the chime, so no added delay).
+    const ducked = this.music?.duckStart();
+    try {
+      await this.talk();
+    } finally {
+      await ducked;
+      await this.music?.duckEnd();
+    }
+    return this.waitForWakeWord();
+  }
+
+  private async talk(): Promise<void> {
     if (this.cfg.voiceMode === 'realtime') {
       this.state = 'respond';
       await this.realtime
@@ -114,7 +132,6 @@ export class ConversationService implements OnApplicationBootstrap {
     } else {
       await this.conversation();
     }
-    return this.waitForWakeWord();
   }
 
   /** One request, then follow-ups without the wake word, until nobody speaks. */

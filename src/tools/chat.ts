@@ -17,6 +17,7 @@ import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
 import { TtsService } from '../tts/tts.service';
 import { SentenceSplitter } from '../conversation/sentence-splitter';
+import { MusicModule } from '../music/music.module';
 
 try {
   process.loadEnvFile('.env');
@@ -26,7 +27,7 @@ try {
 
 @Global()
 @Module({
-  imports: [LlmModule, TtsModule],
+  imports: [LlmModule, TtsModule, MusicModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

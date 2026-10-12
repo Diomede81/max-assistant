@@ -18,6 +18,8 @@ services:
       # Sound bridge (docs/DOCKER.md). Default suits Mac + Windows Docker Desktop.
       PULSE_SERVER: ${PULSE_SERVER:-tcp:host.docker.internal:4713}
       CONTROL_PANEL_HOST: 0.0.0.0
+      # Max's Spotify speaker (the "spotify" service below); ignored when it isn't running.
+      SPOTIFY_API_URL: http://spotify:3678
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: [openwakeword, whisper, piper]
     # Control panel (connect Office 365, WhatsApp...): http://localhost:8099, this computer only
@@ -49,6 +51,18 @@ services:
     command: --voice en_GB-alan-medium
     volumes: ["./data/piper:/data"]
     ports: ["10200:10200"]
+
+  # Max's own Spotify speaker (Spotify Premium). Enable with:  docker compose --profile max --profile music up -d
+  # Sign in once from the control panel. Shows up as "Max" in the Spotify app. See docs/MUSIC.md.
+  spotify:
+    image: ghcr.io/devgianlu/go-librespot:v0.10.3
+    profiles: ["music"]
+    restart: unless-stopped
+    environment:
+      PULSE_SERVER: ${PULSE_SERVER:-tcp:host.docker.internal:4713}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # Settings in ./spotify/config.yml; the sign-in is saved next to it (state.json).
+    volumes: ["./spotify:/config"]
 
   # Natural-sounding local voice (free). Enable with:  docker compose --profile max --profile kokoro up -d
   # then set TTS_PROVIDER=openai in .env (see docs/VOICES.md). First start downloads the model (~350 MB).

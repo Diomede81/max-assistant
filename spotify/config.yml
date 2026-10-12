@@ -1,0 +1,18 @@
+# go-librespot settings for Max's Spotify speaker (docs/MUSIC.md).
+# Full list: https://github.com/devgianlu/go-librespot/blob/master/config_schema.json
+device_name: Max
+device_type: speaker
+# Plays through the same sound connection as Max's voice (PULSE_SERVER in docker-compose.yml).
+audio_backend: pulseaudio
+bitrate: 320
+initial_volume: 60
+volume_steps: 100
+# Sign in once by approving a code at spotify.com/pair (shown on Max's control panel).
+zeroconf_enabled: false
+credentials:
+  type: device_auth
+# Max controls the speaker through this API. Reachable only inside Docker's network.
+server:
+  enabled: true
+  address: 0.0.0.0
+  port: 3678

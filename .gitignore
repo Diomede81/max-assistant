@@ -6,3 +6,6 @@ wakewords/*.tflite
 !wakewords/hey_max.tflite
 data/
 config/mcp-servers.json
+spotify/state.json
+spotify/lockfile
+spotify/*.tmp

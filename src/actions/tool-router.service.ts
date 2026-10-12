@@ -1,11 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
 import { matchesAny } from '../mcp/glob';
-import { BuiltinActionsService, EXTERNAL_FLAG } from './builtin-actions.service';
+import { Inject } from '@nestjs/common';
+import { EXTERNAL_FLAG } from './builtin-actions.service';
 import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
+import { BuiltinActionsService } from './builtin-actions.service';
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
@@ -31,11 +33,11 @@ export class ToolRouterService {
   private externalContentAt = 0;
 
   constructor(
+    private readonly modes: ModesService,
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly ha: HaMcpService,
     private readonly builtin: BuiltinActionsService,
     private readonly mcp: McpServersService,
-    private readonly modes: ModesService,
-    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -43,9 +45,13 @@ export class ToolRouterService {
     return this.modes.mode !== 'work' && matchesAny(name.toUpperCase(), this.cfg.memory.workApps);
   }
 
+  onModuleInit(): void {
+    this.mcp.hide = (name) => this.isLockedWorkApp(name);
+  }
+
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
-    const external = this.mcp.tools.filter((t) => !(t.type === 'function' && this.isLockedWorkApp(t.function.name))).map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
+    const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
     return [...this.builtin.tools, ...this.ha.openAiTools, ...external];
   }
 
@@ -61,11 +67,11 @@ export class ToolRouterService {
 
   async call(name: string, args: Record<string, unknown>): Promise<string> {
     this.log.log(`tool ${name} ${JSON.stringify(args)}`);
+    if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
+      args = { ...args, [EXTERNAL_FLAG]: true };
+    }
     try {
-      if (this.builtin.has(name)) {
-        const recent = Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS;
-        return await this.builtin.call(name, name === 'remember' && recent ? { ...args, [EXTERNAL_FLAG]: true } : args);
-      }
+      if (this.builtin.has(name)) return this.builtin.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
       if (this.isLockedWorkApp(name)) return 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';

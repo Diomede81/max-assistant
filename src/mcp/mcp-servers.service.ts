@@ -50,12 +50,15 @@ export class McpServersService implements OnModuleInit, OnModuleDestroy {
     return [...this.servers.values()];
   }
 
+  /** Actions to leave out right now (set by the action router, e.g. work apps outside work mode). */
+  hide?: (name: string) => boolean;
+
   get tools(): ChatCompletionTool[] {
     const seen = new Set<string>();
     const out: ChatCompletionTool[] = [];
     for (const s of this.servers.values()) {
       for (const t of s.openAiTools) {
-        if (t.type !== 'function' || seen.has(t.function.name)) continue;
+        if (t.type !== 'function' || seen.has(t.function.name) || this.hide?.(t.function.name)) continue;
         seen.add(t.function.name);
         out.push(t);
       }

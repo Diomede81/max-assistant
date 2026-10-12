@@ -80,6 +80,10 @@ See [`deploy/max.service`](deploy/max.service).
   hides personal details, and he searches by meaning, so knowledge scales without slowing him down.
   "Remember that…", "What do you know about…", "Forget…", "Work mode". See **[docs/MEMORY.md](docs/MEMORY.md)**.
 
+- **Projects**: people, tasks with due dates and spoken reminders, and a dedicated memory per project.
+  "Create a work project called Milan launch with Marco and Anna", "Add a task to Milan: send the budget
+  by Wednesday", "What's due this week?". See **[docs/MEMORY.md](docs/MEMORY.md#projects)**.
+
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
 ## Real-time voice (demo mode)

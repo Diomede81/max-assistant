@@ -24,6 +24,8 @@ export interface MemoryItem {
   source: Source;
   /** Saved right after Max read emails or web pages: may come from that content, shown with a warning. */
   unverified?: boolean;
+  /** Set when the fact belongs to a project's own memory. */
+  projectId?: string;
   /** "MM-DD" for yearly dates (birthdays), "YYYY-MM-DD" for one-off dates. */
   date?: string;
   expiresAt?: string;
@@ -32,6 +34,40 @@ export interface MemoryItem {
   uses: number;
   lastUsedAt?: string;
   vec?: string;
+}
+
+export interface ProjectPerson {
+  name: string;
+  role?: string;
+  /** Email or phone, if the user gave one. */
+  contact?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  /** "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (household time zone). */
+  due?: string;
+  assignee?: string;
+  priority?: 'high' | 'normal' | 'low';
+  status: 'open' | 'done';
+  /** Say it out loud when it's due (tasks with a time are reminded by default). */
+  remind?: boolean;
+  reminded?: boolean;
+  createdAt: string;
+  doneAt?: string;
+}
+
+export interface Project {
+  id: string;
+  vault: VaultName;
+  name: string;
+  description?: string;
+  status: 'active' | 'on_hold' | 'done';
+  people: ProjectPerson[];
+  tasks: Task[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Episode {
@@ -43,12 +79,14 @@ export interface Episode {
   /** note = one conversation; week/month = digests that replaced older notes. */
   level?: 'note' | 'week' | 'month';
   from?: string;
+  projectId?: string;
   vec?: string;
 }
 
 export interface NewItem {
   text: string;
   vault: VaultName;
+  projectId?: string;
   kind?: Kind;
   subject?: string;
   date?: string;
@@ -61,6 +99,7 @@ interface VaultData {
   version: 2;
   items: MemoryItem[];
   episodes: Episode[];
+  projects: Project[];
 }
 
 interface Vault {
@@ -108,6 +147,8 @@ export class MemoryService implements OnModuleInit {
   private readonly log = new Logger('Memory');
   private readonly vaults = new Map<VaultName, Vault>();
   private activityLog?: ActivityLog;
+  /** Extra parts of the standing memory (e.g. projects and tasks), given the open vaults. */
+  readonly sections: ((open: VaultName[]) => string)[] = [];
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -148,13 +189,14 @@ export class MemoryService implements OnModuleInit {
   // ---------- Reading ----------
 
   /** Everything, for the control panel (which is the owner's own view). */
-  snapshot(): { name: VaultName; status: string; error?: string; items: MemoryItem[]; episodes: Episode[] }[] {
+  snapshot(): { name: VaultName; status: string; error?: string; items: MemoryItem[]; episodes: Episode[]; projects: Project[] }[] {
     return VAULTS.map((n) => this.vaults.get(n)).filter((v): v is Vault => !!v).map((v) => ({
       name: v.name,
       status: v.status,
       error: v.error,
       items: v.data.items,
       episodes: v.data.episodes,
+      projects: v.data.projects,
     }));
   }
 
@@ -197,10 +239,12 @@ export class MemoryService implements OnModuleInit {
     const now = Date.now();
     const score = (i: MemoryItem) =>
       KIND_WEIGHT[i.kind] + Math.min(i.uses, 10) * 0.2 + Math.max(0, 1 - (now - Date.parse(i.updatedAt)) / (90 * 86400_000));
+    const projectNames = new Map(this.projectsIn(open).map((p) => [p.id, p.name]));
     const core: string[] = [];
     let used = 0;
     for (const i of [...items].sort((a, b) => score(b) - score(a))) {
-      const line = `- [${i.vault}] ${i.text}`;
+      const proj = i.projectId ? projectNames.get(i.projectId) : undefined;
+      const line = `- [${i.vault}${proj ? `, project ${proj}` : ''}] ${i.text}`;
       if (used + line.length > this.cfg.memory.promptChars) break;
       core.push(line);
       used += line.length;
@@ -229,6 +273,7 @@ export class MemoryService implements OnModuleInit {
       core.length ? `Key facts:\n${core.join('\n')}` : 'No saved facts yet.',
       total > core.length ? `(${total - core.length} more facts are searchable with recall.)` : '',
       upcoming.length ? `Coming up:\n${upcoming.join('\n')}` : '',
+      ...this.sections.map((f) => f(open)),
       recent.length ? `Recent conversations:\n${recent.join('\n')}` : '',
       'Use recall to search all facts and past conversations before saying you don\'t know something personal. ' +
         'When the user asks you to remember something, or mentions a lasting detail (people, preferences, routines, ' +
@@ -281,6 +326,7 @@ export class MemoryService implements OnModuleInit {
         date: validDate(n.date) ?? same.date,
         expiresAt: validDate(n.expires) ? endOfDay(n.expires!) : same.expiresAt,
         unverified: n.unverified || undefined,
+        projectId: n.projectId ?? same.projectId,
         ...(vec ? { vec: toB64(vec) } : {}),
       });
       this.save(v);
@@ -302,6 +348,7 @@ export class MemoryService implements OnModuleInit {
       text,
       source: n.source,
       unverified: n.unverified || undefined,
+      projectId: n.projectId,
       date: validDate(n.date),
       expiresAt: validDate(n.expires) ? endOfDay(n.expires!) : oneOffExpiry(validDate(n.date)),
       createdAt: now,
@@ -332,16 +379,60 @@ export class MemoryService implements OnModuleInit {
     return `Forgot: ${targets.map((t) => t.text).join('; ')}.`;
   }
 
-  async addEpisode(vault: VaultName, summary: string, at = new Date()): Promise<void> {
+  async addEpisode(vault: VaultName, summary: string, at = new Date(), projectId?: string): Promise<void> {
     const v = this.vault(vault);
     const text = summary.replace(/\s+/g, ' ').trim().slice(0, 500);
     if (!v || !text) return;
     const [vec] = (await this.embedder.embed([text])) ?? [];
-    v.data.episodes.push({ id: randomUUID(), vault, at: at.toISOString(), summary: text, level: 'note', vec: vec ? toB64(vec) : undefined });
+    v.data.episodes.push({ id: randomUUID(), vault, at: at.toISOString(), summary: text, level: 'note', projectId, vec: vec ? toB64(vec) : undefined });
     this.activity('note', 'New conversation note', [vault], [text]);
     if (v.data.episodes.length > MAX_EPISODES_PER_VAULT) v.data.episodes.splice(0, v.data.episodes.length - MAX_EPISODES_PER_VAULT);
     this.log.log(`Conversation note [${vault}]: "${text}"`);
     this.save(v);
+  }
+
+  // ---------- Projects (stored inside the vaults; logic in ProjectsService) ----------
+
+  projectsIn(vaults: VaultName[]): Project[] {
+    return vaults.flatMap((n) => this.vault(n)?.data.projects ?? []);
+  }
+
+  addProject(p: Project): boolean {
+    const v = this.vault(p.vault);
+    if (!v) return false;
+    v.data.projects.push(p);
+    this.save(v);
+    return true;
+  }
+
+  /** Saves a project after it was changed in place. */
+  touchProject(p: Project): void {
+    p.updatedAt = new Date().toISOString();
+    const v = this.vault(p.vault);
+    if (v) this.save(v);
+  }
+
+  /** Deletes a project with its own facts and notes. */
+  deleteProject(id: string): Project | undefined {
+    for (const v of this.openVaults()) {
+      const p = v.data.projects.find((x) => x.id === id);
+      if (!p) continue;
+      v.data.projects = v.data.projects.filter((x) => x.id !== id);
+      v.data.items = v.data.items.filter((i) => i.projectId !== id);
+      v.data.episodes = v.data.episodes.filter((e) => e.projectId !== id);
+      this.save(v);
+      return p;
+    }
+    return undefined;
+  }
+
+  /** Facts and notes that belong to a project, newest first. */
+  projectMemory(p: Project): { facts: MemoryItem[]; notes: Episode[] } {
+    const v = this.vault(p.vault);
+    return {
+      facts: (v?.data.items ?? []).filter((i) => i.projectId === p.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      notes: (v?.data.episodes ?? []).filter((e) => e.projectId === p.id).sort((a, b) => b.at.localeCompare(a.at)),
+    };
   }
 
   /** All conversation notes and digests in one vault, oldest first (for the digest job). */
@@ -501,13 +592,16 @@ export class MemoryService implements OnModuleInit {
     const qNorm = normalise(q);
     const pool: Omit<Hit, 'score'>[] = [];
     const vecs = new Map<string, string | undefined>();
+    const projectName = new Map(this.projectsIn(vaults).map((p) => [p.id, p.name]));
+    const tag = (pid?: string) => (pid && projectName.has(pid) ? `(project ${projectName.get(pid)}) ` : '');
     for (const i of this.items(vaults)) {
-      pool.push({ type: 'item', id: i.id, vault: i.vault, text: i.subject && !i.text.includes(i.subject) ? `${i.subject}: ${i.text}` : i.text, at: i.updatedAt, item: i });
+      const base = i.subject && !i.text.includes(i.subject) ? `${i.subject}: ${i.text}` : i.text;
+      pool.push({ type: 'item', id: i.id, vault: i.vault, text: `${tag(i.projectId)}${base}`, at: i.updatedAt, item: i });
       vecs.set(i.id, i.vec);
     }
     if (episodes) {
       for (const e of this.episodes(vaults)) {
-        pool.push({ type: 'episode', id: e.id, vault: e.vault, text: e.summary, at: e.at, when: episodeLabel(e) });
+        pool.push({ type: 'episode', id: e.id, vault: e.vault, text: `${tag(e.projectId)}${e.summary}`, at: e.at, when: episodeLabel(e) });
         vecs.set(e.id, e.vec);
       }
     }
@@ -624,7 +718,7 @@ export class MemoryService implements OnModuleInit {
 
   private load(name: VaultName, key: Buffer): Vault {
     const file = this.path(name);
-    const empty = (): VaultData => ({ version: 2, items: [], episodes: [] });
+    const empty = (): VaultData => ({ version: 2, items: [], episodes: [], projects: [] });
     const v: Vault = { name, key, data: empty(), status: 'open', writing: Promise.resolve() };
     let raw: string;
     try {
@@ -652,6 +746,7 @@ export class MemoryService implements OnModuleInit {
         version: 2,
         items: (d.items ?? []).filter((i) => i && typeof i.text === 'string').map((i) => ({ ...i, vault: name, uses: i.uses ?? 0 })),
         episodes: (d.episodes ?? []).filter((e) => e && typeof e.summary === 'string').map((e) => ({ ...e, vault: name })),
+        projects: (d.projects ?? []).filter((p) => p && typeof p.name === 'string').map((p) => ({ ...p, vault: name, people: p.people ?? [], tasks: p.tasks ?? [] })),
       };
     } catch (err) {
       const aside = `${file}.damaged-${Date.now()}`;
@@ -663,7 +758,7 @@ export class MemoryService implements OnModuleInit {
       this.log.error(`The ${name} vault is damaged (${(err as Error).message}); moved to ${aside}, starting it empty`);
       return v;
     }
-    this.log.log(`${name} vault: ${v.data.items.length} facts, ${v.data.episodes.length} conversation notes (encrypted)`);
+    this.log.log(`${name} vault: ${v.data.items.length} facts, ${v.data.episodes.length} conversation notes, ${v.data.projects.length} projects (encrypted)`);
     return v;
   }
 

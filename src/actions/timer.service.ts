@@ -66,6 +66,11 @@ export class TimerService extends EventEmitter implements OnModuleDestroy {
     return victims;
   }
 
+  /** Says something out loud like a reminder (e.g. a project task falling due). */
+  announce(text: string): void {
+    this.emit('fired', { id: 0, reminder: text, durationSeconds: 0, endsAt: Date.now() } as unknown as Timer);
+  }
+
   private fire(id: number): void {
     const t = this.timers.get(id);
     if (!t) return;

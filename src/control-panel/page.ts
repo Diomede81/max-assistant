@@ -31,6 +31,8 @@ export interface PanelData {
     selected?: string;
     query?: string;
     activity: { at: string; kind: string; what: string; vaults?: string[]; items?: string[] }[];
+    projects: PanelProject[];
+    project?: string;
   };
 }
 
@@ -41,6 +43,80 @@ const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'n
 const hidden = (name: string, value: string) => `<input type="hidden" name="${name}" value="${esc(value)}">`;
 const post = (action: string, fields: Record<string, string>, label: string, cls = 'btn secondary') =>
   `<form method="post" action="${action}">${Object.entries(fields).map(([k, v]) => hidden(k, v)).join('')}<button class="${cls}" type="submit">${label}</button></form>`;
+
+export interface PanelProject {
+  id: string;
+  name: string;
+  vault: string;
+  status: string;
+  description?: string;
+  people: { name: string; role?: string; contact?: string }[];
+  tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string }[];
+  facts: { id: string; text: string; updatedAt: string }[];
+  notes: { id: string; summary: string; at: string }[];
+}
+
+const STATUS: Record<string, string> = { active: 'Active', on_hold: 'On hold', done: 'Finished' };
+
+function projectsSection(m: NonNullable<PanelData['memory']>): string {
+  const sel = m.projects.find((p) => p.id === m.project);
+  const today = new Date().toISOString().slice(0, 10);
+  const rank = (p: PanelProject) => ({ active: 0, on_hold: 1, done: 2 })[p.status as 'active'] ?? 3;
+  const list = m.projects.length
+    ? [...m.projects]
+        .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+        .map((p) => {
+          const open = p.tasks.filter((t) => t.status === 'open').sort((a, b) => (a.due ?? '9').localeCompare(b.due ?? '9'));
+          const overdue = open.filter((t) => t.due && t.due.slice(0, 10) < today).length;
+          const locked = !m.readable.includes(p.vault);
+          return `<li class="row"><div><div class="name">${esc(p.name)} <span class="badge ${p.status === 'active' ? 'ok' : 'off'}">${esc(STATUS[p.status] ?? p.status)}</span> <span class="badge off">${esc(VAULT_LABEL[p.vault])}</span>${locked ? ' <span class="badge off">locked for Max</span>' : ''}${overdue ? ` <span class="badge warn">${overdue} overdue</span>` : ''}</div>
+<div class="meta">${p.people.length} ${p.people.length === 1 ? 'person' : 'people'} · ${open.length} open task${open.length === 1 ? '' : 's'}${open[0]?.due ? ` · next: ${esc(open[0].text)}` : ''}</div></div>
+<a class="btn ${sel?.id === p.id ? '' : 'secondary'}" href="/?project=${encodeURIComponent(p.id)}#projects">Open</a></li>`;
+        })
+        .join('')
+    : '<li class="empty">No projects yet. Say "Hey Max, create a work project called Milan launch with Marco and Anna", or add one below.</li>';
+  const vaultOpts = (cur = 'work') => ['work', 'personal', 'household'].map((v) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${VAULT_LABEL[v]}</option>`).join('');
+  const create = `<form class="stack" method="post" action="/projects/create">
+<div class="addfact"><input name="name" maxlength="80" required placeholder="New project name"><select name="vault" aria-label="Vault">${vaultOpts()}</select></div>
+<div class="addfact"><input name="people" placeholder="People, e.g. Marco (supplier, marco@acme.com), Anna (designer)"></div>
+<div class="addfact"><input name="description" maxlength="500" placeholder="What it's about (optional)"><button class="btn" type="submit">Create</button></div></form>`;
+  return `<section id="projects"><h2>Projects</h2><ul>${list}</ul>${create}</section>${sel ? projectDetail(sel) : ''}`;
+}
+
+function projectDetail(p: PanelProject): string {
+  const id = { id: p.id };
+  const open = p.tasks.filter((t) => t.status === 'open').sort((a, b) => (a.due ?? '9').localeCompare(b.due ?? '9'));
+  const done = p.tasks.filter((t) => t.status === 'done');
+  const today = new Date().toISOString().slice(0, 10);
+  const statusOpts = Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === p.status ? 'selected' : ''}>${v}</option>`).join('');
+  const people = p.people.length
+    ? p.people.map((x) => `<li class="row"><div><div>${esc(x.name)}${x.role ? ` <span class="meta">· ${esc(x.role)}</span>` : ''}</div>${x.contact ? `<div class="meta">${esc(x.contact)}</div>` : ''}</div>${post('/projects/person-remove', { ...id, name: x.name }, 'Remove')}</li>`).join('')
+    : '<li class="empty">No people yet.</li>';
+  const tasks = open.length
+    ? open.map((t) => `<li class="row"><div><div>${esc(t.title)}${t.priority === 'high' ? ' <span class="badge warn">high</span>' : ''}${t.due && t.due.slice(0, 10) < today ? ' <span class="badge warn">overdue</span>' : ''}</div><div class="meta">${esc(t.text.slice(t.title.length).replace(/^, /, ''))}</div></div>
+<div class="acts">${post('/projects/task-done', { ...id, task: t.id }, 'Done', 'btn')}${post('/projects/task-delete', { ...id, task: t.id }, 'Delete')}</div></li>`).join('')
+    : '<li class="empty">No open tasks.</li>';
+  const doneList = done.length
+    ? `<details><summary class="meta">${done.length} finished task${done.length === 1 ? '' : 's'}</summary><ul>${done.map((t) => `<li class="row"><div class="meta">${esc(t.text)}</div>${post('/projects/task-reopen', { ...id, task: t.id }, 'Reopen')}</li>`).join('')}</ul></details>`
+    : '';
+  const facts = p.facts.length
+    ? p.facts.map((f) => `<li class="row"><div><div>${esc(f.text)}</div><div class="meta">${esc(day(f.updatedAt))}</div></div>${post('/memory/delete', { id: f.id, vault: p.vault }, 'Forget')}</li>`).join('')
+    : '<li class="empty">Nothing yet. Say "remember for the Milan project that…", or add a note below.</li>';
+  const notes = p.notes.length ? `<details><summary class="meta">${p.notes.length} conversation note${p.notes.length === 1 ? '' : 's'}</summary><ul>${p.notes.map((n) => `<li class="meta">${esc(day(n.at))}: ${esc(n.summary)}</li>`).join('')}</ul></details>` : '';
+  const assignees = `<datalist id="people-${esc(p.id)}">${p.people.map((x) => `<option value="${esc(x.name)}">`).join('')}</datalist>`;
+  return `<section id="project"><h2>${esc(p.name)} · ${esc(VAULT_LABEL[p.vault])}</h2>
+<form class="addfact" method="post" action="/projects/update">${hidden('id', p.id)}<select name="status" aria-label="Status">${statusOpts}</select><input name="description" maxlength="500" value="${esc(p.description ?? '')}" placeholder="Description"><button class="btn secondary" type="submit">Save</button></form>
+<h3>Tasks</h3><ul>${tasks}</ul>${doneList}
+<form class="stack" method="post" action="/projects/task-add">${hidden('id', p.id)}
+<div class="addfact"><input name="title" maxlength="200" required placeholder="New task"></div>
+<div class="addfact"><input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)"><input name="assignee" list="people-${esc(p.id)}" placeholder="Who">${assignees}<select name="priority" aria-label="Priority"><option value="normal">normal</option><option value="high">high</option><option value="low">low</option></select><button class="btn" type="submit">Add</button></div></form>
+<h3>People</h3><ul>${people}</ul>
+<form class="addfact" method="post" action="/projects/person-add">${hidden('id', p.id)}<input name="people" required placeholder="e.g. Marco (supplier, marco@acme.com)"><button class="btn secondary" type="submit">Add</button></form>
+<h3>Project memory</h3><ul>${facts}</ul>${notes}
+<form class="addfact" method="post" action="/projects/note-add">${hidden('id', p.id)}<input name="fact" maxlength="300" required placeholder="Add a note to this project"><button class="btn secondary" type="submit">Remember</button></form>
+<form class="addfact danger" method="post" action="/projects/delete">${hidden('id', p.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this project with its tasks and memory</label><button class="btn secondary" type="submit">Delete</button></form>
+</section>`;
+}
 
 const ACTIVITY: Record<string, string> = {
   shared: 'Shared with AI', recall: 'Searched', saved: 'Saved', updated: 'Updated', forgot: 'Forgot', moved: 'Moved',
@@ -185,7 +261,8 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}
-details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
+h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
+input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:1px}
@@ -205,6 +282,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 ${musicSection(d.music)}
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
+${d.memory ? projectsSection(d.memory) : ''}
 ${d.memory ? memorySection(d.memory) : ''}
 ${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
 <p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>

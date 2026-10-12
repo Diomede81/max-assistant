@@ -34,6 +34,37 @@ finds "Sofia's birthday is 14 March". Search runs on the box with a small built-
 memory is never sent anywhere to be indexed. Only the few relevant notes go to the AI service with a
 question, never the whole memory.
 
+## Projects
+
+A project groups everything about one piece of work or life: "Milan launch", "Kitchen renovation",
+"Sofia's party". Each project has:
+
+- **People**: name, role and contact ("Marco (supplier, marco@acme.com)")
+- **Tasks**: due date (and optional time), who does it, priority. Tasks with a time are **announced out
+  loud when due**; all open tasks due in the next week, or overdue, are part of Max's standing memory.
+- **Its own memory**: facts and conversation notes filed under the project, so "what do we know about
+  Milan?" brings back exactly that.
+
+A project lives in a vault (Work, Personal or Household) and follows its rules: a Work project is
+encrypted with the Work vault, invisible outside work mode, and its reminders wait until work mode.
+
+| You say | Max does |
+| --- | --- |
+| "Create a work project called Milan launch with Marco, the supplier, and Anna, the designer" | Creates it with its people |
+| "Add a task to Milan: send the budget to Marco by Wednesday, high priority" | Adds a dated task |
+| "Remind me to call Marco tomorrow at 10 for the Milan project" | Adds a task with a spoken reminder |
+| "What's due this week?" / "What's overdue?" / "What does Anna have to do?" | Lists tasks across projects |
+| "The budget is done" | Marks the task as done |
+| "Remember for Milan that the opening is 20 November" | Files it in the project's memory |
+| "How's the Milan project going?" | People, open tasks and the latest project notes |
+| "Add Tom from finance to Milan" / "Put the kitchen project on hold" | Updates the project |
+
+After a conversation, Max also files notes and facts under the right project, and adds a task when you
+clearly committed to one ("I'll send Anna the floor plan by Thursday").
+
+On the control panel (**Projects**) you can create projects, tick off tasks, add people and notes, change
+the status, and delete a project (with its tasks and memory; this needs a confirmation tick).
+
 ## Modes: keeping work and private life apart
 
 | Mode | Max can use | When |

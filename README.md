@@ -92,6 +92,12 @@ conversation, typically under a second to respond, paid per minute. See **[docs/
 The default voice (Piper) is fast but robotic. For a natural voice, switch to **Kokoro**
 (free, runs locally) or **OpenAI voices** (paid, most expressive). See **[docs/VOICES.md](docs/VOICES.md)**.
 
+## Music
+
+The Max box can be a Spotify speaker: "Hey Max, play my running playlist", "skip", "louder". It also
+appears as **Max** in the Spotify app on any phone, and the music turns down while Max talks (needs
+Spotify Premium). See **[docs/MUSIC.md](docs/MUSIC.md)**.
+
 ## Project layout
 
 | Module | Responsibility |

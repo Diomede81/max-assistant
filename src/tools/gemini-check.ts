@@ -13,6 +13,7 @@ import WebSocket from 'ws';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig, loadConfig } from '../config';
 import { ActionsModule } from '../actions/actions.module';
+import { MusicModule } from '../music/music.module';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { BuiltinActionsService } from '../actions/builtin-actions.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
@@ -27,7 +28,7 @@ try {
 }
 
 @Global()
-@Module({ imports: [ActionsModule], providers: [{ provide: APP_CONFIG, useFactory: loadConfig }], exports: [APP_CONFIG] })
+@Module({ imports: [ActionsModule, MusicModule], providers: [{ provide: APP_CONFIG, useFactory: loadConfig }], exports: [APP_CONFIG] })
 class CheckModule {}
 
 type Result = { ok: boolean; detail: string };

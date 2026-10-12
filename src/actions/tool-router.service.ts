@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
@@ -8,6 +8,7 @@ import { EXTERNAL_FLAG } from './builtin-actions.service';
 import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
+import { MusicService } from '../music/music.service';
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
@@ -38,6 +39,7 @@ export class ToolRouterService {
     private readonly ha: HaMcpService,
     private readonly builtin: BuiltinActionsService,
     private readonly mcp: McpServersService,
+    @Optional() private readonly music?: MusicService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -52,7 +54,7 @@ export class ToolRouterService {
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
     const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
-    return [...this.builtin.tools, ...this.ha.openAiTools, ...external];
+    return [...this.builtin.tools, ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
   }
 
   get homeAssistantConnected(): boolean {
@@ -72,6 +74,7 @@ export class ToolRouterService {
     }
     try {
       if (this.builtin.has(name)) return this.builtin.call(name, args);
+      if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
       if (this.isLockedWorkApp(name)) return 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';

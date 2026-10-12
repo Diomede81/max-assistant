@@ -11,6 +11,7 @@ import { createInterface } from 'node:readline';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { APP_CONFIG, loadConfig } from '../config';
 import { LlmModule } from '../llm/llm.module';
+import { MusicModule } from '../music/music.module';
 import { LlmService, explainLlmError } from '../llm/llm.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TimerService, announcement } from '../actions/timer.service';
@@ -29,7 +30,7 @@ try {
 
 @Global()
 @Module({
-  imports: [LlmModule, TtsModule],
+  imports: [LlmModule, TtsModule, MusicModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

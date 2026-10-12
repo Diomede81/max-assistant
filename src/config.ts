@@ -37,6 +37,14 @@ export interface AppConfig {
     systemPrompt: string;
   };
   ha: { mcpUrl: string; token: string };
+  music: {
+    /** go-librespot API (the Spotify speaker running next to Max); empty = no music. */
+    spotifyUrl: string;
+    /** Music volume while Max is talking, in % of full volume. */
+    duckVolume: number;
+    /** Spotify's public search service (only changed for testing). */
+    webApiUrl: string;
+  };
   composio: {
     apiKey: string;
     /** Your identity inside Composio (any stable string); connections belong to it. */
@@ -232,6 +240,11 @@ export function loadConfig(): AppConfig {
     ha: {
       mcpUrl: env.HA_MCP_URL ?? 'http://homeassistant.local:8123/api/mcp',
       token: env.HA_TOKEN ?? '',
+    },
+    music: {
+      spotifyUrl: env.SPOTIFY_API_URL ?? '',
+      duckVolume: num(env.MUSIC_DUCK_VOLUME, 15),
+      webApiUrl: env.SPOTIFY_WEB_API_URL || 'https://api.spotify.com/v1',
     },
   };
 }

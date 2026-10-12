@@ -65,6 +65,8 @@ export interface AppConfig {
     key: string;
     /** Write a short note (and file lasting facts) after each conversation, using the text AI model. */
     autoLearn: boolean;
+    /** Roll old conversation notes up into weekly, then monthly digests (text AI model). */
+    digests: boolean;
     /** How many recent conversation notes Max sees at the start of a conversation. */
     recentConversations: number;
     /** Upper limit on the core facts loaded into every conversation (characters). */
@@ -199,6 +201,7 @@ export function loadConfig(): AppConfig {
       dir: env.MEMORY_DIR || 'data',
       key: env.MEMORY_KEY ?? '',
       autoLearn: env.MEMORY_AUTO_LEARN !== 'off',
+      digests: env.MEMORY_DIGESTS !== 'off',
       recentConversations: num(env.MEMORY_RECENT_CONVERSATIONS, 3),
       promptChars: num(env.MEMORY_PROMPT_CHARS, 2000),
       workHours: env.WORK_HOURS ?? 'Mon-Fri 09:00-17:30',

@@ -20,7 +20,11 @@ Inside each vault:
 - **Dates**: birthdays repeat every year; one-off dates (a visit, a deadline) tidy themselves up
   afterwards. Anything in the next three weeks is mentioned to Max as "coming up".
 - **Conversation notes**: after each conversation worth remembering, a one-line note is filed in the
-  right vault. Hundreds of them are fine: they're searched, never loaded in bulk.
+  right vault. They're searched, never loaded in bulk.
+- **Digests**: once a week is over (and a week old), its notes are rolled up into one weekly digest; once
+  a month is over, its weekly digests become one monthly digest. A year of daily conversations ends up
+  as about a dozen monthly summaries per vault, all still searchable, with names, decisions, dates and
+  open items kept. (Uses the text AI model; `MEMORY_DIGESTS=off` turns it off.)
 
 ## How Max uses it
 
@@ -72,6 +76,24 @@ question, never the whole memory.
   never part of the core) until you confirm it. This stops a malicious email from planting
   "instructions" in his memory. Memory is always given to the AI as notes, never as instructions.
 
+## Activity log: who saw what
+
+The control panel's **Memory activity** section lists, for the last 30 days:
+
+- **Shared with AI**: which memories went to the AI service at the start of each conversation, and
+  which were added because they were relevant to a question
+- **Searched**: what Max looked up, and what he found
+- **Saved / Updated / Forgot / Moved / Filed / Digest**: every change to memory and where it came from
+- **Mode** switches, and **Refused** attempts to store a password or code (the secret itself is never logged)
+
+The log is encrypted like the vaults and can be cleared from the panel.
+
+## Upgrading from the first memory version
+
+If Max already has memories from the first version (an unencrypted `data/memory.json`), they're imported
+into the encrypted **Personal** vault on first start, and the old file is deleted. Move any facts that
+belong to Household or Work on the control panel.
+
 ## Control panel
 
 http://localhost:8099 → **Memory**: switch modes, browse each vault, search, add facts, move a fact to
@@ -87,6 +109,7 @@ vaults whatever the mode.
 | `WORK_APPS` | (none) | Work app actions, e.g. `OUTLOOK_*` |
 | `PANEL_PASSWORD` | (none) | Control panel password |
 | `MEMORY_AUTO_LEARN` | on | `off` stops conversation filing; "remember…" still works |
+| `MEMORY_DIGESTS` | on | `off` keeps every conversation note as it is |
 | `MEMORY_RECENT_CONVERSATIONS` | 3 | Conversation notes in each conversation's core |
 | `MEMORY_PROMPT_CHARS` | 2000 | Size of the core fact list |
 | `MEMORY` | on | `off` turns memory off |

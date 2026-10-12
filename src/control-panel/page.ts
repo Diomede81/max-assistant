@@ -22,7 +22,7 @@ export interface PanelData {
       status: string;
       error?: string;
       facts: { id: string; kind: string; subject?: string; text: string; source: string; unverified?: boolean; date?: string; expiresAt?: string; updatedAt: string }[];
-      notes: { id: string; at: string; summary: string }[];
+      notes: { id: string; at: string; summary: string; level?: string; from?: string }[];
       totalNotes: number;
     }[];
     autoLearn: boolean;
@@ -30,6 +30,7 @@ export interface PanelData {
     workApps: string[];
     selected?: string;
     query?: string;
+    activity: { at: string; kind: string; what: string; vaults?: string[]; items?: string[] }[];
   };
 }
 
@@ -40,6 +41,32 @@ const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'n
 const hidden = (name: string, value: string) => `<input type="hidden" name="${name}" value="${esc(value)}">`;
 const post = (action: string, fields: Record<string, string>, label: string, cls = 'btn secondary') =>
   `<form method="post" action="${action}">${Object.entries(fields).map(([k, v]) => hidden(k, v)).join('')}<button class="${cls}" type="submit">${label}</button></form>`;
+
+const ACTIVITY: Record<string, string> = {
+  shared: 'Shared with AI', recall: 'Searched', saved: 'Saved', updated: 'Updated', forgot: 'Forgot', moved: 'Moved',
+  note: 'Filed', digest: 'Digest', mode: 'Mode', blocked: 'Refused',
+};
+const time = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const noteWhen = (n: { at: string; level?: string; from?: string }) =>
+  n.level === 'month'
+    ? new Date(n.from ?? n.at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' · monthly digest'
+    : n.level === 'week'
+      ? `Week of ${day(n.from ?? n.at)} · weekly digest`
+      : day(n.at);
+
+function activitySection(a: NonNullable<PanelData['memory']>['activity']): string {
+  const rows = a.length
+    ? a
+        .map(
+          (e) => `<li class="row"><div><div><b>${esc(ACTIVITY[e.kind] ?? e.kind)}</b> · ${esc(e.what)}${e.vaults?.length ? ` <span class="meta">(${esc(e.vaults.join(', '))})</span>` : ''}</div>
+<div class="meta">${esc(time(e.at))}</div>${e.items?.length ? `<details><summary class="meta">${e.items.length} memor${e.items.length === 1 ? 'y' : 'ies'}</summary><ul class="items">${e.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></details>` : ''}</div></li>`,
+        )
+        .join('')
+    : '<li class="empty">Nothing yet.</li>';
+  return `<section id="activity"><h2>Memory activity · last 30 days</h2>
+<p class="meta">Which memories were shared with the AI service, searched, saved or changed, and mode switches. Encrypted like the vaults.</p>
+<ul>${rows}</ul><div class="acts" style="margin-top:12px">${post('/activity/clear', {}, 'Clear activity log')}</div></section>`;
+}
 
 function memorySection(m: NonNullable<PanelData['memory']>): string {
   const sel = m.selected ?? 'personal';
@@ -72,7 +99,7 @@ ${post('/memory/delete', { id: f.id, vault: v.name }, 'Forget')}</div></li>`,
             .join('') + (shown.length > FACTS_SHOWN ? `<li class="empty">${shown.length - FACTS_SHOWN} more: use search to find them.</li>` : '')
         : `<li class="empty">${q ? 'Nothing matches.' : 'Nothing yet. Say "Hey Max, remember that…", or add a fact below.'}</li>`;
   const notes = v.notes.length
-    ? v.notes.map((n) => `<li class="row"><div><div>${esc(n.summary)}</div><div class="meta">${esc(day(n.at))}</div></div>${post('/memory/delete', { id: n.id, type: 'note', vault: v.name }, 'Forget')}</li>`).join('')
+    ? v.notes.map((n) => `<li class="row"><div><div>${esc(n.summary)}</div><div class="meta">${esc(noteWhen(n))}</div></div>${post('/memory/delete', { id: n.id, type: 'note', vault: v.name }, 'Forget')}</li>`).join('')
     : `<li class="empty">${m.autoLearn ? 'Max files a one-line note after each conversation worth remembering.' : 'Conversation notes are off (MEMORY_AUTO_LEARN=off).'}</li>`;
   const kinds = ['fact', 'person', 'preference', 'routine', 'date', 'project'].map((k) => `<option>${k}</option>`).join('');
   return `<section id="memory"><h2>Memory</h2>
@@ -85,7 +112,9 @@ ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read M
 <ul>${facts}</ul>
 <form class="addfact" method="post" action="/memory/add">${hidden('vault', v.name)}<input name="fact" maxlength="300" required placeholder="Add to ${VAULT_LABEL[v.name]}, e.g. Sofia's birthday is 14 March"><select name="kind" aria-label="Kind">${kinds}</select><button class="btn" type="submit">Remember</button></form>
 <p class="meta">Each vault is encrypted separately. Passwords, PINs and codes are never stored.</p></section>
-<section><h2>${VAULT_LABEL[v.name]} conversations${v.totalNotes > v.notes.length ? ` (latest ${v.notes.length} of ${v.totalNotes}; Max can search them all)` : ''}</h2><ul>${notes}</ul></section>`;
+<section><h2>${VAULT_LABEL[v.name]} conversations${v.totalNotes > v.notes.length ? ` (latest ${v.notes.length} of ${v.totalNotes}; Max can search them all)` : ''}</h2><ul>${notes}</ul>
+<p class="meta">Older notes are rolled up into weekly, then monthly digests automatically.</p></section>
+${activitySection(m.activity)}`;
 }
 
 const esc = (s: unknown) =>
@@ -156,6 +185,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}
+details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:1px}

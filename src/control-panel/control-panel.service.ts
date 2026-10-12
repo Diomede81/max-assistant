@@ -85,6 +85,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.json(res, this.memory.snapshot().map((v) => ({ ...v, items: v.items.map(({ vec, ...i }) => i), episodes: v.episodes.map(({ vec, ...e }) => e) })));
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
+    if (req.method === 'GET' && url.pathname === '/api/memory/activity') return this.json(res, this.memory.recentActivity(500));
+    if (req.method === 'POST' && url.pathname === '/activity/clear') {
+      this.memory.clearActivity();
+      return this.redirect(res, '/?ok=Activity%20log%20cleared.#activity');
+    }
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
       if (['personal', 'work', 'guest', 'auto'].includes(m)) this.modes.set(m as Mode | 'auto');
@@ -150,12 +155,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               status: v.status,
               error: v.error,
               facts: [...v.items].reverse(),
-              notes: [...v.episodes].reverse().slice(0, 10),
+              notes: [...v.episodes].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10),
               totalNotes: v.episodes.length,
             })),
             autoLearn: this.cfg.memory.autoLearn,
             passwordSet: this.auth.enabled,
             workApps: this.cfg.memory.workApps,
+            activity: this.memory.recentActivity(60),
           }
         : undefined,
       servers: this.mcp.list.map((s) => ({

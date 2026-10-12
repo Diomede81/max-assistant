@@ -31,6 +31,8 @@ export class ModesService {
   private readonly slots: Slot[];
   private override?: { mode: Mode; until: number };
   private readonly file: string;
+  /** Told about every switch (the memory activity log). */
+  onChange?: (description: string) => void;
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
     this.slots = parseHours(cfg.memory.workHours);
@@ -74,6 +76,7 @@ export class ModesService {
     }
     this.save();
     this.log.log(`Mode: ${this.describe()}`);
+    this.onChange?.(`Switched to ${this.describe()}`);
     return this.describe();
   }
 

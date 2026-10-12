@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config';
+import { describeCapabilities } from '../actions/capabilities';
 import { SpeakerService } from '../audio/speaker.service';
 import { Resampler } from '../audio/resampler';
 import { AsyncQueue } from '../wyoming/async-queue';
@@ -77,6 +78,14 @@ export class RealtimeConversationService {
       language: rt.language,
       vadThreshold: this.cfg.vad.rmsThreshold,
     };
+    // Tell the model which apps it can reach, from the actions actually offered this session.
+    const capabilities = describeCapabilities(options.tools);
+    if (capabilities) options.instructions += `\n${capabilities}`;
+    this.log.log(
+      `Actions offered this session: ${options.tools.length}` +
+        (rt.tools ? '' : ' (REALTIME_TOOLS=off)') +
+        (capabilities ? '' : ' - no email/web apps among them, so Max will say he has no access'),
+    );
     const client: VoiceClient = rt.provider === 'gemini' ? new GeminiLiveClient(options) : new RealtimeClient(options);
     const resampler = new Resampler(micRate, client.inputRate);
     const skipUntil = chimed ? started + CHIME_SKIP_MS : 0;

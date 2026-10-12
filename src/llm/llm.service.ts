@@ -5,6 +5,7 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
+import { describeCapabilities } from '../actions/capabilities';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
 import { MemoryService } from '../memory/memory.service';
@@ -46,6 +47,7 @@ export class LlmService {
       { role: 'system', content: `${this.cfg.llm.systemPrompt}\nCurrent local time: ${describeNow()}.` },
       ...(this.memory.enabled ? [{ role: 'system' as const, content: this.memory.promptSection() }] : []),
       ...(this.tools.homeAssistantConnected ? [] : [{ role: 'system' as const, content: NO_HA_NOTE }]),
+      ...this.capabilities(),
       ...history,
     ];
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -121,6 +123,11 @@ export class LlmService {
         history.push(msg);
       }
     }
+  }
+
+  private capabilities(): ChatCompletionMessageParam[] {
+    const text = describeCapabilities(this.tools.tools);
+    return text ? [{ role: 'system', content: text }] : [];
   }
 
   private async openStream(messages: ChatCompletionMessageParam[]) {

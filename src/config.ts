@@ -68,6 +68,8 @@ export interface AppConfig {
     transcribeModel?: string;
     /** Offer Max's actions in realtime mode (off = conversation only; useful to isolate problems). */
     tools: boolean;
+    /** Wildcard patterns of actions to leave out in realtime mode (e.g. one a provider rejects). */
+    excludeTools: string[];
     followUpMs: number;
     maxSessionMs: number;
   };
@@ -183,6 +185,7 @@ export function loadConfig(): AppConfig {
       wakeInterrupt: env.REALTIME_WAKE_INTERRUPT !== 'off',
       transcribeModel: env.REALTIME_TRANSCRIBE_MODEL || undefined,
       tools: env.REALTIME_TOOLS !== 'off',
+      excludeTools: list(env.REALTIME_EXCLUDE_TOOLS ?? ''),
       followUpMs: num(env.REALTIME_FOLLOW_UP_MS, 8000),
       maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 300) * 1000,
     },

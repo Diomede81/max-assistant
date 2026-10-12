@@ -97,6 +97,7 @@ cd ~/max-assistant && sudo ./scripts/pi/setup.sh
 | Screen stays black | Check the ribbon cable. Then open `/boot/firmware/config.txt` and look at the line under `# max-box screen`. Waveshare's wiki for the 4inch DSI LCD (C) gives the exact line for your Pi; on a Pi 5 it may need `,dsi0` or `,dsi1` added, depending on which connector the cable is in. Reboot after changing it. |
 | Face shows "Reconnecting…" | Max isn't running: `cd ~/max-assistant && docker compose logs --tail 50 max` |
 | No sound, or Max can't hear | `pactl list short sinks` and `pactl list short sources` should list the mic board (XVF3800). If not, check its USB cable, then run `systemctl --user restart max-audio-defaults`. |
+| Max doesn't wake reliably | Run `./scripts/wake-coach.sh` from where you usually sit: it measures how well he recognises you and tells you what to change. |
 | Face service | `journalctl -u max-face -n 50` |
 | WiFi setup service | `journalctl -u max-wifi -n 50` |
 | Start WiFi setup without the screen | `echo 1 \| sudo tee /run/max/wifi-request` |

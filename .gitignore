@@ -10,3 +10,4 @@ spotify/state.json
 spotify/lockfile
 spotify/*.tmp
 __pycache__/
+wake-coach/

@@ -4,8 +4,17 @@
 #   docker compose run --rm max node dist/tools/chat.js     type to Max (no audio needed)
 #   add --profile local-llm for Ollama
 # Running Max in Docker on a Mac/Windows laptop needs a sound bridge: see docs/DOCKER.md.
+# Keep container logs small: on a Raspberry Pi running from an SD card, endless log writes are
+# what wears the card out. 3 files x 5 MB per service is plenty for troubleshooting.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "3"
+
 services:
   max:
+    logging: *logging
     build: .
     profiles: ["max"]
     restart: unless-stopped
@@ -28,6 +37,7 @@ services:
     volumes: ["./config:/app/config:ro", "max-data:/app/data"]
 
   openwakeword:
+    logging: *logging
     image: rhasspy/wyoming-openwakeword:latest
     restart: unless-stopped
     # Custom models (e.g. hey_max.tflite) go in ./wakewords - see training/README.md.
@@ -38,6 +48,7 @@ services:
     ports: ["10400:10400"]
 
   whisper:
+    logging: *logging
     image: rhasspy/wyoming-whisper:latest
     restart: unless-stopped
     # base-int8 is a good CPU default; use small-int8 for accuracy, tiny-int8 for speed.
@@ -46,6 +57,7 @@ services:
     ports: ["10300:10300"]
 
   piper:
+    logging: *logging
     image: rhasspy/wyoming-piper:latest
     restart: unless-stopped
     # British male voice; browse others at https://rhasspy.github.io/piper-samples/
@@ -56,6 +68,7 @@ services:
   # Max's own Spotify speaker (Spotify Premium). Enable with:  docker compose --profile max --profile music up -d
   # Sign in once from the control panel. Shows up as "Max" in the Spotify app. See docs/MUSIC.md.
   spotify:
+    logging: *logging
     image: ghcr.io/devgianlu/go-librespot:v0.10.3
     profiles: ["music"]
     restart: unless-stopped
@@ -68,12 +81,14 @@ services:
   # Natural-sounding local voice (free). Enable with:  docker compose --profile max --profile kokoro up -d
   # then set TTS_PROVIDER=openai in .env (see docs/VOICES.md). First start downloads the model (~350 MB).
   kokoro:
+    logging: *logging
     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     profiles: ["kokoro"]
     restart: unless-stopped
     ports: ["8880:8880"]
 
   ollama:
+    logging: *logging
     image: ollama/ollama:latest
     profiles: ["local-llm"]
     restart: unless-stopped

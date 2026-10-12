@@ -47,9 +47,11 @@ ch_d    = 58;           // outer depth behind the front panel
 pi_l = 85; pi_w = 56;
 pi_holes = [[3.5,3.5],[61.5,3.5],[3.5,52.5],[61.5,52.5]]; // board coords (mm)
 pi_standoff = 8;        // gap between back wall and board
-pi_x0 = wall + 4;       // board left edge
+pi_x0 = wall + 3;       // board left edge (microSD end): close to the wall so the card is reachable
 pi_z0 = 40;             // board bottom edge (USB-C power edge faces down)
-pi_stack = 30;          // board + cooler + SSD HAT height (clearance)
+pi_stack = 30;          // board + cooler (+ optional SSD HAT) height, for clearance
+sd_z = 28;              // MEASURE: microSD slot centre from the board's bottom (USB-C) edge
+sd_slot = [9, 18];      // side access slot (depth Y, height Z)
 
 /* ---------------- Mic board (ReSpeaker XVF3800 USB 4-mic array) ---------------- */
 mic_board_d = 100;      // MEASURE: board diameter (or width if square)
@@ -122,6 +124,9 @@ module body() {
       cylinder(d = 3.2, h = wall + 2, $fn = 16);
       translate([0, 30, 0]) cylinder(d = 3.2, h = wall + 2, $fn = 16);
     }
+    // microSD access slot in the left side wall (card sits under the board, at its left end)
+    translate([-1, D - wall - pi_standoff + 1.5 - sd_slot[0]/2, pi_z0 + sd_z]) rotate([0, 90, 0])
+      hull() for (dz = [-1, 1]) translate([dz*(sd_slot[1] - sd_slot[0])/2, 0, 0]) translate([0, sd_slot[0]/2, 0]) cylinder(d = sd_slot[0], h = wall + 2, $fn = 32);
     // power cable notch at the bottom of the back wall (USB-C from the Pi goes down and out)
     translate([pi_x0 + 20, D - wall - 10, -1]) cube([14, wall + 12, 9]);
     // rubber feet recesses

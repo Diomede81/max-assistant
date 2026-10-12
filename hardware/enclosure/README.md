@@ -15,7 +15,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 
 | Part | Product |
 | --- | --- |
-| Computer | Raspberry Pi 5 (8 GB) + Raspberry Pi SSD Kit (M.2 HAT+) + Active Cooler |
+| Computer | Raspberry Pi 5 (8 GB) + Active Cooler, running from an official Raspberry Pi A2 microSD card (64 GB). The Raspberry Pi SSD Kit (M.2 HAT+) can be added later: there is room for it. |
 | Screen | Waveshare 4inch DSI LCD (C), round 720×720 |
 | Microphones / sound | ReSpeaker XVF3800 USB 4-mic array (its built-in 5 W amplifier drives the speaker) |
 | Speaker | Visaton FRS 7, 4 Ω (2.5″ full-range) |
@@ -61,6 +61,7 @@ estimates. Measure your parts with calipers and change the values marked `MEASUR
 | `mic_board_d` | Mic board diameter | 100 mm |
 | `mic_post_r`, `mic_post_angles` | Mic board mounting holes: distance from centre and angles | 44 mm, 45/135/225/315° |
 | `spk_hole_sq` | Speaker mounting holes: square spacing | 56 mm |
+| `sd_z` | Pi's microSD slot: centre height above the board's USB-C edge | 28 mm |
 
 Then re-export the parts (below). Printing just the front panel's screen area as a test ring first is
 a cheap way to check the screen fit.
@@ -87,8 +88,9 @@ front panel take a few minutes each to compute because of the grille holes.
    then fix the chamber over it (4 × M3) with the foam gasket around its edge. Pass the wire through
    the hole in the chamber's back and seal the hole with hot glue: the box must be airtight to sound
    full.
-4. **Pi:** fit the SSD kit and Active Cooler to the Pi, then screw the Pi to the four posts on the back
-   wall (USB-C power socket facing down).
+4. **Pi:** fit the Active Cooler (and the SSD kit, if you have one) and insert the microSD card, then
+   screw the Pi to the four posts on the back wall (USB-C power socket facing down). The card can later
+   be swapped through the slot in the left side, using a fingernail or tweezers, without opening the box.
 5. **Mic board:** stick the foam ring to the top of the board, then screw the board to the four posts
    under the top grille. Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.

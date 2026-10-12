@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
-import { describeNow, spokenDuration, timeZone } from './clock';
+import { describeNow, parseLocal, spokenDuration, spokenWhen } from './clock';
 import { TimerService, describe } from './timer.service';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
@@ -32,10 +32,13 @@ export class BuiltinActionsService {
       tool('get_current_datetime', 'Get the current local date, day of the week and time.', {}),
       tool(
         'set_timer',
-        'Start a countdown timer or a reminder. Give the duration as hours/minutes/seconds (any combination). ' +
+        'Start a countdown timer or a reminder. Give EITHER a duration as days/hours/minutes/seconds (any combination), ' +
+          'OR "at" for a set date and time ("remind me tomorrow at 9", "on Friday at 18:30"). ' +
           'Use "name" for a timer ("pasta"), or "reminder" for what to remind the user about ("call Mum"). ' +
-          'Max announces it out loud when it finishes.',
+          'Max announces it out loud when it finishes. Timers and reminders are saved and survive restarts.',
         {
+          at: { type: 'string', description: 'Local date and time for a reminder, YYYY-MM-DDTHH:MM (optional; use instead of a duration)' },
+          days: { type: 'number', description: 'Days (optional)' },
           hours: { type: 'number', description: 'Hours (optional)' },
           minutes: { type: 'number', description: 'Minutes (optional)' },
           seconds: { type: 'number', description: 'Seconds (optional)' },
@@ -160,15 +163,25 @@ export class BuiltinActionsService {
         : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
       set_timer: (a) => {
-        const total = num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);
+        const when = str(a.at);
+        const total = num(a.days) * 86400 + num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);
+        if (when) {
+          const at = parseLocal(when);
+          if (at === undefined) return 'That date and time could not be understood; use YYYY-MM-DDTHH:MM.';
+          const t = this.timers.start(0, str(a.name), str(a.reminder), at);
+          return `Set ${describe(t)} for ${spokenWhen(t.endsAt)}.`;
+        }
         const t = this.timers.start(total, str(a.name), str(a.reminder));
-        const at = new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', minute: '2-digit' }).format(t.endsAt);
-        return `Started ${describe(t)} for ${spokenDuration(t.durationSeconds)}; it ends at ${at}.`;
+        return t.durationSeconds >= 86400
+          ? `Set ${describe(t)} for ${spokenWhen(t.endsAt)}.`
+          : `Started ${describe(t)} for ${spokenDuration(t.durationSeconds)}; it ends ${spokenWhen(t.endsAt)}.`;
       },
       list_timers: () => {
         const all = this.timers.list();
         if (!all.length) return 'There are no timers or reminders running.';
-        return all.map((t) => `${describe(t)}: ${spokenDuration(this.timers.remainingSeconds(t))} left`).join('; ');
+        return all
+          .map((t) => `${describe(t)}: ${t.endsAt - Date.now() < 86400_000 ? `${spokenDuration(this.timers.remainingSeconds(t))} left, ` : ''}${spokenWhen(t.endsAt)}`)
+          .join('; ');
       },
       cancel_timer: (a) => {
         const running = this.timers.list();

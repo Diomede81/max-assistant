@@ -41,8 +41,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
   screen ring
 - 12 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 4 for the mic board, 4 for the speaker (its
   bosses are pilot holes)
-- Thin foam tape: a ring between the mic board and the top (seals the mics to the grille), and a
-  gasket strip around the speaker chamber edge
+- Closed-cell EVA foam strip, single-sided adhesive, about 10 mm wide: **5 mm thick** for the ring
+  between the mic board and the top (the gap is 4 mm, so it squashes and seals; keep the 4 mic holes
+  clear), and **3 mm thick** for the speaker chamber gasket
 - 4 × 10 mm rubber feet
 - About 30 cm of speaker wire, a short right-angle USB-A to USB-C cable (mic board to Pi)
 

@@ -10,7 +10,8 @@ export interface AppConfig {
     /** Keep the mic muted this long after Max's voice should have finished (speaker/bridge latency). */
     echoTailMs: number;
   };
-  wakeWord: { host: string; port: number; names: string[] };
+  /** verify: double-check each wake-up with the speech recogniser (ignores false alarms from noise). */
+  wakeWord: { host: string; port: number; names: string[]; verify: boolean };
   vad: { rmsThreshold: number; silenceMs: number; maxUtteranceMs: number };
   stt: { host: string; port: number; language: string };
   tts: {
@@ -160,6 +161,7 @@ export function loadConfig(): AppConfig {
         .split(',')
         .map((s) => s.trim().toLowerCase().replace(/^["']|["']$/g, '').replace(/[\s-]+/g, '_'))
         .filter(Boolean),
+      verify: env.WAKEWORD_VERIFY !== 'off',
     },
     vad: {
       rmsThreshold: num(env.VAD_RMS_THRESHOLD, 500),

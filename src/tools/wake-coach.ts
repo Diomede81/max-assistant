@@ -100,7 +100,7 @@ async function main(): Promise<void> {
 
   console.log(`\nWAKE WORD COACH\n`);
   console.log(`Sit or stand where you normally talk to Max, and speak as you normally would.`);
-  console.log(`I'll ask you to say "${phrase}" ${ATTEMPTS} times, then read ${SENTENCES.length} short sentences.`);
+  console.log(`I'll ask you to say "${phrase}" ${ATTEMPTS} times, read ${SENTENCES.length} short sentences, then record your room's usual background sounds.`);
   await sleep(2500);
 
   await countdown('First, stay quiet for 3 seconds so I can hear the room...');
@@ -120,6 +120,17 @@ async function main(): Promise<void> {
     process.stdout.write('  >>> READ IT NOW <<<\n');
     save(`negative_${String(i + 1).padStart(2, '0')}`, await record(device, 4500));
     await sleep(600);
+  }
+
+  // False wake-ups come from the room's usual sounds: measure them too.
+  const bgSeconds = Number(process.env.COACH_BACKGROUND_SECONDS ?? 45);
+  if (bgSeconds > 0) {
+    await countdown(
+      `Last step: ${bgSeconds} seconds of your room's usual sounds. Put on whatever normally plays (TV, music, ` +
+        `the radio, people chatting, the kitchen) and DON'T say "${phrase}". Starting in`,
+    );
+    process.stdout.write('  (recording the background...)\n');
+    save('negative_background', await record(device, bgSeconds * 1000));
   }
 
   console.log(`\nDone: recordings saved in ${out}`);

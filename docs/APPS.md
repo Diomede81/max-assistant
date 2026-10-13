@@ -102,7 +102,8 @@ Clapham open?"*, *"Read me the summary on bbc.co.uk/news."* While he works the f
 
 - A plain search costs about 1 credit per result; when he also reads the top results ("read_top")
   it's about one more credit per page. Pages read in the last hour come from Firecrawl's cache.
-- Results are tuned to the UK (`FIRECRAWL_COUNTRY=GB`).
+- Results are local to your **home location** (control panel → *Home location*: town or area, optional
+  postcode, country). Max also uses it for "weather", "near me", opening hours and local events.
 - Page text is treated as information, never as instructions, and facts Max picks up from web pages
   are saved to memory as *unverified*.
 - Already added `firecrawl` to `COMPOSIO_TOOLKITS`? Remove it there: the built-in one is faster.

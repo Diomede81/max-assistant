@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
+import { LocationService } from '../location/location.service';
 
 const SEARCH_TIMEOUT_MS = 20_000;
 const SCRAPE_TIMEOUT_MS = 25_000;
@@ -30,7 +31,10 @@ export class WebService implements OnModuleInit {
   private readonly log = new Logger('Web');
   status: WebStatus = { configured: false, connected: false };
 
-  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
+    @Optional() private readonly location?: LocationService,
+  ) {}
 
   get enabled(): boolean {
     const f = this.cfg.firecrawl;
@@ -129,11 +133,22 @@ export class WebService implements OnModuleInit {
       limit: readTop ? 3 : 5,
       sources: [news ? 'news' : 'web'],
       timeout: SEARCH_TIMEOUT_MS - 2000,
-      ...(this.cfg.firecrawl.country ? { country: this.cfg.firecrawl.country } : {}),
+      country: this.location?.country ?? this.cfg.firecrawl.country,
+      ...(this.location?.searchLocation ? { location: this.location.searchLocation } : {}),
       ...(tbs ? { tbs } : {}),
       ...(readTop ? { scrapeOptions: { formats: ['markdown'], onlyMainContent: true, maxAge: CACHE_MS } } : {}),
     };
-    const res = await this.request('POST', '/v2/search', body, SEARCH_TIMEOUT_MS + (readTop ? 15_000 : 0));
+    const timeout = SEARCH_TIMEOUT_MS + (readTop ? 15_000 : 0);
+    let res: Record<string, unknown>;
+    try {
+      res = await this.request('POST', '/v2/search', body, timeout);
+    } catch (err) {
+      // A home location the search engine doesn't recognise shouldn't stop the search: retry without it.
+      if (!body.location || !/^4\d\d/.test((err as Error).message) || /^40[12]/.test((err as Error).message)) throw err;
+      this.log.warn(`Search location "${String(body.location)}" not accepted (${(err as Error).message}); searching without it`);
+      delete body.location;
+      res = await this.request('POST', '/v2/search', body, timeout);
+    }
     const data = (res.data ?? {}) as Record<string, unknown>;
     const items = ((news ? data.news : data.web) ?? (Array.isArray(data) ? data : [])) as Record<string, unknown>[];
     if (!items.length) return `No ${news ? 'news ' : ''}results for "${query}".`;

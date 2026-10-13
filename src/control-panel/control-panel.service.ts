@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
+import { COUNTRIES, LocationService } from '../location/location.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService, Side } from '../composio/composio.service';
@@ -23,6 +24,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
+  @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
 
   constructor(
@@ -101,6 +103,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/activity/clear') {
       this.memory.clearActivity();
       return this.redirect(res, '/?ok=Activity%20log%20cleared.#activity');
+    }
+    if (req.method === 'POST' && url.pathname === '/location' && this.location) {
+      const f = await readForm(req);
+      const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
+      return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#location`);
     }
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
@@ -221,6 +228,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       web: this.web?.status,
+      location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

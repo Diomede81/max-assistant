@@ -7,10 +7,11 @@ import { MusicModule } from './music/music.module';
 import { FaceModule } from './face/face.module';
 import { SoulModule } from './soul/soul.module';
 import { WebModule } from './web/web.module';
+import { LocationModule } from './location/location.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), SoulModule, WebModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), SoulModule, LocationModule, WebModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

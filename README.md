@@ -17,6 +17,10 @@ Mic → Wake word → End-of-speech → Speech-to-text → LLM ⇄ Home Assistan
 - **Fast-first-token LLMs** (Groq / Cerebras by default), with a **local fallback**
   (Ollama + Qwen3) if the internet or the provider is slow.
 - **Follow-up window:** after replying, Max listens for 5 seconds without needing the wake word.
+- **Stopping him:** say **"stop"**, "that's all", "never mind" or "I'm not talking to you" and he goes quiet
+  and back to sleep at once. While he's talking, **"Hey Max"** cuts him off (then "stop", or a new
+  question). If he hears people talking to each other during a follow-up, he ends the conversation
+  quietly instead of answering.
 - **Every turn logs a latency breakdown**, so you can tune with numbers.
 
 ## No Ubuntu machine yet? Use Docker

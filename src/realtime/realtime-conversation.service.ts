@@ -18,6 +18,8 @@ import { MemoryService } from '../memory/memory.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { SoulService } from '../soul/soul.service';
 import { ModesService } from '../memory/modes.service';
+import { isStopRequest } from '../conversation/stop';
+import { ConversationControl } from '../actions/conversation-control';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -41,6 +43,7 @@ export class RealtimeConversationService {
 
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
+  @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -163,6 +166,7 @@ export class RealtimeConversationService {
     let turns = 0;
     let closed = false;
     const startMode = this.modes?.mode;
+    this.control?.consumeEnd(); // nothing left over from a previous conversation
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
@@ -227,6 +231,21 @@ export class RealtimeConversationService {
       audioEndsAt = Math.max(audioEndsAt, Date.now()) + (pcm.length / (PCM24.rate * 2)) * 1000;
       player.push(pcm);
     });
+    // "Stop" / "that's all" from the user, or end_conversation from the model: go quiet and end.
+    let stopReason: string | undefined;
+    const hush = (why: string) => {
+      stopReason ??= why;
+      generation++;
+      this.speaker.stop();
+      player?.close();
+      player = undefined;
+      if (responseActive) {
+        discardingCancelled = true;
+        client.cancelResponse();
+      }
+      busy = false;
+    };
+
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
       responseActive = true;
       transcript.push({ who: 'action', text: c.name });
@@ -251,6 +270,7 @@ export class RealtimeConversationService {
         const work = pendingTools;
         pendingTools = [];
         await Promise.all(work);
+        if (this.control?.consumeEnd()) return hush('Max ended it (told to stop, or the speech was not meant for him)');
         client.requestResponse(); // let Max say what happened
         return;
       }
@@ -262,6 +282,7 @@ export class RealtimeConversationService {
     client.on('user-transcript', (t: string) => {
       this.log.log(`You: "${t}"`);
       transcript.push({ who: 'user', text: t });
+      if (isStopRequest(t)) hush(`you said "${t}"`);
     });
     // His expression follows his words as they're spoken, a sentence at a time.
     const sentences = new SentenceSplitter();
@@ -292,6 +313,7 @@ export class RealtimeConversationService {
         const limit = turns === 0 ? FIRST_TURN_WAIT_MS : rt.followUpMs;
         let why: string | undefined;
         if (closed) why = 'connection closed';
+        else if (stopReason) why = stopReason;
         // Switched mode: end once he's confirmed it, so the next conversation starts in the new
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;

@@ -31,8 +31,10 @@ export class TtsService {
   /** Returns a speech session: say() each sentence, then await done(). */
   session() {
     const order = new AsyncQueue<Synthesis>();
+    let stopped = false;
     const playback = (async () => {
       for await (const s of order) {
+        if (stopped) continue; // interrupted: drop what was still queued
         try {
           await this.speaker.play(await s.format, s.audio);
         } catch (err) {
@@ -49,6 +51,7 @@ export class TtsService {
         await playback;
       },
       interrupt: () => {
+        stopped = true;
         order.close();
         this.speaker.stop();
       },

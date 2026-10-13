@@ -17,6 +17,7 @@ import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
+import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -30,6 +31,8 @@ const VERIFY_SECONDS = 2.5;
 const VERIFY_TIMEOUT_MS = 2500;
 /** After being interrupted, start listening again this soon (his voice has been cut). */
 const INTERRUPT_REOPEN_MS = 300;
+/** Say what he's doing when an action is still running after this long and he hasn't spoken yet. */
+const SPOKEN_CUE_MS = 1000;
 /** A second wake word this soon after an ignored one always wakes Max up. */
 const REPEAT_WAKE_MS = 10_000;
 
@@ -69,6 +72,7 @@ export class ConversationService implements OnApplicationBootstrap {
   private lastIgnoredWakeAt = 0;
   /** end_conversation: the AI decided the conversation is over. */
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
+  @Optional() @Inject(ToolRouterService) private readonly toolRouter?: ToolRouterService;
   /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
@@ -339,6 +343,17 @@ export class ConversationService implements OnApplicationBootstrap {
     let reply = '';
     // While he answers, the wake word still works: "Hey Max" cuts him off.
     let interrupted = false;
+    // A slow action (email, web...) before he's said anything: tell the user what he's doing.
+    let cued = false;
+    const onActivity = (e: ActivityEvent) => {
+      setTimeout(() => {
+        if (firstSpoken || cued || interrupted || this.control?.endRequested) return;
+        cued = true;
+        this.log.log(`Busy: ${e.label}`);
+        speech.say(`${e.label}.`);
+      }, SPOKEN_CUE_MS);
+    };
+    this.toolRouter?.activity.on('start', onActivity);
     const stopInterrupt = this.armInterrupt(() => {
       interrupted = true;
       speech.interrupt();
@@ -375,6 +390,7 @@ export class ConversationService implements OnApplicationBootstrap {
       }
     }
     if (reply.trim()) this.transcript.push({ who: 'max', text: reply.trim() });
+    this.toolRouter?.activity.off('start', onActivity);
     if (this.control?.endRequested) speech.interrupt();
     await speech.done();
     stopInterrupt();

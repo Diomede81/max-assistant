@@ -11,6 +11,7 @@ import { MusicService } from '../music/music.service';
 import type { PcmFormat } from '../audio/speaker.service';
 import { analyse, CLOSED, Mouth } from './visemes';
 import { Emotion, emotionFor } from './emotion';
+import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -35,9 +36,15 @@ export interface FaceInfo {
   wifi?: WifiStatus & { qrSvg?: string };
   offline: boolean;
   emotion: Emotion;
+  /** What he's busy with right now ("Checking your email"), while an action runs. */
+  activity?: { icon: string; label: string };
+  /** A short-lived note when something didn't work ("Couldn't finish: Checking your email"). */
+  notice?: string;
 }
 
 const FRAME_MS = 50;
+/** How long a "couldn't finish" note stays on the face. */
+const NOTICE_MS = 6000;
 const INFO_MS = 1000;
 const MUSIC_MS = 5000;
 
@@ -66,6 +73,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly timerService?: TimerService,
     @Optional() private readonly modes?: ModesService,
     @Optional() private readonly musicService?: MusicService,
+    @Optional() private readonly toolRouter?: ToolRouterService,
   ) {
     super();
     this.setMaxListeners(50);
@@ -76,7 +84,23 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.timers.push(setInterval(() => this.tickLevel(), FRAME_MS));
     this.timers.push(setInterval(() => void this.tickInfo(), INFO_MS));
     this.timers.push(setInterval(() => void this.pollMusic(), MUSIC_MS));
+    // Show what he's doing while actions run (email, calendar, web, the house...).
+    this.toolRouter?.activity.on('start', (e: ActivityEvent) => {
+      this.activities.set(e.id, { icon: e.icon, label: e.label });
+      if (this.base === 'idle') this.base = 'thinking';
+      void this.tickInfo();
+    });
+    this.toolRouter?.activity.on('end', (e: ActivityEvent) => {
+      this.activities.delete(e.id);
+      if (e.ok === false) {
+        this.notice = { text: `Couldn't finish: ${e.label.charAt(0).toLowerCase()}${e.label.slice(1)}`, until: Date.now() + NOTICE_MS };
+        this.setEmotion('concerned', NOTICE_MS);
+      }
+      void this.tickInfo();
+    });
   }
+  private readonly activities = new Map<number, { icon: string; label: string }>();
+  private notice?: { text: string; until: number };
 
   onModuleDestroy(): void {
     for (const t of this.timers) clearInterval(t);
@@ -172,6 +196,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       wifi: this.wifi,
       offline,
       emotion: this.emotion,
+      activity: this.activities.size ? [...this.activities.values()].pop() : undefined,
+      notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
     };
   }
 

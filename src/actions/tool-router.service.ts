@@ -10,6 +10,15 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
 import { MusicService } from '../music/music.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
+import { EventEmitter } from 'node:events';
+import { Activity, describeActivity } from './activity';
+
+/** Emitted around every action: 'start' and 'end' (for the face and spoken "checking…" cues). */
+export interface ActivityEvent extends Activity {
+  id: number;
+  name: string;
+  ok?: boolean;
+}
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
@@ -85,7 +94,21 @@ export class ToolRouterService {
     return RISKY.test(name) || matchesAny(name, server.config.confirmTools);
   }
 
+  /** 'start' / 'end' (ActivityEvent) around every action that isn't instant. */
+  readonly activity = new EventEmitter();
+  private activityId = 0;
+
   async call(name: string, args: Record<string, unknown>): Promise<string> {
+    const what = describeActivity(name);
+    if (!what) return this.run(name, args);
+    const ev: ActivityEvent = { id: ++this.activityId, name, ...what };
+    this.activity.emit('start', ev);
+    const out = await this.run(name, args);
+    this.activity.emit('end', { ...ev, ok: !/^Error:|^Could not do that/.test(out) });
+    return out;
+  }
+
+  private async run(name: string, args: Record<string, unknown>): Promise<string> {
     this.log.log(`tool ${name} ${JSON.stringify(args)}`);
     if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
       args = { ...args, [EXTERNAL_FLAG]: true };

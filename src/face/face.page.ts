@@ -75,6 +75,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   // ---------- demo: every state and expression ----------
   const SCENES = [
     ['idle', 'neutral', 'Idle'], ['listening', 'neutral', 'Listening'], ['thinking', 'neutral', 'Thinking'],
+    ['thinking', 'neutral', 'Checking email'], ['idle', 'concerned', 'Could not finish'],
     ['speaking', 'neutral', 'Speaking'], ['speaking', 'happy', 'Speaking happy'], ['speaking', 'concerned', 'Speaking concerned'],
     ['idle', 'happy', 'Happy'], ['idle', 'curious', 'Curious'], ['idle', 'surprised', 'Surprised'], ['idle', 'concerned', 'Concerned'],
     ['idle', 'focused', 'Focused'], ['idle', 'sleepy', 'Sleepy'], ['sleeping', 'neutral', 'Asleep'], ['setup', 'neutral', 'WiFi setup'],
@@ -92,6 +93,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         state, emotion, mode: state === 'thinking' ? 'work' : 'personal', offline: false,
         timers: label === 'Idle' ? [{ label: '"pasta" timer', endsAt: Date.now() + 252000, total: 600000 }] : [],
         reminder: label === 'Happy' ? { text: 'call Mum', at: Date.now() + 2 * 3600000 } : undefined,
+        activity: label === 'Checking email' ? { icon: '📧', label: 'Checking your email' } : undefined,
+        notice: label === 'Could not finish' ? "Couldn't finish: checking your email" : undefined,
         music: label === 'Speaking' ? { title: 'Yellow', artist: 'Coldplay' } : undefined,
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
       };
@@ -478,8 +481,18 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // bottom line: timer, music, or the clock
     let text = '', sub = '';
     const timer = (info.timers || []).slice().sort((a, b) => a.endsAt - b.endsAt)[0];
+    let noteColor = '';
     if (state !== 'setup') {
-      if (timer) {
+      if (info.activity) {
+        // Busy in the background: say what with, with a little "..." that keeps moving.
+        const dots = '.'.repeat(1 + (Math.floor(now / 400) % 3));
+        text = info.activity.icon + '  ' + info.activity.label + dots;
+      } else if (info.notice) {
+        const i = info.notice.indexOf(': ');
+        text = i > 0 ? info.notice.slice(0, i) : info.notice;
+        sub = i > 0 ? info.notice.slice(i + 2) : '';
+        noteColor = '#ffb36b';
+      } else if (timer) {
         const left = Math.max(0, Math.round((timer.endsAt - Date.now()) / 1000));
         const mm = Math.floor(left / 60) % 60, ss = String(left % 60).padStart(2, '0');
         text = left >= 3600 ? Math.floor(left / 3600) + ':' + String(mm).padStart(2, '0') + ':' + ss : Math.floor(left / 60) + ':' + ss;
@@ -500,9 +513,13 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       }
     }
     if (text) {
-      g.fillStyle = rgb(state === 'sleeping' ? 0.35 : 0.8);
-      g.font = '600 ' + Math.round(36 * s) + 'px system-ui, sans-serif';
-      g.fillText(fit(text, 360 * s), cx, cy + 238 * s);
+      const small = Boolean(info.activity || noteColor);
+      g.fillStyle = noteColor || rgb(state === 'sleeping' ? 0.35 : 0.8);
+      g.font = '600 ' + Math.round((small ? 28 : 36) * s) + 'px system-ui, sans-serif';
+      if (info.activity) g.textAlign = 'left';
+      const tx = info.activity ? cx - g.measureText(fit(info.activity.icon + '  ' + info.activity.label + '...', 380 * s)).width / 2 : cx;
+      g.fillText(fit(text, 380 * s), tx, cy + 238 * s);
+      g.textAlign = 'center';
       if (sub) { g.font = '500 ' + Math.round(22 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.5); g.fillText(fit(sub, 300 * s), cx, cy + 274 * s); }
     }
     if (demo && demoLabel && state !== 'setup') {

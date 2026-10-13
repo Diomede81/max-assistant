@@ -22,6 +22,8 @@ export function describeActivity(name: string): Activity | undefined {
   if (name === 'remember' || name === 'forget') return { icon: '🧠', label: 'Updating my memory' };
   if (name === 'project' || name === 'task') return { icon: '📁', label: 'Checking your projects' };
   if (name === 'play_music') return { icon: '🎵', label: 'Finding the music' };
+  if (name === 'web_search') return { icon: '🌐', label: 'Searching the web' };
+  if (name === 'read_webpage') return { icon: '🌐', label: 'Reading the page' };
   if (n.startsWith('WHATSAPP_')) return { icon: '💬', label: SENDING.test(n) ? 'Sending the WhatsApp' : 'Checking WhatsApp' };
   if (/^(SLACK|MICROSOFT_TEAMS|TEAMS)_/.test(n)) return { icon: '💬', label: SENDING.test(n) ? 'Sending the message' : 'Checking your messages' };
   if (n.startsWith('LINKEDIN_')) return { icon: '💼', label: 'On LinkedIn' };

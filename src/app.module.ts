@@ -6,10 +6,11 @@ import { ControlPanelModule } from './control-panel/control-panel.module';
 import { MusicModule } from './music/music.module';
 import { FaceModule } from './face/face.module';
 import { SoulModule } from './soul/soul.module';
+import { WebModule } from './web/web.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), SoulModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), SoulModule, WebModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

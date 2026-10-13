@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { MusicService } from '../music/music.service';
+import { WebService } from '../web/web.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService, Side } from '../composio/composio.service';
@@ -21,6 +22,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ControlPanel');
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
+  @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
 
   constructor(
@@ -83,7 +85,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, failed ? '/?error=Sign-in%20was%20not%20completed' : '/?connected=1');
     }
     if (req.method === 'POST' && url.pathname === '/refresh') {
-      await Promise.all([this.mcp.refreshAll(), this.composio.refresh(), this.music?.poll()]);
+      await Promise.all([this.mcp.refreshAll(), this.composio.refresh(), this.music?.poll(), this.web?.check()]);
       return this.redirect(res, '/?refreshed=1');
     }
     if (req.method === 'GET' && url.pathname === '/api/memory') {
@@ -218,6 +220,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           ? `${rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'} (${rt.model}, "${rt.voice}")`
           : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
+      web: this.web?.status,
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

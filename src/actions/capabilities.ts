@@ -34,6 +34,8 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
     const slug = Object.keys(APPS).find((s) => n.startsWith(`${s}_`)) ?? n.split('_')[0];
     apps.set(slug, APPS[slug] ?? `${slug.charAt(0)}${slug.slice(1).toLowerCase()}`);
   }
+  // Built-in web search (Firecrawl, no Composio).
+  if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
   if (!apps.size) return '';
   return (
     `Live connections you have RIGHT NOW through your tools: ${[...apps.values()].join('; ')}. ` +

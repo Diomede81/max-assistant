@@ -9,6 +9,7 @@ import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
 import { MusicService } from '../music/music.service';
+import { WebService } from '../web/web.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
@@ -51,6 +52,7 @@ export class ToolRouterService {
     private readonly mcp: McpServersService,
     @Optional() private readonly music?: MusicService,
     @Optional() private readonly composio?: ComposioService,
+    @Optional() private readonly web?: WebService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -87,7 +89,7 @@ export class ToolRouterService {
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
     const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
-    return [...this.builtin.tools, ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
+    return [...this.builtin.tools, ...(this.web?.tools ?? []), ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
   }
 
   get homeAssistantConnected(): boolean {
@@ -121,6 +123,10 @@ export class ToolRouterService {
     }
     try {
       if (this.builtin.has(name)) return this.builtin.call(name, args);
+      if (this.web?.has(name)) {
+        this.externalContentAt = Date.now(); // facts from web pages are marked unverified
+        return await this.web.call(name, args);
+      }
       if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);

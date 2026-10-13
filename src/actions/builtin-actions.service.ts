@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { describeNow, parseLocal, spokenDuration, spokenWhen } from './clock';
 import { TimerService, describe } from './timer.service';
+import { ConversationControl } from './conversation-control';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
@@ -17,6 +18,7 @@ export const EXTERNAL_FLAG = '__afterExternalContent';
  */
 @Injectable()
 export class BuiltinActionsService {
+  @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   private readonly handlers: Record<string, Handler>;
   readonly tools: ChatCompletionTool[];
 
@@ -30,6 +32,13 @@ export class BuiltinActionsService {
     projects.on('reminder', (text: string) => timers.announce(text));
     this.tools = [
       tool('get_current_datetime', 'Get the current local date, day of the week and time.', {}),
+      tool(
+        'end_conversation',
+        'Go quiet and stop listening until the wake word. Call it, and say nothing else, when the user tells you to ' +
+          'stop or that they are done ("stop", "that\'s all", "never mind"), or when what you just heard was clearly NOT ' +
+          'said to you: people talking to each other, a phone call, the TV. If unsure whether it was meant for you, answer normally.',
+        {},
+      ),
       tool(
         'set_timer',
         'Start a countdown TIMER, e.g. "set a timer for 10 minutes", "pasta timer for 8 minutes". Only for countdowns: ' +
@@ -171,6 +180,10 @@ export class BuiltinActionsService {
           }
         : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
+      end_conversation: () => {
+        this.control?.requestEnd();
+        return 'Conversation ended. Say nothing.';
+      },
       set_timer: (a) => {
         const total = num(a.hours) * 3600 + num(a.minutes) * 60 + num(a.seconds);
         if (total <= 0) return 'No duration given: ask the user how long the timer should be.';

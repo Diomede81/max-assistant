@@ -15,6 +15,8 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
+import { isStopRequest } from './stop';
+import { ConversationControl } from '../actions/conversation-control';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -26,6 +28,8 @@ const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
 const VERIFY_TIMEOUT_MS = 2500;
+/** After being interrupted, start listening again this soon (his voice has been cut). */
+const INTERRUPT_REOPEN_MS = 300;
 /** A second wake word this soon after an ignored one always wakes Max up. */
 const REPEAT_WAKE_MS = 10_000;
 
@@ -63,6 +67,8 @@ export class ConversationService implements OnApplicationBootstrap {
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
   private historyMode?: Mode;
   private lastIgnoredWakeAt = 0;
+  /** end_conversation: the AI decided the conversation is over. */
+  @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
@@ -203,6 +209,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** One request, then follow-ups without the wake word, until nobody speaks. */
   private async conversation(): Promise<void> {
     this.transcript = [];
+    this.control?.consumeEnd(); // nothing left over from a previous conversation
     try {
       await this.conversationTurns();
     } finally {
@@ -217,7 +224,23 @@ export class ConversationService implements OnApplicationBootstrap {
       try {
         const text = await this.listen(noSpeechMs, noSpeechMs === FOLLOW_UP_WINDOW_MS);
         if (!text) return;
-        await this.respond(text.value, text.endOfSpeech);
+        // "Stop", "that's all", "not talking to you": go quiet straight away, no AI involved.
+        if (isStopRequest(text.value)) {
+          this.log.log(`Stopping: you said "${text.value}"`);
+          this.control?.consumeEnd();
+          return;
+        }
+        const outcome = await this.respond(text.value, text.endOfSpeech);
+        if (outcome === 'ended') {
+          this.log.log('Conversation ended by Max (told to stop, or the speech was not meant for him)');
+          return;
+        }
+        if (outcome === 'interrupted') {
+          // "Hey Max" over his voice: he's stopped talking; listen for what comes next ("stop", or a new question).
+          noSpeechMs = FOLLOW_UP_WINDOW_MS;
+          await new Promise((r) => setTimeout(r, INTERRUPT_REOPEN_MS));
+          continue;
+        }
       } catch (err) {
         this.log.error(`${(err as Error).message}; going back to waiting for the wake word`);
         this.onChunk = () => undefined;
@@ -293,7 +316,7 @@ export class ConversationService implements OnApplicationBootstrap {
     return { value: text, endOfSpeech: tEnd };
   }
 
-  private async respond(text: string, tEndOfSpeech: number): Promise<void> {
+  private async respond(text: string, tEndOfSpeech: number): Promise<'done' | 'ended' | 'interrupted'> {
     this.state = 'respond';
     this.face?.setState('thinking');
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
@@ -314,8 +337,16 @@ export class ConversationService implements OnApplicationBootstrap {
     const splitter = new SentenceSplitter();
     let firstSpoken = 0;
     let reply = '';
+    // While he answers, the wake word still works: "Hey Max" cuts him off.
+    let interrupted = false;
+    const stopInterrupt = this.armInterrupt(() => {
+      interrupted = true;
+      speech.interrupt();
+      this.log.log('Interrupted - Max stopped talking, listening to you');
+    });
     try {
       for await (const fragment of this.llm.respond(this.history)) {
+        if (interrupted || this.control?.endRequested) break;
         reply += fragment;
         for (const sentence of splitter.push(fragment)) {
           if (!firstSpoken) firstSpoken = Date.now();
@@ -344,9 +375,33 @@ export class ConversationService implements OnApplicationBootstrap {
       }
     }
     if (reply.trim()) this.transcript.push({ who: 'max', text: reply.trim() });
+    if (this.control?.endRequested) speech.interrupt();
     await speech.done();
+    stopInterrupt();
     this.lastTurnAt = Date.now();
     this.trimHistory();
+    if (this.control?.consumeEnd()) return 'ended';
+    return interrupted ? 'interrupted' : 'done';
+  }
+
+  /** Listens for the wake word while Max is talking; returns a function that stops listening. */
+  private armInterrupt(onWake: () => void): () => void {
+    if (!this.cfg.realtime.wakeInterrupt) return () => undefined;
+    const fmt = this.mic.format;
+    let stopped = false;
+    void this.wake
+      .arm(fmt)
+      .then(({ detected }) => {
+        if (stopped) return this.wake.disarm();
+        this.onChunk = (c) => this.wake.feed(c, fmt);
+        detected.then(() => !stopped && onWake()).catch(() => undefined);
+      })
+      .catch((err) => this.log.warn(`Interrupting by wake word unavailable: ${(err as Error).message}`));
+    return () => {
+      stopped = true;
+      this.wake.disarm();
+      this.onChunk = () => undefined;
+    };
   }
 
   /** Keep the context short (faster + cheaper) without orphaning tool results. */

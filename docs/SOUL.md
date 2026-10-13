@@ -16,6 +16,19 @@ Open the control panel (<http://localhost:8099>, or <http://max.local:8099> on t
 - Text between `<!--` and `-->` is a note for you and is never shown to him.
 - Changes apply from the next conversation. **Reset** goes back to the starter version.
 
+## Behaviour per mode
+
+Next to the soul there's one short page per mode (tabs on the control panel):
+
+| Mode | Starts as | Memories he can see |
+| --- | --- | --- |
+| **Personal** | the easy-going friend: relaxed, chatty, brings up personal things when it helps | Personal + Household |
+| **Work** | a sharp colleague: concise, organised, jokes dialled down, no personal matters | Work + Household |
+| **Guest** | friendly but reserved: no in-jokes, nothing personal, no work | Household |
+
+The soul says who he is in every mode; the mode page says how he behaves right now, and wins where
+they differ. Which mode is on follows `WORK_HOURS`, or "Max, work mode / personal mode / guest mode".
+
 ## His journal
 
 After conversations, Max notes things that shape who he is in your home:
@@ -24,9 +37,9 @@ After conversations, Max notes things that shape who he is in your home:
 - how you want him to talk or behave ("be more sarcastic", "stop calling me mate");
 - tastes or opinions you gave him, memorable moments.
 
-The journal is encrypted like his memory. On the control panel you can read it, **Forget** any
-entry, or add one yourself. In guest mode it's kept out of the conversation, because it can
-contain household in-jokes and personal details.
+The journal is encrypted like his memory and kept **separately per mode**: what he learns in work mode
+is only used in work mode, and the same for personal mode. In guest mode none of it is used. On the
+control panel you can read it, **Forget** any entry, or add one yourself (choosing the mode).
 
 ## What stays fixed
 
@@ -37,5 +50,5 @@ are refused. The rules live in `LLM_SYSTEM_PROMPT` (`.env`) if you ever need to 
 
 ## Where it's stored
 
-`soul.md` and `journal.vault`, next to his memory (`MEMORY_DIR`, the `max-data` storage in
+`soul.md`, `soul-personal.md`, `soul-work.md`, `soul-guest.md` and `journal.vault`, next to his memory (`MEMORY_DIR`, the `max-data` storage in
 Docker), so both survive restarts and updates. `SOUL_FILE` in `.env` points the soul elsewhere.

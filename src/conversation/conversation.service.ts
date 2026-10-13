@@ -13,6 +13,7 @@ import { SentenceSplitter } from './sentence-splitter';
 import { TimerService, announcement } from '../actions/timer.service';
 import { RealtimeConversationService } from '../realtime/realtime-conversation.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
+import { Mode, ModesService } from '../memory/modes.service';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -52,6 +53,9 @@ export class ConversationService implements OnApplicationBootstrap {
     private readonly learner: MemoryLearnerService,
   ) {}
 
+  /** Personal / work / guest: the conversation context never carries over a mode switch. */
+  @Optional() @Inject(ModesService) private readonly modes?: ModesService;
+  private historyMode?: Mode;
   /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
@@ -241,6 +245,15 @@ export class ConversationService implements OnApplicationBootstrap {
     this.state = 'respond';
     this.face?.setState('thinking');
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
+    // The mode changed (by voice or the work-hours schedule): file what was said under the old
+    // mode and start a clean context, so nothing said in personal mode carries into work mode.
+    const mode = this.modes?.mode;
+    if (this.historyMode && mode !== this.historyMode) {
+      void this.learner.learn(this.transcript, this.historyMode);
+      this.transcript = [];
+      this.history = [];
+    }
+    this.historyMode = mode;
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });
     const historyStart = this.history.length;

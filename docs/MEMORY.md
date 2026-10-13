@@ -70,14 +70,22 @@ the status, and delete a project (with its tasks and memory; this needs a confir
 | Mode | Max can use | When |
 | --- | --- | --- |
 | **Personal** | Personal + Household | Outside work hours |
-| **Work** | Work + Personal + Household | During `WORK_HOURS` (default Mon-Fri 09:00-17:30) |
+| **Work** | Work + Household | During `WORK_HOURS` (default Mon-Fri 09:00-17:30) |
 | **Guest** | Household only | When you say so, e.g. visitors are round (lasts up to 24 h) |
 
 - Say **"Max, work mode"**, **"personal mode"**, **"guest mode"** or **"back to automatic"**. A switch
   lasts until your schedule next changes. The control panel has the same buttons.
-- Outside work mode, Max won't use or mention anything from the Work vault, whoever asks.
+- Personal and work are walled off from each other: outside work mode Max can't see the Work vault,
+  and in work mode he can't see the Personal vault (facts, conversation notes, projects and his
+  journal alike), whoever asks. Household (bins, appliances, house rules) is shared by both.
+- He can still *file* a new fact into the other side (a work deadline mentioned at dinner), without
+  seeing what's already there.
+- **Behaviour per mode**: he also behaves differently in each mode (relaxed friend in personal mode, focused
+  colleague in work mode, more reserved with guests). Edit it on the control panel → Max's soul
+  (see [SOUL.md](SOUL.md)).
 - **Work apps**: set `WORK_APPS=OUTLOOK_*` (wildcards, comma-separated) and those apps are only available
-  in work mode, and what's learnt from them is filed under Work.
+  in work mode, and what's learnt from them is filed under Work. `PERSONAL_APPS=WHATSAPP_*` does the
+  reverse: those apps are hidden in work mode.
 - Nothing is learnt from conversations in guest mode.
 
 ## What you can say

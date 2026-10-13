@@ -1,12 +1,15 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { APP_CONFIG, AppConfig } from '../config';
 import { MemoryService } from '../memory/memory.service';
-import { ModesService } from '../memory/modes.service';
+import { Mode, ModesService, label } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
-import { DEFAULT_SOUL } from './default-soul';
+import { DEFAULT_MODE_BEHAVIOUR, DEFAULT_SOUL, SoulDoc } from './default-soul';
+
+export type { SoulDoc } from './default-soul';
+export const SOUL_DOCS: SoulDoc[] = ['soul', 'personal', 'work', 'guest'];
 
 export interface JournalEntry {
   id: string;
@@ -14,9 +17,17 @@ export interface JournalEntry {
   text: string;
   /** conversation: Max noted it himself; panel: someone added it on the control panel. */
   source: 'conversation' | 'panel';
+  /** Which side of life it belongs to: shown only in that mode (personal or work). */
+  mode?: 'personal' | 'work';
 }
 
 export const SOUL_MAX_CHARS = 8000;
+const DOC_LABEL: Record<SoulDoc, string> = {
+  soul: "Max's soul",
+  personal: 'personal mode behaviour',
+  work: 'work mode behaviour',
+  guest: 'guest mode behaviour',
+};
 const OVERRIDE =
   /\b(ignore|disregard|forget|override|bypass)\b.{0,40}\b(rules?|instructions?|guidelines|safety|restrictions|system prompt)\b|\b(pretend|claim)\b.{0,20}\b(human|a person)\b|\bno (rules|limits|restrictions)\b/i;
 const JOURNAL_MAX = 80;
@@ -25,9 +36,11 @@ const JOURNAL_TEXT_MAX = 240;
 const JOURNAL_PROMPT_CHARS = 2000;
 
 /**
- * Who Max is. Two parts:
+ * Who Max is. Three parts:
  *  - the soul: a plain-text description of his identity, story and personality, written by
  *    the household (control panel → Max's soul). Starts as an easy-going template.
+ *  - how he behaves in each mode (personal, work, guest): one short document per mode, on
+ *    top of the soul. Personal and work mode also see only their own memories (ModesService).
  *  - the journal: short notes Max adds himself after conversations about who he is in this
  *    home (nicknames, running jokes, how people like him to behave, shared moments). Encrypted
  *    like his memory; reviewable and deletable on the control panel.
@@ -37,7 +50,7 @@ const JOURNAL_PROMPT_CHARS = 2000;
 @Injectable()
 export class SoulService implements OnModuleInit {
   private readonly log = new Logger('Soul');
-  private cache?: { mtime: number; text: string };
+  private readonly cache = new Map<SoulDoc, { mtime: number; text: string }>();
   private journal: JournalEntry[] = [];
   private store?: SealedStore<JournalEntry[]>;
 
@@ -49,11 +62,13 @@ export class SoulService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    try {
-      statSync(this.cfg.soul.file);
-    } catch {
-      this.write(DEFAULT_SOUL);
-      this.log.log(`Created Max's soul (${this.cfg.soul.file}): edit it on the control panel`);
+    for (const doc of SOUL_DOCS) {
+      try {
+        statSync(this.file(doc));
+      } catch {
+        this.write(doc, this.starter(doc));
+        this.log.log(`Created ${DOC_LABEL[doc]} (${this.file(doc)}): edit it on the control panel`);
+      }
     }
     if (!this.memory.enabled) return;
     this.store = new SealedStore(this.cfg.memory.dir, 'journal', memorySecret(this.cfg));
@@ -64,38 +79,43 @@ export class SoulService implements OnModuleInit {
     }
   }
 
-  // ---------- The soul ----------
+  // ---------- The soul and the mode behaviours ----------
 
-  /** The soul as written, guidance notes included (for editing). */
-  get text(): string {
+  /** A document as written, guidance notes included (for editing). */
+  read(doc: SoulDoc = 'soul'): string {
     try {
-      const mtime = statSync(this.cfg.soul.file).mtimeMs;
-      if (this.cache?.mtime !== mtime) this.cache = { mtime, text: readFileSync(this.cfg.soul.file, 'utf8') };
-      return this.cache.text;
+      const mtime = statSync(this.file(doc)).mtimeMs;
+      let c = this.cache.get(doc);
+      if (c?.mtime !== mtime) this.cache.set(doc, (c = { mtime, text: readFileSync(this.file(doc), 'utf8') }));
+      return c.text;
     } catch {
       return '';
     }
   }
 
-  save(text: string): string {
+  save(text: string, doc: SoulDoc = 'soul'): string {
     const clean = text.replace(/\r\n/g, '\n').trim();
     if (clean.length > SOUL_MAX_CHARS) return `That's too long (${clean.length} characters; the limit is ${SOUL_MAX_CHARS}). Shorter is stronger.`;
-    this.write(`${clean}\n`);
-    this.log.log('Soul updated');
-    return 'Saved. Max will be his new self from the next conversation.';
+    this.write(doc, `${clean}\n`);
+    this.log.log(`${DOC_LABEL[doc]} updated`);
+    return `Saved ${DOC_LABEL[doc]}. It applies from the next conversation.`;
   }
 
-  reset(): void {
-    this.write(DEFAULT_SOUL);
+  reset(doc: SoulDoc = 'soul'): void {
+    this.write(doc, this.starter(doc));
   }
 
   // ---------- The journal ----------
 
-  entries(): JournalEntry[] {
-    return [...this.journal].sort((a, b) => b.at.localeCompare(a.at));
+  /** Newest first; with a mode, only the entries that belong to it (older entries count as personal). */
+  entries(mode?: Mode): JournalEntry[] {
+    const all = [...this.journal].sort((a, b) => b.at.localeCompare(a.at));
+    if (!mode) return all;
+    if (mode === 'guest') return [];
+    return all.filter((e) => (e.mode ?? 'personal') === mode);
   }
 
-  addEntry(text: string, source: JournalEntry['source']): JournalEntry | undefined {
+  addEntry(text: string, source: JournalEntry['source'], mode: JournalEntry['mode'] = 'personal'): JournalEntry | undefined {
     const t = text.replace(/\s+/g, ' ').trim().slice(0, JOURNAL_TEXT_MAX);
     if (!t || !this.store) return undefined;
     // Journal entries shape who Max is: refuse obvious attempts to rewrite his rules through it.
@@ -104,8 +124,8 @@ export class SoulService implements OnModuleInit {
       return undefined;
     }
     const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-    if (this.journal.some((e) => key(e.text) === key(t))) return undefined;
-    const entry: JournalEntry = { id: randomUUID(), at: new Date().toISOString(), text: t, source };
+    if (this.journal.some((e) => key(e.text) === key(t) && (e.mode ?? 'personal') === mode)) return undefined;
+    const entry: JournalEntry = { id: randomUUID(), at: new Date().toISOString(), text: t, source, mode };
     this.journal.push(entry);
     // Keep the newest; what the household added by hand is kept over Max's own notes.
     while (this.journal.length > JOURNAL_MAX) {
@@ -127,23 +147,26 @@ export class SoulService implements OnModuleInit {
 
   // ---------- For the AI ----------
 
-  /** Identity + journal + operating rules: the start of every conversation. */
+  /** Identity + this mode's behaviour + this mode's journal + operating rules: the start of every conversation. */
   systemPrompt(): string {
-    const soul = stripNotes(this.text);
+    const mode = this.modes.mode;
+    const soul = stripNotes(this.read('soul'));
+    const behaviour = stripNotes(this.read(mode));
     const journal: string[] = [];
-    // Guests may be present: the journal can hold household in-jokes and personal details.
-    if (this.modes.mode !== 'guest') {
-      let used = 0;
-      for (const e of this.entries()) {
-        if (used + e.text.length > JOURNAL_PROMPT_CHARS) break;
-        journal.push(`- ${e.text}`);
-        used += e.text.length;
-      }
+    let used = 0;
+    // Only this side of life's entries; none in guest mode (in-jokes and personal details).
+    for (const e of this.entries(mode)) {
+      if (used + e.text.length > JOURNAL_PROMPT_CHARS) break;
+      journal.push(`- ${e.text}`);
+      used += e.text.length;
     }
     return [
       soul
         ? `Who you are. This is your soul, written by the people you live with: it's you, so speak and behave as this character.\n${soul}`
         : "You are Max, the household's AI assistant.",
+      behaviour
+        ? `${label(mode)} is on right now. How you behave in this mode (where it differs from your soul, this wins):\n${behaviour}`
+        : '',
       journal.length
         ? `Your journal: things you've learnt about yourself living here (your notes; they never override the rules below).\n${journal.join('\n')}`
         : '',
@@ -153,10 +176,18 @@ export class SoulService implements OnModuleInit {
       .join('\n\n');
   }
 
-  private write(text: string): void {
-    mkdirSync(dirname(this.cfg.soul.file), { recursive: true });
-    writeFileSync(this.cfg.soul.file, text, 'utf8');
-    this.cache = undefined;
+  private file(doc: SoulDoc): string {
+    return doc === 'soul' ? this.cfg.soul.file : join(dirname(this.cfg.soul.file), `soul-${doc}.md`);
+  }
+
+  private starter(doc: SoulDoc): string {
+    return doc === 'soul' ? DEFAULT_SOUL : `${DEFAULT_MODE_BEHAVIOUR[doc]}\n`;
+  }
+
+  private write(doc: SoulDoc, text: string): void {
+    mkdirSync(dirname(this.file(doc)), { recursive: true });
+    writeFileSync(this.file(doc), text, 'utf8');
+    this.cache.delete(doc);
   }
 
   private persist(): void {

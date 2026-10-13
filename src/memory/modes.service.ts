@@ -20,8 +20,9 @@ const MAX_OVERRIDE_MS = 24 * 3600_000;
 /**
  * Which part of Max's memory is open right now:
  *  - personal: Personal + Household (Work is locked)
- *  - work:     Work + Personal + Household
+ *  - work:     Work + Household (Personal is locked)
  *  - guest:    Household only
+ * Personal and work never see each other's memories; Household is shared home matters.
  * Work mode follows WORK_HOURS automatically; "Max, work mode / personal mode / guest mode"
  * overrides it until the schedule next changes (guest mode until switched off, max 24 h).
  */
@@ -59,11 +60,12 @@ export class ModesService {
   }
 
   readable(mode = this.mode): VaultName[] {
-    return mode === 'guest' ? ['household'] : mode === 'work' ? ['work', 'personal', 'household'] : ['personal', 'household'];
+    return mode === 'guest' ? ['household'] : mode === 'work' ? ['work', 'household'] : ['personal', 'household'];
   }
 
   writable(mode = this.mode): VaultName[] {
-    // Facts can be filed into Work at any time (they're just not readable outside work mode).
+    // New facts can be filed into any vault (a work detail mentioned in the evening, a personal one
+    // at work): filing never reveals what's already in a locked vault.
     return mode === 'guest' ? ['household'] : [...VAULTS];
   }
 

@@ -10,7 +10,7 @@
  * that spring towards targets, so any expression blends smoothly into any other. A designed
  * character (e.g. a Rive animation) could replace this later and use the same signals.
  */
-export function renderFace(): string {
+export function renderFace(bootId = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -63,6 +63,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   // ---------- live data ----------
   if (!demo) {
     const es = new EventSource('/events');
+    // Max restarted with a new version: load the new face (the old page would keep running).
+    const BOOT = ${JSON.stringify(bootId)};
+    es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
     es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);

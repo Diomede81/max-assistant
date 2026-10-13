@@ -45,6 +45,8 @@ export interface FaceInfo {
 const FRAME_MS = 50;
 /** How long a "couldn't finish" note stays on the face. */
 const NOTICE_MS = 6000;
+/** Each "Checking your email..." stays on the face at least this long. */
+const MIN_ACTIVITY_MS = 3000;
 const INFO_MS = 1000;
 const MUSIC_MS = 5000;
 
@@ -87,11 +89,24 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     // Show what he's doing while actions run (email, calendar, web, the house...).
     this.toolRouter?.activity.on('start', (e: ActivityEvent) => {
       this.activities.set(e.id, { icon: e.icon, label: e.label });
-      if (this.base === 'idle') this.base = 'thinking';
+      this.activityStarted.set(e.id, Date.now());
+      if (this.base === 'idle') {
+        this.base = 'thinking';
+        this.thinkingForActivity = true;
+      }
       void this.tickInfo();
     });
     this.toolRouter?.activity.on('end', (e: ActivityEvent) => {
-      this.activities.delete(e.id);
+      // Quick actions (a light, a search hit) would only flash: keep each label up long enough to read.
+      const shownFor = Date.now() - (this.activityStarted.get(e.id) ?? 0);
+      this.activityStarted.delete(e.id);
+      setTimeout(() => {
+        this.activities.delete(e.id);
+        // Back to idle if it was only the action that made him look busy.
+        if (!this.activities.size && this.thinkingForActivity && this.base === 'thinking') this.base = 'idle';
+        if (!this.activities.size) this.thinkingForActivity = false;
+        void this.tickInfo();
+      }, e.ok === false ? 0 : Math.max(0, MIN_ACTIVITY_MS - shownFor)); // a failure shows straight away
       if (e.ok === false) {
         this.notice = { text: `Couldn't finish: ${e.label.charAt(0).toLowerCase()}${e.label.slice(1)}`, until: Date.now() + NOTICE_MS };
         this.setEmotion('concerned', NOTICE_MS);
@@ -100,6 +115,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     });
   }
   private readonly activities = new Map<number, { icon: string; label: string }>();
+  private readonly activityStarted = new Map<number, number>();
+  private thinkingForActivity = false;
   private notice?: { text: string; until: number };
 
   onModuleDestroy(): void {
@@ -109,6 +126,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   // ---------- Inputs from the rest of Max ----------
 
   setState(s: BaseState): void {
+    this.thinkingForActivity = false; // the conversation is in charge again
     if (s === this.base) return;
     this.base = s;
     void this.tickInfo();

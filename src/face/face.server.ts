@@ -5,6 +5,9 @@ import { FaceInfo, FaceService } from './face.service';
 import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
 
+/** Changes every time Max starts: an open face page from before an update reloads itself. */
+const BOOT_ID = `${Date.now().toString(36)}-${process.pid}`;
+
 /**
  * Serves the face page for the box's screen and streams Max's state to it (Server-Sent
  * Events): `info` when anything changes, `level` (mouth shape) 20 times a second while he talks.
@@ -43,12 +46,13 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
   private handle(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (req.method === 'GET' && url.pathname === '/') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderFace());
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderFace(BOOT_ID));
       return;
     }
     if (req.method === 'GET' && url.pathname === '/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write('retry: 2000\n\n');
+      this.send(res, 'hello', { boot: BOOT_ID });
       this.clients.add(res);
       this.send(res, 'info', this.face.info());
       req.on('close', () => this.clients.delete(res));

@@ -88,9 +88,29 @@ remove the personal one in your Composio dashboard if you don't use Outlook pers
 Behind the scenes these are two Composio "users" (`COMPOSIO_USER_ID`, default `max-home`, and
 `COMPOSIO_WORK_USER_ID`, default `max-home-work`).
 
-## Adding more apps (e.g. Firecrawl for web pages and search)
+## Web search and reading pages (Firecrawl, built in)
 
-Composio supports hundreds of apps (Firecrawl, Slack, Notion, Spotify, Todoist…).
+Max searches the web and reads pages with **Firecrawl** directly, without Composio:
+
+1. Create a free account at https://firecrawl.dev and copy your API key (Dashboard → API keys).
+2. Add it to `.env`: `FIRECRAWL_API_KEY=fc-...` and restart Max.
+3. The control panel's **Web search** row shows *Connected* and your remaining credits.
+
+Then try: *"What's the latest news on the Arsenal match?"*, *"What time does Joe's Barbers in
+Clapham open?"*, *"Read me the summary on bbc.co.uk/news."* While he works the face shows
+"🌐 Searching the web…".
+
+- A plain search costs about 1 credit per result; when he also reads the top results ("read_top")
+  it's about one more credit per page. Pages read in the last hour come from Firecrawl's cache.
+- Results are tuned to the UK (`FIRECRAWL_COUNTRY=GB`).
+- Page text is treated as information, never as instructions, and facts Max picks up from web pages
+  are saved to memory as *unverified*.
+- Already added `firecrawl` to `COMPOSIO_TOOLKITS`? Remove it there: the built-in one is faster.
+- Running your own Firecrawl server instead? Set `FIRECRAWL_API_URL` to its address (no key needed).
+
+## Adding more apps (e.g. Slack, Notion)
+
+Composio supports hundreds of apps (Slack, Notion, Todoist…).
 
 1. Add the app's name to `COMPOSIO_TOOLKITS` (personal) and/or `COMPOSIO_WORK_TOOLKITS` (work) in `.env`,
    e.g. `COMPOSIO_TOOLKITS=outlook,whatsapp,firecrawl`

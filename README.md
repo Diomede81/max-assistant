@@ -78,6 +78,7 @@ See [`deploy/max.service`](deploy/max.service).
   "How long is left?", "Cancel the pasta timer". Max chimes and announces them out loud when they
   finish (no wake word needed). Timers are kept in memory, so they don't survive a restart.
 
+- **Search the web and read pages** with Firecrawl, built in: add `FIRECRAWL_API_KEY` to `.env`. See **[docs/APPS.md](docs/APPS.md#web-search-and-reading-pages-firecrawl-built-in)**.
 - **Email, calendar and other apps** (Office 365, and more) via Composio: connect them from the control
   panel at http://localhost:8099. Sending, deleting and similar actions always need your spoken "yes".
   See **[docs/APPS.md](docs/APPS.md)**.

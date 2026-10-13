@@ -74,9 +74,10 @@ Max will live in. Plan for roughly 20–30 GB of free disk space for the trainin
 Three layers stop false wake-ups (noise, music, TV), from cheapest to strongest:
 
 1. **The double-check (on by default).** When the wake word engine fires, Max runs the last 2.5 seconds
-   through his own on-device speech recogniser. If the words don't contain the wake word ("max", or a
-   close mishearing like "mac"), he stays asleep: no chime, no face change. The log shows
-   `Ignored a false wake-up: heard "…"`. It adds a fraction of a second before the chime.
+   through his own on-device speech recogniser. If nothing in it sounds like the wake word, he stays
+   asleep: no chime, no face change. It's lenient with mishearings ("Marx", "Mats", "Mex" all count),
+   and **saying it again within 10 seconds always wakes him**. The log shows
+   `Ignored a possible false wake-up: heard "…"`. It adds a fraction of a second before the chime.
    `WAKEWORD_VERIFY=off` disables it.
 2. **`WAKEWORD_TRIGGER_LEVEL=2`** in `.env`: the engine must hear the wake word for two moments in a row.
    Noise blips are ignored; a real "hey max" easily passes.
@@ -84,6 +85,11 @@ Three layers stop false wake-ups (noise, music, TV), from cheapest to strongest:
 
 Apply changes with `docker compose --profile max up -d`. The coach's background test shows which of
 these you need.
+
+**Now it's hard to wake him?** Undo the last two first: remove `WAKEWORD_TRIGGER_LEVEL` and set
+`WAKEWORD_THRESHOLD` back to 0.5 (or lower; the double-check catches the extra false alarms). Then look
+at the log for `Ignored a possible false wake-up` lines while you say the wake word: if they show your
+real attempts, send them over (or set `WAKEWORD_VERIFY=off`).
 
 ## Training with your own voice (recommended if the coach scores you near 0)
 

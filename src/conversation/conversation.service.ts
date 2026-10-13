@@ -26,6 +26,8 @@ const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
 const VERIFY_TIMEOUT_MS = 2500;
+/** A second wake word this soon after an ignored one always wakes Max up. */
+const REPEAT_WAKE_MS = 10_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -60,6 +62,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** Personal / work / guest: the conversation context never carries over a mode switch. */
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
   private historyMode?: Mode;
+  private lastIgnoredWakeAt = 0;
   /** Music is turned down while Max talks (property-injected: optional, e.g. no Spotify speaker). */
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
@@ -122,7 +125,13 @@ export class ConversationService implements OnApplicationBootstrap {
         this.log.log(`Wake word confirmed ("${text}", ${Date.now() - started} ms)`);
         return true;
       }
-      this.log.log(`Ignored a false wake-up: heard ${text ? `"${text}"` : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
+      // Said it again straight after being ignored: that's a person calling, not noise.
+      if (Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
+        this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? `"${text}"` : 'no words'})`);
+        return true;
+      }
+      this.lastIgnoredWakeAt = Date.now();
+      this.log.log(`Ignored a possible false wake-up: heard ${text ? `"${text}"` : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
       return false;
     } catch (err) {
       session?.abort();

@@ -69,6 +69,22 @@ Max will live in. Plan for roughly 20–30 GB of free disk space for the trainin
 
 ---
 
+## Waking up by itself
+
+Three layers stop false wake-ups (noise, music, TV), from cheapest to strongest:
+
+1. **The double-check (on by default).** When the wake word engine fires, Max runs the last 2.5 seconds
+   through his own on-device speech recogniser. If the words don't contain the wake word ("max", or a
+   close mishearing like "mac"), he stays asleep: no chime, no face change. The log shows
+   `Ignored a false wake-up: heard "…"`. It adds a fraction of a second before the chime.
+   `WAKEWORD_VERIFY=off` disables it.
+2. **`WAKEWORD_TRIGGER_LEVEL=2`** in `.env`: the engine must hear the wake word for two moments in a row.
+   Noise blips are ignored; a real "hey max" easily passes.
+3. **A higher `WAKEWORD_THRESHOLD`** (e.g. 0.6–0.7).
+
+Apply changes with `docker compose --profile max up -d`. The coach's background test shows which of
+these you need.
+
 ## Training with your own voice (recommended if the coach scores you near 0)
 
 The model above learns only from computer-generated voices. If your voice or accent isn't
@@ -135,8 +151,9 @@ In `.env`, make sure you have `WAKEWORD_NAMES=hey_max`.
 ./scripts/wake-coach.sh
 ```
 
-It asks you to say the wake word 10 times (normally, quieter, faster, from further away) and
-to read three ordinary sentences. Then it scores every attempt with the same engine Max uses:
+It asks you to say the wake word 10 times (normally, quieter, faster, from further away), to read
+three ordinary sentences, and records 45 seconds of your room's usual background sound (TV, music).
+Then it scores every attempt with the same engine Max uses:
 
 ```
 clip                level    score  at good level
@@ -155,7 +172,7 @@ above `WAKEWORD_THRESHOLD` (default 0.5). The coach tells you which of these app
 | Most scores just under the bar | The model knows your voice, the bar is too high | Set the `WAKEWORD_THRESHOLD` it suggests in `.env`, then `docker compose up -d openwakeword` |
 | Scores near 0 | The model doesn't recognise your voice: **no threshold will fix it** | Retrain with your own voice (below), or try a longer phrase |
 | "Your microphone is quiet" | The sound reaching Max is too faint | Raise the input volume, or sit closer |
-| A normal sentence would have woken him | Too sensitive | Keep or raise the threshold; `WAKEWORD_TRIGGER_LEVEL=2` also helps |
+| A normal sentence or the background sound would have woken him | False wake-ups | It suggests `WAKEWORD_TRIGGER_LEVEL=2` and/or a higher `WAKEWORD_THRESHOLD`; keep `WAKEWORD_VERIFY` on |
 
 Your recordings are kept in `wake-coach/<date>/` (not uploaded anywhere) for retraining.
 

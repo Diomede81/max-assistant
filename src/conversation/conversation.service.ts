@@ -14,6 +14,7 @@ import { TimerService, announcement } from '../actions/timer.service';
 import { RealtimeConversationService } from '../realtime/realtime-conversation.service';
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
+import { heardWakeWord } from '../wake-word/verify';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -22,6 +23,9 @@ const HISTORY_RESET_MS = 2 * 60 * 1000;
 const FOLLOW_UP_WINDOW_MS = 5000;
 const CHIME_GRACE_MS = 400;
 const STT_TIMEOUT_MS = 20_000;
+/** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
+const VERIFY_SECONDS = 2.5;
+const VERIFY_TIMEOUT_MS = 2500;
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -102,15 +106,49 @@ export class ConversationService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * A second opinion before waking up: do the words in the last couple of seconds contain the
+   * wake word? Catches false alarms from noise, music and TV. If the speech recogniser can't be
+   * reached in time, Max wakes up as usual.
+   */
+  private async confirmWake(audio: Buffer, fmt: { rate: number; width: number; channels: number }): Promise<boolean> {
+    const started = Date.now();
+    let session: Awaited<ReturnType<SttService['open']>> | undefined;
+    try {
+      session = await withTimeout(this.stt.open(fmt), VERIFY_TIMEOUT_MS, 'took too long');
+      session.write(audio);
+      const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
+      if (heardWakeWord(text, this.cfg.wakeWord.names)) {
+        this.log.log(`Wake word confirmed ("${text}", ${Date.now() - started} ms)`);
+        return true;
+      }
+      this.log.log(`Ignored a false wake-up: heard ${text ? `"${text}"` : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
+      return false;
+    } catch (err) {
+      session?.abort();
+      this.log.warn(`Could not double-check the wake word (${(err as Error).message}); waking up anyway`);
+      return true;
+    }
+  }
+
   private async waitForWakeWord(): Promise<void> {
     this.state = 'wake';
     this.face?.setState('idle');
     if (this.pendingAnnouncements.length) void this.flushAnnouncements();
     const fmt = this.mic.format;
     let name: string;
+    // The last few seconds of sound, to double-check a wake-up with the speech recogniser.
+    const recent: Buffer[] = [];
+    let recentBytes = 0;
+    const keepBytes = Math.round(fmt.rate * fmt.width * fmt.channels * VERIFY_SECONDS);
     try {
       const { detected } = await this.wake.arm(fmt);
-      this.onChunk = (c) => this.wake.feed(c, fmt);
+      this.onChunk = (c) => {
+        this.wake.feed(c, fmt);
+        recent.push(c);
+        recentBytes += c.length;
+        while (recentBytes - recent[0].length >= keepBytes) recentBytes -= recent.shift()!.length;
+      };
       this.log.log(`Listening for wake word: ${this.cfg.wakeWord.names.join(', ')}`);
       name = await detected;
       this.wake.disarm();
@@ -119,6 +157,11 @@ export class ConversationService implements OnApplicationBootstrap {
       this.wake.disarm();
       this.onChunk = () => undefined;
       setTimeout(() => void this.waitForWakeWord(), 3000);
+      return;
+    }
+
+    if (this.cfg.wakeWord.verify && !(await this.confirmWake(Buffer.concat(recent), fmt))) {
+      void this.waitForWakeWord();
       return;
     }
 

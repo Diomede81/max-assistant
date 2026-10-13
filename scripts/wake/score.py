@@ -36,19 +36,22 @@ def load_model(name: str, custom_dir: Path) -> OpenWakeWord:
     return OpenWakeWord.from_builtin(Model(name))
 
 
-def best_score(audio: np.ndarray, model: OpenWakeWord) -> float:
-    """Highest confidence while streaming the clip, as the live service does."""
+def best_score(audio: np.ndarray, model: OpenWakeWord, threshold: float = 0.5) -> tuple:
+    """Highest confidence while streaming the clip, as the live service does, and the longest run of
+    consecutive 80 ms steps above the threshold (what WAKEWORD_TRIGGER_LEVEL counts)."""
     features = OpenWakeWordFeatures.from_builtin()
     model.reset()
     # Silence either side: the engine needs ~1.5 s of context and the phrase may be at the edge.
     padded = np.concatenate([np.zeros(RATE, np.float32), audio, np.zeros(RATE // 2, np.float32)])
     pcm = np.clip(padded, -32768, 32767).astype(np.int16).tobytes()
-    best = 0.0
+    best, run, longest = 0.0, 0, 0
     for i in range(0, len(pcm), CHUNK * 2):
         for emb in features.process_streaming(pcm[i : i + CHUNK * 2]):
             for prob in model.process_streaming(emb):
                 best = max(best, float(prob))
-    return best
+                run = run + 1 if prob > threshold else 0
+                longest = max(longest, run)
+    return best, longest
 
 
 def peak(audio: np.ndarray) -> float:
@@ -85,18 +88,18 @@ def main() -> int:
             continue
         phrase = name.replace("_", " ")
         print(f'\n=== "{phrase}" (wakes at {args.threshold:.2f}) ===')
-        print(f"{'clip':<16}{'level':>9}{'score':>9}{'at good level':>15}")
+        print(f"{'clip':<20}{'level':>9}{'score':>9}{'at good level':>15}")
         rows = []
         for path in pos + neg:
             audio = read_wav(path)
             p = peak(audio)
-            s = best_score(audio, model)
+            s, run = best_score(audio, model, args.threshold)
             # The same clip at a healthy microphone level: shows whether volume is the issue.
             gain = HEALTHY_PEAK / p if p > 0 else 1.0
-            sn = best_score(audio * gain, model) if gain > 1.5 else s
-            rows.append({"clip": path.stem, "positive": path in pos, "peak": p, "score": s, "scoreAtGoodLevel": sn})
+            sn = best_score(audio * gain, model)[0] if gain > 1.5 else s
+            rows.append({"clip": path.stem, "positive": path in pos, "peak": p, "score": s, "scoreAtGoodLevel": sn, "run": run})
             mark = ("WAKES" if s > args.threshold else "missed") if path in pos else ("FALSE WAKE" if s > args.threshold else "ok")
-            print(f"{path.stem:<16}{db(p):>9}{s:>9.2f}{sn:>15.2f}   {mark}")
+            print(f"{path.stem:<20}{db(p):>9}{s:>9.2f}{sn:>15.2f}   {mark}")
         results[name] = rows
         verdict(rows, args.threshold, phrase)
 
@@ -143,9 +146,27 @@ def verdict(rows: list, threshold: float, phrase: str) -> None:
             "recordings added (see training/README.md, 'Training with your own voice'), or try a longer phrase."
         )
     if worst_neg > threshold:
-        tips.append("One of your normal sentences would have woken him: keep the threshold where it is or higher.")
+        false_runs = [r["run"] for r in neg if r["score"] > threshold]
+        pos_runs = [r["run"] for r in pos if r["score"] > threshold]
+        raise_to = round(min(0.95, worst_neg + 0.05), 2)
+        keeps = sum(s > raise_to for s in scores)
+        tips.append("Something other than the wake word would have woken him (false wake-ups). Fixes, best first:")
+        if false_runs and max(false_runs) <= 1 and pos_runs and np.median(pos_runs) >= 2:
+            tips.append(
+                "   • Set WAKEWORD_TRIGGER_LEVEL=2 in .env: the false alarms were single blips, while your real "
+                f"\"{phrase}\" stays above the bar for longer, so this stops them without missing you."
+            )
+        if keeps >= 0.8 * len(scores):
+            tips.append(
+                f"   • Raise WAKEWORD_THRESHOLD to {raise_to}: still wakes on {keeps} of your {len(scores)} attempts."
+            )
+        tips.append(
+            "   • Keep WAKEWORD_VERIFY on (the default): Max double-checks each wake-up with his speech recogniser "
+            "and ignores it if he didn't hear the wake word."
+        )
+        tips.append("   Then apply with 'docker compose --profile max up -d'.")
     for t in tips or ["Mixed results: run the coach again from where you usually sit, and send me the output."]:
-        print(f" - {t}")
+        print(f"     {t.strip()}" if t.startswith("   ") else f" - {t}")
 
 
 if __name__ == "__main__":

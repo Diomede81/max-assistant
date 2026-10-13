@@ -66,15 +66,21 @@ export class ToolRouterService {
     return false;
   }
 
-  /** Work apps are hidden outside work mode, personal apps (PERSONAL_APPS) in work mode. */
-  isLockedWorkApp(name: string): boolean {
+  /**
+   * Work apps (WORK_APPS) are hidden outside work mode, personal apps (PERSONAL_APPS) in work mode.
+   * These name rules can't tell two Outlooks apart, so once separate work accounts are connected
+   * they no longer apply to the Composio account sets: those are already split by mode (your
+   * personal Outlook in personal mode, the work one in work mode).
+   */
+  isLockedWorkApp(name: string, server?: string): boolean {
+    if (server && (server === SERVER.personal || server === SERVER.work) && this.composio?.hasConnected('work')) return false;
     const n = name.toUpperCase();
     const mode = this.modes.mode;
     return (mode !== 'work' && matchesAny(n, this.cfg.memory.workApps)) || (mode === 'work' && matchesAny(n, this.cfg.memory.personalApps));
   }
 
   onModuleInit(): void {
-    this.mcp.hide = (name) => this.isLockedWorkApp(name);
+    this.mcp.hide = (name, server) => this.isLockedWorkApp(name, server);
     this.mcp.serverHidden = (server) => this.isHiddenAccountSet(server);
   }
 
@@ -118,7 +124,7 @@ export class ToolRouterService {
       if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);
-      if (this.isLockedWorkApp(name)) {
+      if (this.isLockedWorkApp(name, server.config.name)) {
         return this.modes.mode === 'work'
           ? 'Personal apps are locked in work mode. The user can say "personal mode" to unlock them.'
           : 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';

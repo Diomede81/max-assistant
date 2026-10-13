@@ -83,7 +83,9 @@ the status, and delete a project (with its tasks and memory; this needs a confir
 - **Behaviour per mode**: he also behaves differently in each mode (relaxed friend in personal mode, focused
   colleague in work mode, more reserved with guests). Edit it on the control panel → Max's soul
   (see [SOUL.md](SOUL.md)).
-- **Work apps**: set `WORK_APPS=OUTLOOK_*` (wildcards, comma-separated) and those apps are only available
+- **Work apps** (only needed without separate work accounts, see below: once work accounts are connected,
+  Composio apps are already split by mode and this rule no longer applies to them): set `WORK_APPS=OUTLOOK_*`
+  (wildcards, comma-separated) and those apps are only available
   in work mode, and what's learnt from them is filed under Work. `PERSONAL_APPS=WHATSAPP_*` does the
   reverse: those apps are hidden in work mode.
 - **Separate work accounts**: connect your work email, LinkedIn etc. under *Work accounts* on the

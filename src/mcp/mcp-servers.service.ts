@@ -51,7 +51,7 @@ export class McpServersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Actions to leave out right now (set by the action router, e.g. work apps outside work mode). */
-  hide?: (name: string) => boolean;
+  hide?: (name: string, serverName: string) => boolean;
   /** Whole servers to leave out right now (e.g. the work accounts in personal mode). */
   serverHidden?: (serverName: string) => boolean;
 
@@ -61,7 +61,7 @@ export class McpServersService implements OnModuleInit, OnModuleDestroy {
     for (const s of this.servers.values()) {
       if (this.serverHidden?.(s.config.name)) continue;
       for (const t of s.openAiTools) {
-        if (t.type !== 'function' || seen.has(t.function.name) || this.hide?.(t.function.name)) continue;
+        if (t.type !== 'function' || seen.has(t.function.name) || this.hide?.(t.function.name, s.config.name)) continue;
         seen.add(t.function.name);
         out.push(t);
       }

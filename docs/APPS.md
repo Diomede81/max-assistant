@@ -59,11 +59,41 @@ The log lists what's offered, e.g.
 `[MCP:composio] 7 of 64 tools offered to Max: OUTLOOK_LIST_MESSAGES, …`. If an action you
 want is missing, add a pattern (e.g. `OUTLOOK_*CONTACT*`) and restart Max.
 
+## Personal and work accounts
+
+Max keeps two separate sets of app logins, so you can connect **the same app twice**: your own
+Gmail or Outlook *and* your work mailbox, your personal Instagram and your work LinkedIn.
+
+| | Used in | Apps listed (`.env`) |
+| --- | --- | --- |
+| **Personal accounts** | personal mode | `COMPOSIO_TOOLKITS`, e.g. `gmail,whatsapp,instagram` |
+| **Work accounts** | work mode | `COMPOSIO_WORK_TOOLKITS`, e.g. `outlook,linkedin,slack` |
+
+1. In `.env`, list the apps for each side, e.g.
+   ```
+   COMPOSIO_TOOLKITS=gmail,whatsapp,instagram
+   COMPOSIO_WORK_TOOLKITS=outlook,linkedin,slack
+   ```
+   and restart Max.
+2. On the control panel, **Apps** now has two lists, **Personal accounts** and **Work accounts**.
+   Click **Connect** in each list and sign in with the matching account (in the work list, sign in
+   with your work login).
+3. That's it: *"What's in my inbox?"* reads your work mailbox in work mode and your own in personal
+   mode. In guest mode neither is available.
+
+Until you connect a work account, work mode keeps using the personal accounts (as before). Already
+connected your work Outlook as a personal account? Connect it again under **Work accounts**, then
+remove the personal one in your Composio dashboard if you don't use Outlook personally.
+
+Behind the scenes these are two Composio "users" (`COMPOSIO_USER_ID`, default `max-home`, and
+`COMPOSIO_WORK_USER_ID`, default `max-home-work`).
+
 ## Adding more apps (e.g. Firecrawl for web pages and search)
 
 Composio supports hundreds of apps (Firecrawl, Slack, Notion, Spotify, Todoist…).
 
-1. Add the app's name to `COMPOSIO_TOOLKITS` in `.env`, e.g. `COMPOSIO_TOOLKITS=outlook,whatsapp,firecrawl`
+1. Add the app's name to `COMPOSIO_TOOLKITS` (personal) and/or `COMPOSIO_WORK_TOOLKITS` (work) in `.env`,
+   e.g. `COMPOSIO_TOOLKITS=outlook,whatsapp,firecrawl`
 2. Restart Max: `docker compose --profile max up -d`
 3. Open http://localhost:8099 and click **Connect** next to the new app (for API-key apps such
    as Firecrawl, Composio asks for the key).
@@ -72,7 +102,7 @@ A new app gets all its actions automatically. To narrow it down, add patterns fo
 `COMPOSIO_ALLOWED_TOOLS` (e.g. `FIRECRAWL_SCRAPE*,FIRECRAWL_SEARCH*`).
 
 **Connected an app in Composio's own dashboard?** Max only uses connections made for his
-user (`COMPOSIO_USER_ID`, default `max-home`). The control panel warns when an app is connected
+users (`COMPOSIO_USER_ID`, default `max-home`, and `COMPOSIO_WORK_USER_ID`, default `max-home-work`). The control panel warns when an app is connected
 under a different user or isn't in `COMPOSIO_TOOLKITS`. Connecting from Max's control panel
 always uses the right user.
 

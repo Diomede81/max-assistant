@@ -8,6 +8,8 @@ export interface PanelData {
     configured: boolean;
     error?: string;
     apps: { slug: string; name: string; logo?: string; connected: boolean; toolsOffered: number }[];
+    /** The separate work accounts (used in work mode). */
+    workApps: { slug: string; name: string; logo?: string; connected: boolean; toolsOffered: number }[];
     notEnabled: string[];
     otherUser: string[];
     userId: string;
@@ -237,9 +239,9 @@ const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
 export function renderPanel(d: PanelData): string {
-  const apps = d.composio.configured
-    ? d.composio.apps.length
-      ? d.composio.apps
+  const appRows = (list: PanelData['composio']['apps'], side: 'personal' | 'work') =>
+    list.length
+      ? list
           .map(
             (a) => `
       <li class="row">
@@ -247,15 +249,18 @@ export function renderPanel(d: PanelData): string {
           ${a.logo ? `<img src="${esc(a.logo)}" alt="" width="32" height="32">` : '<span class="ph"></span>'}
           <div>
             <div class="name">${esc(a.name)} ${badge(a.connected)}</div>
-            <div class="meta">${a.connected ? `${a.toolsOffered} action${a.toolsOffered === 1 ? '' : 's'} available to Max` : esc(NOTES[a.slug] ?? 'Sign in to let Max use this app.')}</div>
+            <div class="meta">${a.connected ? `${a.toolsOffered} action${a.toolsOffered === 1 ? '' : 's'} available to Max` : esc(NOTES[a.slug] ?? `Sign in with your ${side} account.`)}</div>
             ${a.connected && NOTES[a.slug] ? `<div class="meta">${esc(NOTES[a.slug])}</div>` : ''}
           </div>
         </div>
-        <a class="btn ${a.connected ? 'secondary' : ''}" href="/connect/${encodeURIComponent(a.slug)}">${a.connected ? 'Reconnect' : 'Connect'}</a>
+        <a class="btn ${a.connected ? 'secondary' : ''}" href="/connect/${encodeURIComponent(a.slug)}?side=${side}">${a.connected ? 'Reconnect' : 'Connect'}</a>
       </li>`,
           )
           .join('')
-      : `<li class="empty">${d.composio.error ? `Composio error: ${esc(d.composio.error)}` : 'Loading apps…'}</li>`
+      : `<li class="empty">${d.composio.error ? `Composio error: ${esc(d.composio.error)}` : 'Loading apps…'}</li>`;
+  const apps = d.composio.configured
+    ? `<li class="group"><h3>Personal accounts</h3><p class="meta">Used in personal mode: your own email, WhatsApp, Instagram…</p></li>${appRows(d.composio.apps, 'personal')}` +
+      `<li class="group"><h3>Work accounts</h3><p class="meta">Used in work mode: your work email, calendar, LinkedIn… Until one is connected, work mode uses the personal accounts.</p></li>${appRows(d.composio.workApps, 'work')}`
     : `<li class="empty">Add <code>COMPOSIO_API_KEY</code> to <code>.env</code> (from <a href="https://platform.composio.dev" target="_blank" rel="noopener">platform.composio.dev</a>) and restart Max to connect Office 365, WhatsApp and other apps.</li>`;
 
   const hints = [
@@ -294,7 +299,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
-.hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.add{margin:12px 0 0}
+.hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.group{padding:14px 0 2px}.group h3{margin:0}.group+.row{border-top:0}.add{margin:12px 0 0}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px}.empty{color:var(--muted)}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:1px}
 .badge.ok{background:var(--okbg);color:var(--ok)}.badge.off{background:var(--offbg);color:var(--muted)}
@@ -309,7 +314,7 @@ form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-s
 <div class="acts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div></div>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 <section><h2>Apps</h2><ul>${apps}${hints}</ul>
-<p class="meta add">To add another app (e.g. firecrawl, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
+<p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 ${musicSection(d.music)}
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>

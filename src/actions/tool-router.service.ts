@@ -9,6 +9,7 @@ import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
 import { MusicService } from '../music/music.service';
+import { ComposioService, SERVER } from '../composio/composio.service';
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
@@ -40,9 +41,22 @@ export class ToolRouterService {
     private readonly builtin: BuiltinActionsService,
     private readonly mcp: McpServersService,
     @Optional() private readonly music?: MusicService,
+    @Optional() private readonly composio?: ComposioService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
+  /**
+   * Personal and work accounts (two Composio logins): work mode uses the work ones, personal mode
+   * the personal ones, guest mode neither (visitors shouldn't reach anyone's email). Until a work
+   * account is connected, work mode keeps using the personal ones, as before.
+   */
+  isHiddenAccountSet(server: string): boolean {
+    const mode = this.modes.mode;
+    if (server === SERVER.work) return mode !== 'work';
+    if (server === SERVER.personal) return mode === 'guest' || (mode === 'work' && Boolean(this.composio?.hasConnected('work')));
+    return false;
+  }
+
   /** Work apps are hidden outside work mode, personal apps (PERSONAL_APPS) in work mode. */
   isLockedWorkApp(name: string): boolean {
     const n = name.toUpperCase();
@@ -52,6 +66,7 @@ export class ToolRouterService {
 
   onModuleInit(): void {
     this.mcp.hide = (name) => this.isLockedWorkApp(name);
+    this.mcp.serverHidden = (server) => this.isHiddenAccountSet(server);
   }
 
   /** Tool definitions in Chat Completions format. */

@@ -66,6 +66,9 @@ export interface AppConfig {
     userId: string;
     /** Apps to offer, by Composio toolkit slug, e.g. outlook, whatsapp, slack. */
     toolkits: string[];
+    /** Work accounts: a second Composio user, used in work mode (its own logins and apps). */
+    workUserId: string;
+    workToolkits: string[];
     /** Wildcard patterns of tools Max may use; keep it short for a voice assistant. */
     allowedTools: string[];
     callbackUrl: string;
@@ -210,6 +213,8 @@ export function loadConfig(): AppConfig {
       apiKey: env.COMPOSIO_API_KEY ?? '',
       userId: env.COMPOSIO_USER_ID || 'max-home',
       toolkits: list(env.COMPOSIO_TOOLKITS ?? 'outlook,whatsapp').map((t) => t.toLowerCase()),
+      workUserId: env.COMPOSIO_WORK_USER_ID || `${env.COMPOSIO_USER_ID || 'max-home'}-work`,
+      workToolkits: list(env.COMPOSIO_WORK_TOOLKITS ?? env.COMPOSIO_TOOLKITS ?? 'outlook,whatsapp').map((t) => t.toLowerCase()),
       allowedTools: list(env.COMPOSIO_ALLOWED_TOOLS ?? DEFAULT_COMPOSIO_TOOLS),
       callbackUrl: env.COMPOSIO_CALLBACK_URL || `${env.CONTROL_PANEL_URL || 'http://localhost:8099'}/callback`,
     },

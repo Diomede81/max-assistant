@@ -1,8 +1,13 @@
 /**
  * Second opinion on a wake-up. The wake word engine listens for a sound pattern, so a clatter,
  * a song or the TV can occasionally look like "hey max". When it fires, the last couple of
- * seconds are run through Max's own (local) speech recogniser: if the words don't contain the
+ * seconds are run through Max's own (local) speech recogniser: if nothing in it sounds like the
  * wake word, it was a false alarm and Max stays asleep.
+ *
+ * It's deliberately lenient: the engine has already matched the sound, so this only needs to
+ * rule out noise, music and unrelated talk. Recognisers often mishear names (especially with an
+ * accent: "Max" -> "Marx", "Mats", "Mex"), so any word starting with the same sound and close
+ * in spelling counts.
  */
 
 const FILLER = new Set(['hey', 'hi', 'ok', 'okay', 'oi', 'yo', 'hello']);
@@ -35,7 +40,8 @@ export function heardWakeWord(transcript: string, names: string[]): boolean {
         t === kw ||
         (SOUND_ALIKES[kw] ?? []).includes(t) ||
         (t.startsWith(kw) && t.length <= kw.length + 2) ||
-        (kw.length >= 4 && editDistance(t, kw) <= (kw.length >= 6 ? 2 : 1)),
+        editDistance(t, kw) <= 1 ||
+        (t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
     ),
   );
 }

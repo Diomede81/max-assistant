@@ -5,6 +5,7 @@ export interface PanelData {
   notice?: { kind: 'ok' | 'error'; text: string };
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
+  location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
   composio: {
     configured: boolean;
     error?: string;
@@ -87,6 +88,19 @@ function soulSection(s: NonNullable<PanelData['soul']>): string {
 ${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you, kept separately for personal and work mode (each mode only sees its own). Encrypted like his memory.</p><ul>${journal}</ul>
 <form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><select name="mode" aria-label="Mode"><option value="personal">Personal</option><option value="work">Work</option></select><button class="btn secondary" type="submit">Add</button></form>` : ''}
 </section>`;
+}
+
+function locationSection(l: NonNullable<PanelData['location']>): string {
+  const opts = Object.entries(l.countries)
+    .concat(l.countries[l.country] ? [] : [[l.country, l.country]])
+    .map(([code, name]) => `<option value="${esc(code)}" ${code === l.country ? 'selected' : ''}>${esc(name)}</option>`)
+    .join('');
+  return `<section id="location"><h2>Home location</h2>
+<p class="meta">Where home is, so "what's the weather?", "is the pharmacy open?" or "what's on this weekend?" are answered for your area, and web searches show local results. ${l.place ? '' : '<b>Not set yet.</b>'}</p>
+<form class="stack" method="post" action="/location">
+<div class="addfact"><input name="place" maxlength="100" required value="${esc(l.place)}" placeholder="Town, city or area, e.g. Clapham, London"></div>
+<div class="addfact"><input name="postcode" maxlength="10" value="${esc(l.postcode ?? '')}" placeholder="Postcode (optional, e.g. SW4 or SW4 7AB)"><select name="country" aria-label="Country">${opts}</select><button class="btn" type="submit">Save</button></div>
+</form><p class="meta">The postcode makes "near me" answers sharper; it's never mentioned while guest mode is on. Kept encrypted with Max's memory.</p></section>`;
 }
 
 const STATUS: Record<string, string> = { active: 'Active', on_hold: 'On hold', done: 'Finished' };
@@ -317,6 +331,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <section><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 ${musicSection(d.music)}
+${d.location ? locationSection(d.location) : ''}
 <section><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
 <div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
 <section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>

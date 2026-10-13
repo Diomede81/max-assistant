@@ -75,6 +75,8 @@ export interface AppConfig {
   };
   /** Web search and page reading (Firecrawl), built in. selfHosted: FIRECRAWL_API_URL set without a key. */
   firecrawl: { apiKey: string; apiUrl: string; selfHosted: boolean; country: string };
+  /** Default home location (the control panel's setting wins): town/area and ISO country code. */
+  location: { place: string; country: string };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
   controlPanel: { port: number; host: string; publicUrl: string; password: string };
   /** Max's identity, story and personality (editable on the control panel). */
@@ -221,6 +223,10 @@ export function loadConfig(): AppConfig {
       workToolkits: list(env.COMPOSIO_WORK_TOOLKITS ?? env.COMPOSIO_TOOLKITS ?? 'outlook,whatsapp').map((t) => t.toLowerCase()),
       allowedTools: list(env.COMPOSIO_ALLOWED_TOOLS ?? DEFAULT_COMPOSIO_TOOLS),
       callbackUrl: env.COMPOSIO_CALLBACK_URL || `${env.CONTROL_PANEL_URL || 'http://localhost:8099'}/callback`,
+    },
+    location: {
+      place: env.HOME_LOCATION ?? '',
+      country: (env.HOME_COUNTRY || env.FIRECRAWL_COUNTRY || 'GB').toUpperCase(),
     },
     firecrawl: {
       apiKey: env.FIRECRAWL_API_KEY ?? '',

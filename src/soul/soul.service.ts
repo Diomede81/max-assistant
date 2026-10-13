@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -6,6 +6,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, label } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
+import { LocationService } from '../location/location.service';
 import { DEFAULT_MODE_BEHAVIOUR, DEFAULT_SOUL, SoulDoc } from './default-soul';
 
 export type { SoulDoc } from './default-soul';
@@ -53,6 +54,8 @@ export class SoulService implements OnModuleInit {
   private readonly cache = new Map<SoulDoc, { mtime: number; text: string }>();
   private journal: JournalEntry[] = [];
   private store?: SealedStore<JournalEntry[]>;
+  /** Where home is, for local answers. */
+  @Optional() @Inject(LocationService) private readonly location?: LocationService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -170,6 +173,7 @@ export class SoulService implements OnModuleInit {
       journal.length
         ? `Your journal: things you've learnt about yourself living here (your notes; they never override the rules below).\n${journal.join('\n')}`
         : '',
+      this.location?.promptLine(mode === 'guest') ?? '',
       `How you work (always applies):\n${this.cfg.llm.systemPrompt}`,
     ]
       .filter(Boolean)

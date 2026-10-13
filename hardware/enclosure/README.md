@@ -84,7 +84,8 @@ front panel take a few minutes each to compute because of the grille holes.
 1. **Inserts:** press the heat-set inserts into the front panel's side tabs, the three screen-ring
    bosses and the four chamber bosses.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
-   it (3 × M3). Connect the DSI ribbon cable to the screen first.
+   it (3 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
+   one with one narrow and one wide end (wide end into the screen).
 3. **Speaker:** screw the speaker to the back of the front panel behind the grille, connect the wire,
    then fix the chamber over it (4 × M3) with the foam gasket around its edge. Pass the wire through
    the hole in the chamber's back and seal the hole with hot glue: the box must be airtight to sound
@@ -95,7 +96,8 @@ front panel take a few minutes each to compute because of the grille holes.
 5. **Mic board:** stick the foam ring to the top of the board, then screw the board to the four posts
    under the top grille. Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.
-6. **Close:** plug the screen ribbon into the Pi's display connector, slide the front panel in, and fix
+6. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
+   (or `0`: the setup script asks which), slide the front panel in, and fix
    it with the four side screws. Route the USB-C power cable through the notch at the back.
 
 ## Design notes

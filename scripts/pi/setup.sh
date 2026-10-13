@@ -14,6 +14,7 @@
 #
 # Options (environment variables):
 #   MAX_SCREEN=dsi|hdmi|none   which round screen is fitted (asked if not set)
+#   MAX_DSI_PORT=0|1           Pi 5: which display connector the screen's ribbon is in (asked if not set)
 #   MAX_HOSTNAME=max           network name of the box
 #   MAX_SKIP_START=1           install everything but don't build/start Max yet
 set -euo pipefail
@@ -78,10 +79,19 @@ sleep 2
 say "Setting up the screen ($SCREEN)"
 sed -i '/# max-box screen/,+1d' "$CONFIG_TXT"
 if [ "$SCREEN" = dsi ]; then
-  # Waveshare 4inch DSI LCD (C), round 720x720. If the screen stays blank after the reboot,
-  # check Waveshare's wiki for this model: on a Pi 5 the line may need ",dsi0" or ",dsi1"
-  # added, depending on which display connector the ribbon cable uses.
-  printf '# max-box screen\ndtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC\n' >> "$CONFIG_TXT"
+  # Waveshare 4inch DSI LCD (C), round 720x720. A Pi 5 has two display connectors
+  # (CAM/DISP 0 and CAM/DISP 1): the line must name the one the ribbon cable is in.
+  PORT_SUFFIX=""
+  if grep -qi "raspberry pi 5" /proc/device-tree/model 2>/dev/null; then
+    PORT="${MAX_DSI_PORT:-}"
+    if [ -z "$PORT" ]; then
+      echo "Which connector is the screen's ribbon cable in? It's printed next to it on the Pi:"
+      echo "  0) CAM/DISP 0     1) CAM/DISP 1"
+      read -r -p "Choose 0 or 1 [1]: " PORT
+    fi
+    case "${PORT:-1}" in 0) PORT_SUFFIX=",dsi0" ;; *) PORT_SUFFIX=",dsi1" ;; esac
+  fi
+  printf '# max-box screen\ndtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC%s\n' "$PORT_SUFFIX" >> "$CONFIG_TXT"
 fi
 if [ "$SCREEN" != none ]; then
   install -m 755 "$REPO/scripts/pi/max-face-kiosk.sh" /usr/local/bin/max-face-kiosk

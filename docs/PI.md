@@ -118,7 +118,7 @@ cd ~/max-assistant && sudo ./scripts/pi/setup.sh
 
 | Problem | What to do |
 | --- | --- |
-| Screen stays black | Check the ribbon cable. Then open `/boot/firmware/config.txt` and look at the line under `# max-box screen`. Waveshare's wiki for the 4inch DSI LCD (C) gives the exact line for your Pi; on a Pi 5 it may need `,dsi0` or `,dsi1` added, depending on which connector the cable is in. Reboot after changing it. |
+| Screen stays black | On a Pi 5, use the cable with **one narrow end** (22-pin, into the Pi) and one wide end (15-pin, into the screen); the cable with two equal ends is for older Pis. Check both ends are fully in with the latches closed. Then run the setup again and make sure you picked the connector the cable is really in (`CAM/DISP 0` or `1`, printed on the Pi): `sudo MAX_DSI_PORT=0 ./scripts/pi/setup.sh` (or `=1`). |
 | Face shows "Reconnecting…" | Max isn't running: `cd ~/max-assistant && docker compose logs --tail 50 max` |
 | No sound, or Max can't hear | `pactl list short sinks` and `pactl list short sources` should list the mic board (XVF3800). If not, check its USB cable, then run `systemctl --user restart max-audio-defaults`. |
 | Max wakes up by himself (TV, music, noise) | Set `WAKEWORD_TRIGGER_LEVEL=2` in `.env` and run `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d`. The log line `Ignored a false wake-up` shows the double-check catching others. More: `training/README.md`, "Waking up by itself". |

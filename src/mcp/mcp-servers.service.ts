@@ -52,11 +52,14 @@ export class McpServersService implements OnModuleInit, OnModuleDestroy {
 
   /** Actions to leave out right now (set by the action router, e.g. work apps outside work mode). */
   hide?: (name: string) => boolean;
+  /** Whole servers to leave out right now (e.g. the work accounts in personal mode). */
+  serverHidden?: (serverName: string) => boolean;
 
   get tools(): ChatCompletionTool[] {
     const seen = new Set<string>();
     const out: ChatCompletionTool[] = [];
     for (const s of this.servers.values()) {
+      if (this.serverHidden?.(s.config.name)) continue;
       for (const t of s.openAiTools) {
         if (t.type !== 'function' || seen.has(t.function.name) || this.hide?.(t.function.name)) continue;
         seen.add(t.function.name);
@@ -67,7 +70,7 @@ export class McpServersService implements OnModuleInit, OnModuleDestroy {
   }
 
   serverFor(toolName: string): McpConnection | undefined {
-    return this.list.find((s) => s.has(toolName));
+    return this.list.find((s) => !this.serverHidden?.(s.config.name) && s.has(toolName));
   }
 
   async refreshAll(): Promise<void> {

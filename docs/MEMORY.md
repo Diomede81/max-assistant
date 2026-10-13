@@ -86,6 +86,8 @@ the status, and delete a project (with its tasks and memory; this needs a confir
 - **Work apps**: set `WORK_APPS=OUTLOOK_*` (wildcards, comma-separated) and those apps are only available
   in work mode, and what's learnt from them is filed under Work. `PERSONAL_APPS=WHATSAPP_*` does the
   reverse: those apps are hidden in work mode.
+- **Separate work accounts**: connect your work email, LinkedIn etc. under *Work accounts* on the
+  control panel and work mode uses only those, personal mode only your personal ones (docs/APPS.md).
 - Nothing is learnt from conversations in guest mode.
 
 ## What you can say

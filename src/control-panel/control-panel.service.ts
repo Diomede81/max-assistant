@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import { MusicService } from '../music/music.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
-import { ComposioService } from '../composio/composio.service';
+import { ComposioService, Side } from '../composio/composio.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
@@ -72,9 +72,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname.startsWith('/connect/')) {
       const toolkit = decodeURIComponent(url.pathname.slice('/connect/'.length));
-      if (!this.cfg.composio.toolkits.includes(toolkit)) return this.redirect(res, '/?error=Unknown%20app');
-      this.log.log(`Starting sign-in for ${toolkit}`);
-      return this.redirect(res, await this.composio.loginUrl(toolkit));
+      const side: Side = url.searchParams.get('side') === 'work' ? 'work' : 'personal';
+      if (!this.composio.account(side).toolkits.includes(toolkit)) return this.redirect(res, '/?error=Unknown%20app');
+      this.log.log(`Starting sign-in for ${toolkit} (${side})`);
+      return this.redirect(res, await this.composio.loginUrl(toolkit, side));
     }
     if (req.method === 'GET' && url.pathname === '/callback') {
       await this.composio.refresh();
@@ -202,7 +203,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   private async data(): Promise<PanelData> {
     const rt = this.cfg.realtime;
-    const apps = this.composio.enabled ? await this.composio.apps().catch(() => []) : [];
+    const apps = this.composio.enabled ? await this.composio.apps('personal').catch(() => []) : [];
+    const workApps = this.composio.enabled ? await this.composio.apps('work').catch(() => []) : [];
     const ha = await this.ha.status(0);
     return {
       music: this.music && {
@@ -220,6 +222,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         configured: this.composio.enabled,
         error: this.composio.lastError,
         apps,
+        workApps,
         ...(await this.composio.diagnostics()),
         userId: this.cfg.composio.userId,
       },

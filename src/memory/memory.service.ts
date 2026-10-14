@@ -49,7 +49,10 @@ export interface Task {
   /** "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (household time zone). */
   due?: string;
   assignee?: string;
-  priority?: 'high' | 'normal' | 'low';
+  /** How soon: high, medium or low ('normal' is the older name for medium). */
+  priority?: 'high' | 'medium' | 'normal' | 'low';
+  /** What's at stake if it slips: critical, important or routine. */
+  criticality?: 'critical' | 'important' | 'routine';
   status: 'open' | 'done';
   /** Say it out loud when it's due (tasks with a time are reminded by default). */
   remind?: boolean;
@@ -100,6 +103,8 @@ interface VaultData {
   items: MemoryItem[];
   episodes: Episode[];
   projects: Project[];
+  /** To-dos that don't belong to a project (project tasks live in the project). */
+  todos: Task[];
 }
 
 interface Vault {
@@ -412,6 +417,34 @@ export class MemoryService implements OnModuleInit {
     if (v) this.save(v);
   }
 
+  // ---------- To-dos without a project (logic in TodoService) ----------
+
+  todosIn(vaults: VaultName[]): { vault: VaultName; task: Task }[] {
+    return vaults.flatMap((n) => (this.vault(n)?.data.todos ?? []).map((task) => ({ vault: n, task })));
+  }
+
+  addTodo(vault: VaultName, t: Task): boolean {
+    const v = this.vault(vault);
+    if (!v) return false;
+    v.data.todos.push(t);
+    this.save(v);
+    return true;
+  }
+
+  removeTodo(vault: VaultName, id: string): boolean {
+    const v = this.vault(vault);
+    if (!v || !v.data.todos.some((t) => t.id === id)) return false;
+    v.data.todos = v.data.todos.filter((t) => t.id !== id);
+    this.save(v);
+    return true;
+  }
+
+  /** Saves a vault after one of its to-dos was changed in place. */
+  touchVault(vault: VaultName): void {
+    const v = this.vault(vault);
+    if (v) this.save(v);
+  }
+
   /** Deletes a project with its own facts and notes. */
   deleteProject(id: string): Project | undefined {
     for (const v of this.openVaults()) {
@@ -718,7 +751,7 @@ export class MemoryService implements OnModuleInit {
 
   private load(name: VaultName, key: Buffer): Vault {
     const file = this.path(name);
-    const empty = (): VaultData => ({ version: 2, items: [], episodes: [], projects: [] });
+    const empty = (): VaultData => ({ version: 2, items: [], episodes: [], projects: [], todos: [] });
     const v: Vault = { name, key, data: empty(), status: 'open', writing: Promise.resolve() };
     let raw: string;
     try {
@@ -747,6 +780,7 @@ export class MemoryService implements OnModuleInit {
         items: (d.items ?? []).filter((i) => i && typeof i.text === 'string').map((i) => ({ ...i, vault: name, uses: i.uses ?? 0 })),
         episodes: (d.episodes ?? []).filter((e) => e && typeof e.summary === 'string').map((e) => ({ ...e, vault: name })),
         projects: (d.projects ?? []).filter((p) => p && typeof p.name === 'string').map((p) => ({ ...p, vault: name, people: p.people ?? [], tasks: p.tasks ?? [] })),
+        todos: (d.todos ?? []).filter((t) => t && typeof t.title === 'string'),
       };
     } catch (err) {
       const aside = `${file}.damaged-${Date.now()}`;

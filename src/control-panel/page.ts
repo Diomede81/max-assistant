@@ -40,6 +40,9 @@ export interface PanelData {
     activity: { at: string; kind: string; what: string; vaults?: string[]; items?: string[] }[];
     projects: PanelProject[];
     project?: string;
+    /** Today in the household time zone (YYYY-MM-DD). */
+    today: string;
+    todos: PanelTodo[];
   };
 }
 
@@ -51,6 +54,19 @@ const hidden = (name: string, value: string) => `<input type="hidden" name="${na
 const post = (action: string, fields: Record<string, string>, label: string, cls = 'btn secondary') =>
   `<form method="post" action="${action}">${Object.entries(fields).map(([k, v]) => hidden(k, v)).join('')}<button class="${cls}" type="submit">${label}</button></form>`;
 
+export interface PanelTodo {
+  id: string;
+  title: string;
+  vault: string;
+  projectId?: string;
+  projectName?: string;
+  priority: string;
+  criticality: string;
+  due?: string;
+  assignee?: string;
+  done: boolean;
+}
+
 export interface PanelProject {
   id: string;
   name: string;
@@ -58,7 +74,7 @@ export interface PanelProject {
   status: string;
   description?: string;
   people: { name: string; role?: string; contact?: string }[];
-  tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string }[];
+  tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string; criticality?: string }[];
   facts: { id: string; text: string; updatedAt: string }[];
   notes: { id: string; summary: string; at: string }[];
 }
@@ -142,7 +158,7 @@ function projectDetail(p: PanelProject): string {
     ? p.people.map((x) => `<li class="row"><div><div>${esc(x.name)}${x.role ? ` <span class="meta">· ${esc(x.role)}</span>` : ''}</div>${x.contact ? `<div class="meta">${esc(x.contact)}</div>` : ''}</div>${post('/projects/person-remove', { ...id, name: x.name }, 'Remove')}</li>`).join('')
     : '<li class="empty">No people yet.</li>';
   const tasks = open.length
-    ? open.map((t) => `<li class="row"><div><div>${esc(t.title)}${t.priority === 'high' ? ' <span class="badge warn">high</span>' : ''}${t.due && t.due.slice(0, 10) < today ? ' <span class="badge warn">overdue</span>' : ''}</div><div class="meta">${esc(t.text.slice(t.title.length).replace(/^, /, ''))}</div></div>
+    ? open.map((t) => `<li class="row"><div><div>${esc(t.title)}${t.criticality === 'critical' ? ' <span class="badge warn">critical</span>' : ''}${t.priority === 'high' ? ' <span class="badge warn">high</span>' : ''}${t.due && t.due.slice(0, 10) < today ? ' <span class="badge warn">overdue</span>' : ''}</div><div class="meta">${esc(t.text.slice(t.title.length).replace(/^, /, ''))}</div></div>
 <div class="acts">${post('/projects/task-done', { ...id, task: t.id }, 'Done', 'btn')}${post('/projects/task-delete', { ...id, task: t.id }, 'Delete')}</div></li>`).join('')
     : '<li class="empty">No open tasks.</li>';
   const doneList = done.length
@@ -158,13 +174,79 @@ function projectDetail(p: PanelProject): string {
 <h3>Tasks</h3><ul>${tasks}</ul>${doneList}
 <form class="stack" method="post" action="/projects/task-add">${hidden('id', p.id)}
 <div class="addfact"><input name="title" maxlength="200" required placeholder="New task"></div>
-<div class="addfact"><input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)"><input name="assignee" list="people-${esc(p.id)}" placeholder="Who">${assignees}<select name="priority" aria-label="Priority"><option value="normal">normal</option><option value="high">high</option><option value="low">low</option></select><button class="btn" type="submit">Add</button></div></form>
+<div class="addfact"><input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)"><input name="assignee" list="people-${esc(p.id)}" placeholder="Who">${assignees}${levelSelects()}<button class="btn" type="submit">Add</button></div></form>
 <h3>People</h3><ul>${people}</ul>
 <form class="addfact" method="post" action="/projects/person-add">${hidden('id', p.id)}<input name="people" required placeholder="e.g. Marco (supplier, marco@acme.com)"><button class="btn secondary" type="submit">Add</button></form>
 <h3>Project memory</h3><ul>${facts}</ul>${notes}
 <form class="addfact" method="post" action="/projects/note-add">${hidden('id', p.id)}<input name="fact" maxlength="300" required placeholder="Add a note to this project"><button class="btn secondary" type="submit">Remember</button></form>
 <form class="addfact danger" method="post" action="/projects/delete">${hidden('id', p.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this project with its tasks and memory</label><button class="btn secondary" type="submit">Delete</button></form>
 </section>`;
+}
+
+const PRIORITIES = ['high', 'medium', 'low'];
+const CRITICALITIES = ['critical', 'important', 'routine'];
+const opts = (values: string[], selected: string, label = (v: string) => v) =>
+  values.map((v) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${label(v)}</option>`).join('');
+const levelSelects = (priority = 'medium', criticality = 'routine') =>
+  `<select name="priority" aria-label="Priority" title="Priority: how soon">${opts(PRIORITIES, priority, (v) => `${v} priority`)}</select>` +
+  `<select name="criticality" aria-label="Criticality" title="Criticality: what's at stake if it slips">${opts(CRITICALITIES, criticality)}</select>`;
+
+const shortDate = (due: string) => {
+  const [d, t] = due.split('T');
+  return `${new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}${t ? ` ${t}` : ''}`;
+};
+
+/** My Day: the to-do list grouped by what needs attention first. */
+function myDaySection(m: NonNullable<PanelData['memory']>): string {
+  const today = m.today;
+  const open = m.todos.filter((t) => !t.done);
+  const done = m.todos.filter((t) => t.done);
+  const overdue = open.filter((t) => t.due && t.due.slice(0, 10) < today);
+  const dueToday = open.filter((t) => t.due?.slice(0, 10) === today);
+  const critical = open.filter((t) => t.criticality === 'critical' && !overdue.includes(t) && !dueToday.includes(t));
+  const later = open.filter((t) => !overdue.includes(t) && !dueToday.includes(t) && !critical.includes(t));
+  const projectOpts = (selected?: string) =>
+    m.projects.filter((p) => p.status !== 'done').map((p) => `<option value="${esc(p.id)}" ${p.id === selected ? 'selected' : ''}>${esc(p.name)} (${VAULT_LABEL[p.vault]})</option>`).join('');
+  const row = (t: PanelTodo) => {
+    const late = t.due && t.due.slice(0, 10) < today;
+    const badges =
+      (t.criticality === 'critical' ? ' <span class="badge warn">critical</span>' : t.criticality === 'important' ? ' <span class="badge imp">important</span>' : '') +
+      (t.priority === 'high' ? ' <span class="badge warn">high priority</span>' : t.priority === 'low' ? ' <span class="badge off">low priority</span>' : '') +
+      (late ? ' <span class="badge warn">overdue</span>' : '');
+    const meta = [t.due ? `${late ? 'was due' : 'due'} ${shortDate(t.due)}` : '', t.projectName ? `📁 ${esc(t.projectName)}` : `${VAULT_LABEL[t.vault]} list`, t.assignee ? esc(t.assignee) : '']
+      .filter(Boolean)
+      .join(' · ');
+    const [date, time] = (t.due ?? '').split('T');
+    return `<li class="row"><div style="flex:1;min-width:0"><div>${esc(t.title)}${badges}</div><div class="meta">${meta}</div>
+<details><summary class="meta">Change</summary><form class="addfact edit" method="post" action="/todo/update">${hidden('id', t.id)}${levelSelects(t.priority, t.criticality)}
+<select name="project" aria-label="Project"><option value="none" ${t.projectId ? '' : 'selected'}>No project</option>${projectOpts(t.projectId)}</select>
+<input type="date" name="date" value="${esc(date ?? '')}" aria-label="Due date"><input type="time" name="time" value="${esc(time ?? '')}" aria-label="Time"><button class="btn secondary" type="submit">Save</button></form></details></div>
+<div class="acts">${post('/todo/done', { id: t.id }, 'Done', 'btn')}${post('/todo/delete', { id: t.id }, 'Delete')}</div></li>`;
+  };
+  const group = (title: string, items: PanelTodo[], hint = '') => (items.length ? `<h3>${title} <span class="meta">${items.length}${hint ? ` · ${hint}` : ''}</span></h3><ul>${items.map(row).join('')}</ul>` : '');
+  const summary = [
+    overdue.length ? `<b class="warntext">${overdue.length} overdue</b>` : '',
+    `${dueToday.length} due today`,
+    `${open.filter((t) => t.criticality === 'critical').length} critical`,
+    `${open.length} open in total`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const doneList = done.length
+    ? `<details><summary class="meta">${done.length} done in the last 2 weeks</summary><ul>${done.map((t) => `<li class="row"><div class="meta">${esc(t.title)}${t.projectName ? ` · ${esc(t.projectName)}` : ''}</div>${post('/todo/reopen', { id: t.id }, 'Reopen')}</li>`).join('')}</ul></details>`
+    : '';
+  return `<section id="myday"><h2>My Day</h2>
+<p class="meta">${summary}. Ask Max "what's going on in my day?" for a briefing with your calendar. <b>Priority</b> = how soon; <b>criticality</b> = what's at stake if it slips.</p>
+<form class="stack" method="post" action="/todo/add">
+<div class="addfact"><input name="title" maxlength="200" required placeholder="New to-do, e.g. Renew the car insurance"></div>
+<div class="addfact wrap">${levelSelects()}<input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)">
+<select name="project" aria-label="Project"><option value="">No project</option>${projectOpts()}</select>
+<select name="vault" aria-label="List" title="Which list, when it has no project"><option value="personal">Personal list</option><option value="work">Work list</option><option value="household">Household list</option></select>
+<button class="btn" type="submit">Add</button></div></form>
+${group('Overdue', overdue, 'should already have been done')}${group('Today', dueToday)}${group('Critical', critical)}${group('Later', later)}
+${open.length ? '' : '<p class="empty">Nothing on the list. Add one above, or say "Hey Max, add to my to-do list…".</p>'}
+${doneList}
+<p class="meta">Work items are only visible to Max in work mode, personal ones in personal mode.</p></section>`;
 }
 
 const ACTIVITY: Record<string, string> = {
@@ -252,12 +334,26 @@ const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
 
 const TABS: [string, string][] = [
   ['overview', 'Overview'],
+  ['myday', 'My Day'],
   ['max', 'Max'],
   ['memory', 'Memory'],
   ['projects', 'Projects'],
   ['connections', 'Connections'],
   ['settings', 'Settings'],
 ];
+
+function myDayTile(m: NonNullable<PanelData['memory']>, tile: (href: string, k: string, v: string, meta: string) => string): string {
+  const open = m.todos.filter((t) => !t.done);
+  const overdue = open.filter((t) => t.due && t.due.slice(0, 10) < m.today).length;
+  const today = open.filter((t) => t.due?.slice(0, 10) === m.today).length;
+  const critical = open.filter((t) => t.criticality === 'critical').length;
+  return tile(
+    '#tab-myday',
+    'My Day',
+    `${today} due today${overdue ? ` · <span class="warntext">${overdue} overdue</span>` : ''}`,
+    `${critical} critical · ${open.length} open to-do${open.length === 1 ? '' : 's'}`,
+  );
+}
 
 /** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
 function overview(d: PanelData): string {
@@ -280,6 +376,7 @@ function overview(d: PanelData): string {
     tile('#web', 'Web search', d.web?.configured ? badge(d.web.connected) : badge(false, '', 'Not set up'), d.web?.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages'),
     tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
     music ? tile('#music', 'Music', `Spotify ${music}`, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
+    m ? myDayTile(m, tile) : '',
     m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
     m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
@@ -333,10 +430,11 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
-  const show: Record<string, boolean> = { overview: true, max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
+  const show: Record<string, boolean> = { overview: true, myday: Boolean(d.memory), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
   const attention: Record<string, boolean> = {
     connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
     settings: Boolean(d.location && !d.location.place),
+    myday: Boolean(d.memory?.todos.some((t) => !t.done && t.due && t.due.slice(0, 10) < d.memory!.today)),
     memory: Boolean(d.memory?.vaults.some((v) => v.status !== 'open' || v.facts.some((f) => f.unverified))),
   };
 
@@ -355,7 +453,8 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 .addfact,.search{display:flex;gap:8px;margin:12px 0 8px}.addfact input,.search input,select{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
-.badge.warn{background:var(--errbg);color:var(--err)}
+.badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
+.wrap{flex-wrap:wrap}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
@@ -384,6 +483,8 @@ section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 
 <div class="pane" id="tab-overview">${overview(d)}</div>
+
+<div class="pane" id="tab-myday">${d.memory ? myDaySection(d.memory) : ''}</div>
 
 <div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
 

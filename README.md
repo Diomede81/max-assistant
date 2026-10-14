@@ -98,6 +98,13 @@ See [`deploy/max.service`](deploy/max.service).
   "Create a work project called Milan launch with Marco and Anna", "Add a task to Milan: send the budget
   by Wednesday", "What's due this week?". See **[docs/MEMORY.md](docs/MEMORY.md#projects)**.
 
+- **My Day**: one to-do list where every item has a priority (high, medium, low: how soon) and a
+  criticality (critical, important, routine: what's at stake), optionally tied to a project.
+  "Add to my to-do list: renew the car insurance, high priority, critical", "Move the insurance to the
+  Home admin project", "What's going on in my day?": Max runs through today's calendar events (when a
+  calendar app is connected), reminders and to-dos, and calls out what's critical or overdue. Also on the
+  control panel's My Day tab.
+
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
 ## Real-time voice (demo mode)

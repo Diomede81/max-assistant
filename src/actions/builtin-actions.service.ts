@@ -6,6 +6,8 @@ import { ConversationControl } from './conversation-control';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
+import { TodoService } from '../memory/todo.service';
+import { timeZone } from './clock';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
 
@@ -27,6 +29,7 @@ export class BuiltinActionsService {
     private readonly memory: MemoryService,
     private readonly modes: ModesService,
     private readonly projects: ProjectsService,
+    private readonly todos: TodoService,
   ) {
     // Project tasks falling due are announced like timer reminders.
     projects.on('reminder', (text: string) => timers.announce(text));
@@ -124,22 +127,39 @@ export class BuiltinActionsService {
               ['action'],
             ),
             tool(
-              'task',
-              'Project tasks with due dates. add (project, title, optional due/assignee/priority), complete, update, delete, ' +
-                'list (when: today, week, overdue or all; optionally one project or one person).',
+              'todo',
+              "The user's to-do list (also every project's tasks). Each item has a PRIORITY (high, medium, low: how soon it " +
+                'should be done) and a CRITICALITY (critical, important, routine: what is at stake if it slips), and can belong ' +
+                'to a project. add: needs the item, its priority and its criticality; if the user did not say them, ask once, ' +
+                'in one short question, before adding ("How soon, and how critical is it?"). Optional: due date, project, who ' +
+                'does it. complete, update (change priority, criticality, due date; move it to a project with move_to, or ' +
+                'move_to "none"), delete, list (when: today, week, overdue, critical or all; optionally one project).',
               {
                 action: { type: 'string', enum: ['add', 'complete', 'update', 'delete', 'list'] },
-                project: { type: 'string', description: 'Project name (optional when only one project is active, or when the task title is unique)' },
-                task: { type: 'string', description: 'For add: the task. Otherwise: words from the task title' },
-                due: { type: 'string', description: 'YYYY-MM-DD, or YYYY-MM-DDTHH:MM for a time (household time zone)' },
+                item: { type: 'string', description: 'For add: the to-do, e.g. "renew the car insurance". Otherwise: words from it' },
+                priority: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How soon it should be done' },
+                criticality: { type: 'string', enum: ['critical', 'important', 'routine'], description: 'What is at stake if it slips' },
+                due: { type: 'string', description: 'YYYY-MM-DD, or YYYY-MM-DDTHH:MM for a time (household time zone) (optional)' },
+                project: { type: 'string', description: 'For add: the project it belongs to (optional). For other actions: only look in this project' },
+                move_to: { type: 'string', description: 'For update: the project to move it to, or "none" to take it out of its project' },
+                list: { type: 'string', enum: ['personal', 'work', 'household'], description: 'For add without a project: which list (default: the current mode\'s own; household = shared)' },
                 assignee: { type: 'string', description: 'Who does it (optional)' },
-                priority: { type: 'string', enum: ['high', 'normal', 'low'] },
                 remind: { type: 'boolean', description: 'Say it out loud when due (default: yes when a time is given)' },
-                when: { type: 'string', enum: ['today', 'week', 'overdue', 'all'], description: 'For list (default week)' },
-                rename: { type: 'string', description: 'For update: new task title' },
-                reopen: { type: 'boolean', description: 'For update: mark a finished task as open again' },
+                when: { type: 'string', enum: ['today', 'week', 'overdue', 'critical', 'all'], description: 'For list (default all)' },
+                rename: { type: 'string', description: 'For update: new wording' },
+                reopen: { type: 'boolean', description: 'For update: mark a finished to-do as open again' },
               },
               ['action'],
+            ),
+            tool(
+              'my_day',
+              'Brief the user on their day: call it when they ask "what\'s going on today", "what\'s my day like", "brief me", ' +
+                '"what have I got on". Returns today\'s reminders and to-dos (overdue, due today, critical). In the SAME step, ' +
+                'also fetch today\'s calendar events with the connected calendar app, if you have one (e.g. the Outlook or ' +
+                'Google Calendar action that lists events for a date range: today from 00:00 to 23:59). Then brief in this ' +
+                'order: events in time order; what is overdue (say clearly it should already have been done) and what is ' +
+                'critical; the rest of today\'s to-dos. Keep it short and natural; offer details rather than reading everything.',
+              {},
             ),
           ]
         : []),
@@ -169,7 +189,10 @@ export class BuiltinActionsService {
               ).message;
             },
             project: (a: Record<string, unknown>) => this.projectAction(a),
-            task: (a: Record<string, unknown>) => this.taskAction(a),
+            todo: (a: Record<string, unknown>) => this.todoAction(a),
+            // Older name, in case a saved conversation still uses it.
+            task: (a: Record<string, unknown>) => this.todoAction({ ...a, item: a.item ?? a.task }),
+            my_day: () => this.myDay(),
             forget: (a: Record<string, unknown>) => memory.forget(str(a.about) ?? '', a.all === true),
             recall: (a: Record<string, unknown>) => memory.recall(str(a.query) ?? ''),
             set_mode: (a: Record<string, unknown>) => {
@@ -250,35 +273,69 @@ export class BuiltinActionsService {
     }
   }
 
-  private taskAction(a: Record<string, unknown>): string {
-    const p = this.projects;
+  private todoAction(a: Record<string, unknown>): string {
     const action = str(a.action) ?? '';
+    const t = this.todos;
+    if (action === 'add') {
+      return t.add({
+        title: str(a.item) ?? '',
+        priority: str(a.priority),
+        criticality: str(a.criticality),
+        due: str(a.due),
+        project: str(a.project),
+        vault: str(a.list),
+        assignee: str(a.assignee),
+        remind: typeof a.remind === 'boolean' ? a.remind : undefined,
+      });
+    }
     let project;
-    if (str(a.project) || action === 'add') {
-      const found = p.find(str(a.project));
+    if (str(a.project)) {
+      const found = this.projects.find(str(a.project));
       if ('error' in found) return found.error;
       project = found.project;
     }
-    if (action === 'add') {
-      return p.addTask(project!, { title: str(a.task) ?? '', due: str(a.due), assignee: str(a.assignee), priority: str(a.priority), remind: typeof a.remind === 'boolean' ? a.remind : undefined });
-    }
-    if (action === 'list') return p.agenda(str(a.when) ?? 'week', str(a.assignee), project);
-    const words = str(a.task);
-    if (!words) return 'Which task?';
-    const matches = p.findTask(words, project, action === 'update' && a.reopen === true);
-    if (!matches.length) return `No open task matching "${words}"${project ? ` on ${project.name}` : ''}.`;
-    if (matches.length > 1) return `Several tasks match: ${matches.map((m) => `${m.task.title} (${m.project.name})`).join('; ')}. Ask which one.`;
-    const { project: proj, task } = matches[0];
+    if (action === 'list') return t.list(str(a.when) ?? 'all', project, str(a.assignee));
+    const words = str(a.item);
+    if (!words) return 'Which to-do?';
+    const matches = t.find(words, project, action === 'update' && a.reopen === true);
+    if (!matches.length) return `No open to-do matching "${words}"${project ? ` on ${project.name}` : ''}.`;
+    if (matches.length > 1) return `Several to-dos match: ${matches.map((m) => `${m.task.title}${m.project ? ` (${m.project.name})` : ''}`).join('; ')}. Ask which one.`;
+    const item = matches[0];
     switch (action) {
       case 'complete':
-        return p.completeTask(proj, task);
+        return t.complete(item);
       case 'update':
-        return p.updateTask(proj, task, { title: str(a.rename), due: typeof a.due === 'string' ? a.due : undefined, assignee: typeof a.assignee === 'string' ? a.assignee : undefined, priority: str(a.priority), reopen: a.reopen === true });
+        return t.update(item, {
+          title: str(a.rename),
+          due: typeof a.due === 'string' ? a.due : undefined,
+          assignee: typeof a.assignee === 'string' ? a.assignee : undefined,
+          priority: str(a.priority),
+          criticality: str(a.criticality),
+          reopen: a.reopen === true,
+          moveTo: str(a.move_to),
+        });
       case 'delete':
-        return p.deleteTask(proj, task);
+        return t.delete(item);
       default:
-        return `Unknown task action "${action}".`;
+        return `Unknown to-do action "${action}".`;
     }
+  }
+
+  /** "What's my day": today's date, reminders still to come, and the to-do briefing. Calendar events come from the calendar app. */
+  private myDay(): string {
+    const day = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: timeZone() }).format(new Date(ms));
+    const today = day(Date.now());
+    const reminders = this.timers
+      .list()
+      .filter((x) => x.reminder && day(x.endsAt) === today)
+      .sort((x, y) => x.endsAt - y.endsAt)
+      .map((x) => `- "${x.reminder}" ${spokenWhen(x.endsAt)}`);
+    return [
+      `Today is ${describeNow()}.`,
+      reminders.length ? `Reminders still to come today:\n${reminders.join('\n')}` : 'No more reminders today.',
+      `To-dos:\n${this.todos.dayBriefing()}`,
+      "Calendar: not included here. Get today's events from the calendar app if one is connected; if none is, don't mention the calendar.",
+    ].join('\n');
   }
 
   has(name: string): boolean {

@@ -135,7 +135,7 @@ export class MemoryLearnerService {
       '"journal":["..."],"journalRemove":["id"]}\n\n' +
       `Projects: ${projects.length ? projects.join(', ') : '(none)'}. When a note or fact is about one of these, put its exact name in ` +
       '"project" (otherwise omit it). tasks: only when the user clearly committed to or asked for a to-do on one of these projects ' +
-      'and Max did not already add it with the task action; due as YYYY-MM-DD or YYYY-MM-DDTHH:MM. Usually empty.\n\n' +
+      'and Max did not already add it with the todo action; due as YYYY-MM-DD or YYYY-MM-DDTHH:MM. Usually empty.\n\n' +
       `Vaults you may use: ${vaults.join(', ')}. work = the user's job (colleagues, clients, projects, meetings); ` +
       'household = shared home matters (appliances, bins, house rules, home services); personal = everything else ' +
       '(family, friends, health, hobbies, preferences).' +

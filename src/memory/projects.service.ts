@@ -7,7 +7,6 @@ import { label, ModesService, VaultName, VAULTS } from './modes.service';
 
 const SCAN_MS = 30_000;
 const STALE_REMINDER_MS = 12 * 3600_000;
-const SOON_DAYS = 7;
 
 export type FindResult = { project: Project } | { error: string };
 
@@ -188,7 +187,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
 
   // ---------- Tasks ----------
 
-  addTask(p: Project, t: { title: string; due?: string; assignee?: string; priority?: string; remind?: boolean }): string {
+  addTask(p: Project, t: { title: string; due?: string; assignee?: string; priority?: string; criticality?: string; remind?: boolean }): string {
     const title = t.title.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!title) return 'What is the task?';
     const due = validDue(t.due);
@@ -198,7 +197,8 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
       title,
       due,
       assignee: t.assignee?.trim() || undefined,
-      priority: t.priority === 'high' || t.priority === 'low' ? t.priority : undefined,
+      priority: priorityOf(t.priority),
+      criticality: criticalityOf(t.criticality),
       status: 'open',
       remind: t.remind ?? (!!due && due.includes('T')),
       createdAt: new Date().toISOString(),
@@ -235,7 +235,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
     return `Done: ${task.title}. ${left} open task${left === 1 ? '' : 's'} left on ${project.name}.`;
   }
 
-  updateTask(project: Project, task: Task, c: { title?: string; due?: string; assignee?: string; priority?: string; reopen?: boolean }): string {
+  updateTask(project: Project, task: Task, c: { title?: string; due?: string; assignee?: string; priority?: string; criticality?: string; reopen?: boolean }): string {
     if (c.due !== undefined) {
       const due = validDue(c.due);
       if (c.due && !due) return `I couldn't read the due date "${c.due}".`;
@@ -245,7 +245,8 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
     }
     if (c.title?.trim()) task.title = c.title.trim().slice(0, 200);
     if (c.assignee !== undefined) task.assignee = c.assignee.trim() || undefined;
-    if (c.priority === 'high' || c.priority === 'low' || c.priority === 'normal') task.priority = c.priority === 'normal' ? undefined : c.priority;
+    if (priorityOf(c.priority)) task.priority = priorityOf(c.priority);
+    if (criticalityOf(c.criticality)) task.criticality = criticalityOf(c.criticality);
     if (c.reopen) {
       task.status = 'open';
       task.doneAt = undefined;
@@ -286,19 +287,12 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
   promptSection(open: VaultName[]): string {
     const projects = this.memory.projectsIn(open).filter((p) => p.status === 'active');
     if (!projects.length) return '';
-    const today = localToday();
-    const soon = addDays(today, SOON_DAYS);
-    const due = projects
-      .flatMap((project) => project.tasks.filter((t) => t.status === 'open' && t.due && t.due.slice(0, 10) <= soon).map((task) => ({ project, task })))
-      .sort((a, b) => byDue(a.task, b.task))
-      .slice(0, 10)
-      .map(({ project, task }) => `- ${task.due!.slice(0, 10) < today ? 'OVERDUE ' : ''}${project.name}: ${taskText(task)}`);
+    // Tasks due soon are listed with the rest of the to-do list (TodoService).
     return [
-      `Active projects (use the project and task actions for details and changes): ${projects
+      `Active projects (use the project action for details, the todo action for their tasks): ${projects
         .slice(0, 12)
         .map((p) => `${p.name} [${p.vault}; ${p.people.map((x) => x.name).slice(0, 6).join(', ') || 'no people'}; ${plural(p.tasks.filter((t) => t.status === 'open').length, 'open task')}]`)
         .join('; ')}.`,
-      due.length ? `Tasks due in the next ${SOON_DAYS} days or overdue:\n${due.join('\n')}` : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -308,7 +302,11 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
   scanReminders(now = Date.now()): void {
     const open = this.modes.readable();
     for (const vault of VAULTS) {
-      for (const p of this.memory.projectsIn([vault])) {
+      const lists: { name: string; tasks: Task[]; save: () => void }[] = [
+        ...this.memory.projectsIn([vault]).map((p) => ({ name: p.name, tasks: p.tasks, save: () => this.memory.touchProject(p) })),
+        { name: '', tasks: this.memory.todosIn([vault]).map((x) => x.task), save: () => this.memory.touchVault(vault) },
+      ];
+      for (const p of lists) {
         let changed = false;
         for (const t of p.tasks) {
           if (t.status !== 'open' || !t.remind || t.reminded || !t.due) continue;
@@ -322,12 +320,12 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
           if (!open.includes(vault)) continue; // e.g. a work task outside work mode: wait
           t.reminded = true;
           changed = true;
-          const text = `Reminder: ${p.name}: ${t.title}${t.assignee ? ` (${t.assignee})` : ''} is due now.`;
+          const text = `Reminder: ${p.name ? `${p.name}: ` : ''}${t.title}${t.assignee ? ` (${t.assignee})` : ''} is due now.`;
           this.log.log(`Reminder: ${text}`);
           this.memory.activity('shared', 'Task reminder announced', [vault], [text]);
           this.emit('reminder', text);
         }
-        if (changed) this.memory.touchProject(p);
+        if (changed) p.save();
       }
     }
   }
@@ -369,7 +367,7 @@ export function parsePeople(s?: string): ProjectPerson[] {
     .filter((p) => p.name);
 }
 
-function validDue(s?: string): string | undefined {
+export function validDue(s?: string): string | undefined {
   if (!s) return undefined;
   const v = s.trim().replace(' ', 'T');
   const m = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}))?/.exec(v);
@@ -377,11 +375,11 @@ function validDue(s?: string): string | undefined {
   return m[2] ? `${m[1]}T${m[2]}` : m[1];
 }
 
-function localToday(): string {
+export function localToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone() }).format(new Date());
 }
 
-function addDays(date: string, n: number): string {
+export function addDays(date: string, n: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
 }
 
@@ -399,7 +397,7 @@ export function dueEpoch(due: string): number | undefined {
   return naive - (asLocal - naive);
 }
 
-function dueText(due: string): string {
+export function dueText(due: string): string {
   const [d, t] = due.split('T');
   const today = localToday();
   const day =
@@ -408,10 +406,41 @@ function dueText(due: string): string {
 }
 
 export function taskText(t: Task): string {
-  return `${t.title}${t.due ? `, due ${dueText(t.due)}` : ''}${t.assignee ? `, ${t.assignee}` : ''}${t.priority === 'high' ? ', high priority' : ''}${t.status === 'done' ? ' (done)' : ''}`;
+  const level = [t.criticality && t.criticality !== 'routine' ? t.criticality : '', t.priority === 'high' || t.priority === 'low' ? `${t.priority} priority` : '']
+    .filter(Boolean)
+    .join(', ');
+  return `${t.title}${t.due ? `, due ${dueText(t.due)}` : ''}${t.assignee ? `, ${t.assignee}` : ''}${level ? `, ${level}` : ''}${t.status === 'done' ? ' (done)' : ''}`;
 }
 
-function byDue(a: Task, b: Task): number {
-  if (a.priority === 'high' && b.priority !== 'high' && a.due === b.due) return -1;
-  return (a.due ?? '9999').localeCompare(b.due ?? '9999');
+const CRIT_RANK = { critical: 0, important: 1, routine: 2 };
+const PRIO_RANK = { high: 0, medium: 1, normal: 1, low: 2 };
+
+/** Most pressing first: critical before important before routine, then by due date, then priority. */
+export function byUrgency(a: Task, b: Task): number {
+  return (
+    CRIT_RANK[a.criticality ?? 'routine'] - CRIT_RANK[b.criticality ?? 'routine'] ||
+    (a.due ?? '9999').localeCompare(b.due ?? '9999') ||
+    PRIO_RANK[a.priority ?? 'medium'] - PRIO_RANK[b.priority ?? 'medium']
+  );
+}
+
+export function byDue(a: Task, b: Task): number {
+  return (a.due ?? '9999').localeCompare(b.due ?? '9999') || PRIO_RANK[a.priority ?? 'medium'] - PRIO_RANK[b.priority ?? 'medium'];
+}
+
+/** "high" / "medium" / "low" from what the user or the AI said ("urgent", "normal"...). */
+export function priorityOf(s?: string): Task['priority'] {
+  const v = (s ?? '').toLowerCase().trim();
+  if (/^(high|urgent|asap|top)/.test(v)) return 'high';
+  if (/^(medium|normal|mid|moderate)/.test(v)) return 'medium';
+  if (/^(low|whenever|someday)/.test(v)) return 'low';
+  return undefined;
+}
+
+export function criticalityOf(s?: string): Task['criticality'] {
+  const v = (s ?? '').toLowerCase().trim();
+  if (/^(critical|crit|must|essential|vital)/.test(v)) return 'critical';
+  if (/^(important|high|major|significant)/.test(v)) return 'important';
+  if (/^(routine|low|minor|normal|nice|optional)/.test(v)) return 'routine';
+  return undefined;
 }

@@ -40,7 +40,8 @@ A project groups everything about one piece of work or life: "Milan launch", "Ki
 "Sofia's party". Each project has:
 
 - **People**: name, role and contact ("Marco (supplier, marco@acme.com)")
-- **Tasks**: due date (and optional time), who does it, priority. Tasks with a time are **announced out
+- **Tasks**: due date (and optional time), who does it, priority and criticality (they are part of the
+  [My Day](#my-day-the-to-do-list) to-do list). Tasks with a time are **announced out
   loud when due**; all open tasks due in the next week, or overdue, are part of Max's standing memory.
 - **Its own memory**: facts and conversation notes filed under the project, so "what do we know about
   Milan?" brings back exactly that.
@@ -64,6 +65,40 @@ clearly committed to one ("I'll send Anna the floor plan by Thursday").
 
 On the control panel (**Projects**) you can create projects, tick off tasks, add people and notes, change
 the status, and delete a project (with its tasks and memory; this needs a confirmation tick).
+
+## My Day: the to-do list
+
+One list for everything you need to do. Every item has:
+
+- **Priority**: how soon it should be done: **high**, **medium** or **low**.
+- **Criticality**: what's at stake if it slips: **critical** (real consequences), **important** or **routine**.
+- Optionally a **project**: the item then also shows up as one of that project's tasks, and you can move
+  it between projects (or out of one) at any time.
+- Optionally a due date (with a time, Max announces it when due) and who does it.
+
+If you don't say the priority or criticality, Max asks once ("How soon, and how critical is it?"). Say
+"doesn't matter" and he uses medium and routine.
+
+Items without a project go on your list for the current mode (Personal in personal mode, Work in work
+mode); say "on the household list" for shared ones. Like everything else, work to-dos are only visible in
+work mode.
+
+| You say | Max does |
+| --- | --- |
+| "Add to my to-do list: renew the car insurance by Friday, high priority, critical" | Adds it |
+| "Add a to-do for the Milan project: book the venue" | Asks how soon and how critical, then adds it to Milan |
+| "Move the insurance to the Home admin project" / "…take it out of the project" | Reassigns it |
+| "Make the venue booking critical" / "Lower the priority of…" | Updates it |
+| "What's going on in my day?" / "Brief me" | Today's calendar events, reminders and to-dos, with what's critical or overdue called out |
+| "What's critical?" / "What's overdue?" / "What's on my list this week?" | Lists them, most pressing first |
+| "The insurance is done" | Ticks it off |
+
+**The daily briefing** combines your calendar (from the connected Outlook or Google calendar of the current
+mode, when there is one), today's reminders, and the to-dos that are overdue ("should already have been
+done"), due today or critical. The rest is only counted, so the briefing stays short.
+
+On the control panel, the **My Day** tab shows the whole list grouped into Overdue, Today, Critical and
+Later, with buttons to tick items off, change their priority, criticality or project, and add new ones.
 
 ## Modes: keeping work and private life apart
 

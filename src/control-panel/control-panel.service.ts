@@ -10,7 +10,8 @@ import { McpServersService } from '../mcp/mcp-servers.service';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
-import { ProjectsService, taskText } from '../memory/projects.service';
+import { localToday, ProjectsService, taskText } from '../memory/projects.service';
+import { TodoService } from '../memory/todo.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -35,6 +36,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     private readonly memory: MemoryService,
     private readonly modes: ModesService,
     private readonly projects: ProjectsService,
+    private readonly todos: TodoService,
   ) {
     this.auth = new PanelAuth(cfg.controlPanel.password);
   }
@@ -95,6 +97,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
       return this.json(res, this.projects.all().map((p) => ({ ...p, memory: this.memory.projectMemory(p).facts.map(({ vec, ...f }) => f) })));
@@ -145,7 +148,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(this.projects.removePerson(p, get('name')), p.id);
       case 'task-add': {
         const due = get('date') ? (get('time') ? `${get('date')}T${get('time')}` : get('date')) : undefined;
-        return back(this.projects.addTask(p, { title: get('title'), due, assignee: get('assignee'), priority: get('priority') }), p.id);
+        return back(this.projects.addTask(p, { title: get('title'), due, assignee: get('assignee'), priority: get('priority'), criticality: get('criticality') }), p.id);
       }
       case 'task-done':
         return task ? back(this.projects.completeTask(p, task), p.id) : back('Task not found.', p.id, false);
@@ -156,6 +159,38 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'note-add': {
         const r = await this.memory.remember({ text: get('fact'), vault: p.vault, projectId: p.id, source: 'panel' });
         return back(r.ok ? 'Saved to the project memory.' : r.message, p.id, r.ok);
+      }
+      default:
+        res.writeHead(404).end();
+    }
+  }
+
+  private async todoAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#myday`);
+    const due = get('date') ? (get('time') ? `${get('date')}T${get('time')}` : get('date')) : '';
+    const project = get('project') ? this.projects.byId(get('project')) : undefined;
+    if (action === 'add') {
+      const msg = this.todos.add({ title: get('title'), priority: get('priority'), criticality: get('criticality'), due: due || undefined, project, vault: get('vault'), assignee: get('assignee') }, true);
+      return back(msg, msg.startsWith('Added'));
+    }
+    const item = this.todos.byId(get('id'));
+    if (!item) return back('That to-do no longer exists.', false);
+    switch (action) {
+      case 'done':
+        return back(this.todos.complete(item));
+      case 'reopen':
+        return back(this.todos.update(item, { reopen: true }, true));
+      case 'delete':
+        return back(this.todos.delete(item));
+      case 'update': {
+        const msg = this.todos.update(
+          item,
+          { priority: get('priority'), criticality: get('criticality'), due: f.has('date') ? due : undefined, moveTo: get('project') === 'none' ? 'none' : (project ?? undefined) },
+          true,
+        );
+        return back(msg, msg.startsWith('Updated'));
       }
       default:
         res.writeHead(404).end();
@@ -254,6 +289,21 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             passwordSet: this.auth.enabled,
             workApps: this.cfg.memory.workApps,
             activity: this.memory.recentActivity(60),
+            today: localToday(),
+            todos: this.todos.items(VAULTS, true)
+              .filter((x) => x.task.status === 'open' || (x.task.doneAt ?? '') > new Date(Date.now() - 14 * 86400_000).toISOString())
+              .map(({ task: t, vault, project }) => ({
+                id: t.id,
+                title: t.title,
+                vault,
+                projectId: project?.id,
+                projectName: project?.name,
+                priority: t.priority === 'normal' ? 'medium' : (t.priority ?? 'medium'),
+                criticality: t.criticality ?? 'routine',
+                due: t.due,
+                assignee: t.assignee,
+                done: t.status === 'done',
+              })),
             projects: this.projects.all().map((p) => {
               const mem = this.memory.projectMemory(p);
               return {

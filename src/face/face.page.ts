@@ -621,7 +621,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         text = '♪  ' + info.music.title; sub = info.music.artist;
       } else if (state === 'idle' || state === 'sleeping' || state === 'offline') {
         text = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-        if (state === 'offline') sub = 'Reconnecting…';
+        if (state === 'offline') sub = info.updating ? 'Updating… back in a few minutes' : 'Reconnecting…';
+        else if (info.updating) sub = 'Updating…';
         else if (info.reminder) {
           // Reminders aren't countdowns: just the next one, with a bell, under the clock.
           const at = new Date(info.reminder.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });

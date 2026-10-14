@@ -23,6 +23,7 @@ export function describeActivity(name: string): Activity | undefined {
   if (name === 'project') return { icon: '📁', label: 'Checking your projects' };
   if (name === 'todo' || name === 'task') return { icon: '✅', label: 'Updating your to-do list' };
   if (name === 'my_day') return { icon: '☀️', label: 'Looking at your day' };
+  if (name === 'software_update') return { icon: '⬇️', label: 'Checking for updates' };
   if (name === 'news_briefing') return { icon: '📰', label: 'Getting your news' };
   if (name === 'news_settings') return { icon: '📰', label: 'Updating your news' };
   if (name === 'play_music') return { icon: '🎵', label: 'Finding the music' };

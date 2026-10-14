@@ -17,6 +17,9 @@
 #   MAX_DSI_PORT=0|1           Pi 5: which display connector the screen's ribbon is in (asked if not set)
 #   MAX_HOSTNAME=max           network name of the box
 #   MAX_SKIP_START=1           install everything but don't build/start Max yet
+#
+# Your answers (screen, connector, user, name) are remembered in /etc/max/box.conf, so running it
+# again, and the automatic updates (scripts/pi/max-update.py), never need to ask.
 set -euo pipefail
 
 say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -24,7 +27,10 @@ warn() { printf '\033[1;33m!!  %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mXX  %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run with sudo: sudo ./scripts/pi/setup.sh"
-USER_NAME="${SUDO_USER:-}"
+BOX_CONF=/etc/max/box.conf
+saved() { grep -m1 "^$1=" "$BOX_CONF" 2>/dev/null | cut -d= -f2-; }
+# The updater runs this as root, naming the user in MAX_USER.
+USER_NAME="${SUDO_USER:-${MAX_USER:-}}"
 [ -n "$USER_NAME" ] && [ "$USER_NAME" != root ] || die "Run with sudo from your normal user account (not as root)."
 USER_ID="$(id -u "$USER_NAME")"
 USER_GID="$(id -g "$USER_NAME")"
@@ -35,7 +41,7 @@ grep -q 'Raspberry Pi 5' /proc/device-tree/model 2>/dev/null || warn "This doesn
 . /etc/os-release
 CONFIG_TXT=/boot/firmware/config.txt; [ -f "$CONFIG_TXT" ] || CONFIG_TXT=/boot/config.txt
 
-SCREEN="${MAX_SCREEN:-}"
+SCREEN="${MAX_SCREEN:-$(saved MAX_SCREEN)}"
 if [ -z "$SCREEN" ]; then
   echo "Which screen is fitted?  1) round DSI (ribbon cable)   2) round HDMI   3) none"
   read -r -p "Choose 1, 2 or 3 [1]: " choice </dev/tty || choice=1
@@ -56,7 +62,7 @@ fi
 usermod -aG docker,audio,video,render,input "$USER_NAME" || true
 
 # ---------------------------------------------------------------- 2. name on the network
-NAME="${MAX_HOSTNAME:-max}"
+NAME="${MAX_HOSTNAME:-$(saved MAX_HOSTNAME)}"; NAME="${NAME:-max}"
 if [ "$(hostname)" != "$NAME" ]; then
   say "Naming the box \"$NAME\" (reachable as $NAME.local)"
   hostnamectl set-hostname "$NAME"
@@ -83,12 +89,13 @@ if [ "$SCREEN" = dsi ]; then
   # (CAM/DISP 0 and CAM/DISP 1): the line must name the one the ribbon cable is in.
   PORT_SUFFIX=""
   if grep -qi "raspberry pi 5" /proc/device-tree/model 2>/dev/null; then
-    PORT="${MAX_DSI_PORT:-}"
+    PORT="${MAX_DSI_PORT:-$(saved MAX_DSI_PORT)}"
     if [ -z "$PORT" ]; then
       echo "Which connector is the screen's ribbon cable in? It's printed next to it on the Pi:"
       echo "  0) CAM/DISP 0     1) CAM/DISP 1"
-      read -r -p "Choose 0 or 1 [1]: " PORT
+      read -r -p "Choose 0 or 1 [1]: " PORT </dev/tty || PORT=1
     fi
+    DSI_PORT="${PORT:-1}"
     case "${PORT:-1}" in 0) PORT_SUFFIX=",dsi0" ;; *) PORT_SUFFIX=",dsi1" ;; esac
   fi
   printf '# max-box screen\ndtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC%s\n' "$PORT_SUFFIX" >> "$CONFIG_TXT"
@@ -196,6 +203,26 @@ if [ "${MAX_SKIP_START:-}" != 1 ]; then
   say "Building and starting Max (the first build takes 10-15 minutes on a Pi 5)"
   docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
 fi
+
+# ---------------------------------------------------------------- 7. updates
+say "Installing updates from GitHub (control panel: Settings, Updates)"
+mkdir -p /etc/max
+cat > "$BOX_CONF" <<CONF
+# Written by scripts/pi/setup.sh: the answers it was given, reused by updates.
+MAX_USER=$USER_NAME
+MAX_REPO=$REPO
+MAX_SCREEN=$SCREEN
+MAX_DSI_PORT=${DSI_PORT:-$(saved MAX_DSI_PORT)}
+MAX_HOSTNAME=$NAME
+CONF
+install -D -m 755 "$REPO/scripts/pi/max-update.py" /usr/local/lib/max/max-update.py
+for UNIT in max-update.path max-update.service max-version.service; do
+  install -m 644 "$REPO/scripts/pi/systemd/$UNIT" "/etc/systemd/system/$UNIT"
+done
+systemctl daemon-reload
+systemctl enable --now max-update.path
+systemctl enable max-version.service
+python3 /usr/local/lib/max/max-update.py version || true
 
 say "Done."
 echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"

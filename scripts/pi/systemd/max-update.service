@@ -1,0 +1,11 @@
+[Unit]
+Description=Max: update from GitHub on request
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/max/max-update.py
+TimeoutStartSec=75min
+# The setup it runs restarts Max's container: keep this service out of its way.
+KillMode=process

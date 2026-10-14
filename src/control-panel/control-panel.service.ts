@@ -16,6 +16,7 @@ import { daysText, RoutinesService } from '../routines/routines.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
+import { UpdatesService } from '../updates/updates.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -34,6 +35,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
+  @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -104,6 +106,24 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/updates/') && this.updates) {
+      const f = await readForm(req);
+      const u = this.updates;
+      let msg: string;
+      let ok = true;
+      if (url.pathname === '/updates/install') {
+        msg = u.request('control panel');
+        ok = msg.startsWith('Updating');
+      } else if (url.pathname === '/updates/auto') {
+        msg = u.setAuto(f.get('auto') === 'yes', f.get('time') ?? undefined);
+        ok = !msg.startsWith('The time');
+      } else {
+        const a = await u.check(true);
+        msg = !a ? 'The installed version is unknown.' : a.error ?? (a.behind ? `${a.behind} new change${a.behind === 1 ? '' : 's'} available.` : 'Max is up to date.');
+        ok = Boolean(a && !a.error);
+      }
+      return this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#updates`);
+    }
     if (req.method === 'POST' && url.pathname === '/device/level' && this.device) {
       const f = await readForm(req);
       const out = f.has('volume') ? await this.device.setVolume(Number(f.get('volume'))) : this.device.setBrightness(Number(f.get('brightness')));
@@ -386,6 +406,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: await this.device?.status(),
+      updates: this.updates && {
+        onBox: this.updates.onBox,
+        version: this.updates.version(),
+        state: this.updates.state(),
+        available: this.updates.onBox ? await this.updates.check() : undefined,
+        auto: this.updates.auto,
+      },
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

@@ -15,6 +15,7 @@ import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
+import { DeviceService } from '../device/device.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -32,6 +33,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
+  @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -102,6 +104,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname === '/device/level' && this.device) {
+      const f = await readForm(req);
+      const out = f.has('volume') ? await this.device.setVolume(Number(f.get('volume'))) : this.device.setBrightness(Number(f.get('brightness')));
+      const what = f.has('volume') ? 'Volume' : 'Brightness';
+      return this.redirect(res, `/?${typeof out === 'number' ? `ok=${encodeURIComponent(`${what} ${out}%.`)}` : `error=${encodeURIComponent(out)}`}#device`);
+    }
     if (req.method === 'POST' && url.pathname === '/device/power') {
       const f = await readForm(req);
       const action = f.get('action') === 'reboot' ? 'reboot' : 'poweroff';
@@ -377,6 +385,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         : undefined,
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
+      device: await this.device?.status(),
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

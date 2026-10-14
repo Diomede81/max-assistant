@@ -68,8 +68,12 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 ## Using the box
 
 - **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi.
+- **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
+  **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
+  **Settings → Device** on the control panel. Brightness is remembered when Max restarts.
 - **Turning off and on:** never just pull the plug (it can damage the SD card). Instead:
-  - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**.
+  - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**
+    (and volume and brightness).
     After choosing, you have 5 seconds to cancel. When the screen goes dark it's safe to unplug.
   - Or say **"Max, turn off"** / **"Max, restart"** (he asks you to confirm), or use **Settings → Device**
     on the control panel.

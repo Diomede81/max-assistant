@@ -1,0 +1,9 @@
+[Unit]
+Description=Max screen brightness requests (screen menu, voice, control panel)
+
+[Path]
+PathChanged=/run/max/brightness-request
+Unit=max-brightness.service
+
+[Install]
+WantedBy=multi-user.target

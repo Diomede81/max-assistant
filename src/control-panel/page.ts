@@ -8,6 +8,7 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean };
   models?: PanelModels;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
@@ -477,7 +478,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
 ${ROUTINES_CSS}${MODELS_CSS}
-.wrap{flex-wrap:wrap}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
+.wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
@@ -533,6 +534,9 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 <div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
+${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
+<form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
+${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}
 ${d.onBox
   ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>
 <form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="reboot"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, restart Max now</label><button class="btn secondary" type="submit">Restart</button></form>

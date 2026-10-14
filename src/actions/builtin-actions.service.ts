@@ -10,6 +10,7 @@ import { TodoService } from '../memory/todo.service';
 import { RoutinesService } from '../routines/routines.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { requestPower } from '../face/power';
+import { DeviceService, STEP } from '../device/device.service';
 import { timeZone } from './clock';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
@@ -25,6 +26,7 @@ export const EXTERNAL_FLAG = '__afterExternalContent';
 export class BuiltinActionsService implements OnModuleInit {
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   @Inject(APP_CONFIG) private readonly cfg!: AppConfig;
+  @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   /** News briefings and other scheduled routines (optional). */
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   private readonly handlers: Record<string, Handler>;
@@ -74,6 +76,17 @@ export class BuiltinActionsService implements OnModuleInit {
         },
       ),
       tool('list_timers', 'List the running timers and the upcoming reminders.', {}),
+      tool(
+        'device_settings',
+        "Your own speaker volume (your voice and everything you play) and your screen's brightness. For \"louder\", " +
+          '"quieter", "volume to 30%", "turn the screen down", "brighter". While music is playing and the user means the ' +
+          'music only, use music_control instead. Steps are 10%.',
+        {
+          action: { type: 'string', enum: ['volume_up', 'volume_down', 'set_volume', 'brightness_up', 'brightness_down', 'set_brightness', 'status'] },
+          level: { type: 'number', description: '0-100, for set_volume or set_brightness' },
+        },
+        ['action'],
+      ),
       tool(
         'device_power',
         'Turn this device (the Max box) off, or restart it. ONLY when the user clearly asks to turn you off, shut down, ' +
@@ -222,6 +235,29 @@ export class BuiltinActionsService implements OnModuleInit {
           }
         : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
+      device_settings: async (a) => {
+        const d = this.device;
+        if (!d) return 'Not available.';
+        const pct = (v: number | string, what: string) => (typeof v === 'string' ? `Not changed: ${v}.` : `${what} is now ${v}%.`);
+        switch (String(a.action)) {
+          case 'volume_up':
+            return pct(await d.changeVolume(STEP), 'Volume');
+          case 'volume_down':
+            return pct(await d.changeVolume(-STEP), 'Volume');
+          case 'set_volume':
+            return typeof a.level === 'number' ? pct(await d.setVolume(a.level), 'Volume') : 'Which volume, 0 to 100?';
+          case 'brightness_up':
+            return pct(d.changeBrightness(STEP), 'Screen brightness');
+          case 'brightness_down':
+            return pct(d.changeBrightness(-STEP), 'Screen brightness');
+          case 'set_brightness':
+            return typeof a.level === 'number' ? pct(d.setBrightness(a.level), 'Screen brightness') : 'Which brightness, 5 to 100?';
+          default: {
+            const s = await d.status();
+            return `Volume ${s.volume ?? 'unknown'}%, screen brightness ${s.brightness}%.`;
+          }
+        }
+      },
       device_power: (a) => {
         const off = a.action !== 'restart';
         if (this.modes.mode === 'guest') return 'Not done: in guest mode the box can only be turned off by the household (the screen menu, or the power button).';

@@ -10,10 +10,11 @@ import { WebModule } from './web/web.module';
 import { LocationModule } from './location/location.module';
 import { RoutinesModule } from './routines/routines.module';
 import { ModelsModule } from './models/models.module';
+import { DeviceModule } from './device/device.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), ModelsModule, SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), ModelsModule, DeviceModule, SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

@@ -33,7 +33,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 .err { font-size: 3vmin; color: var(--warn); max-width: 50vmin; }
 .spinner { width: 10vmin; height: 10vmin; border-radius: 50%; border: 1.2vmin solid #1b2a28; border-top-color: var(--ink); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-#menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .88); text-align: center; color: #e9fff8; }
+#menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
 #menu h1 { margin: 0 0 1vmin; font-size: 5vmin; font-weight: 700; }
@@ -42,6 +42,16 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #menu button:active { transform: scale(.97); }
 #menu button.off { background: #4a1714; border-color: #7a2a24; color: #ffd9d3; }
 #menu button.quiet { background: transparent; border-color: transparent; color: var(--dim); }
+#menu .list.main { gap: 1.8vmin; }
+#menu .list.main button { font-size: 3.6vmin; padding: 1.9vmin 0; }
+#menu .ctl { display: grid; grid-template-columns: 11vmin 1fr 11vmin; align-items: center; gap: 1.6vmin; }
+#menu .ctl button { padding: 1.4vmin 0; font-size: 5vmin; line-height: 1; }
+#menu .ctl .val { font-size: 3.4vmin; color: #cfeee6; }
+#menu .ctl .val b { display: block; font-size: 4.4vmin; color: #ffffff; font-variant-numeric: tabular-nums; }
+#menu .bar { height: .9vmin; border-radius: 1vmin; background: #1b2a28; margin-top: .8vmin; overflow: hidden; }
+#menu .bar i { display: block; height: 100%; background: var(--ink); }
+#menu .ctl.off { opacity: .45; }
+#menu .rows { display: grid; gap: 2.6vmin; margin-bottom: 1.2vmin; }
 </style></head>
 <body>
 <canvas id="c"></canvas>
@@ -177,18 +187,47 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   function menu(html, actions) {
     clearInterval(countdown);
     menuList.innerHTML = html;
+    menuList.className = 'list' + (html.indexOf('class="rows"') >= 0 ? ' main' : '');
     menuEl.hidden = false;
     for (const [id, fn] of Object.entries(actions)) {
       const b = document.getElementById(id);
       if (b) b.onclick = (e) => { e.stopPropagation(); fn(); };
     }
+    wireRows();
     clearTimeout(menuIdle);
     menuIdle = setTimeout(closeMenu, 20000); // nobody chose: back to the face
   }
   function closeMenu() { clearInterval(countdown); clearTimeout(menuIdle); menuEl.hidden = true; }
+  // Volume and brightness rows: − and + change them in steps of 10.
+  const ctl = (id, label, v, enabled) => '<div class="ctl' + (enabled ? '' : ' off') + '"><button id="' + id + 'Down" aria-label="' + label + ' down">−</button>' +
+    '<div class="val">' + label + '<b>' + (v === undefined || v === null ? '–' : v + '%') + '</b><div class="bar"><i style="width:' + (v || 0) + '%"></i></div></div>' +
+    '<button id="' + id + 'Up" aria-label="' + label + ' up">+</button></div>';
+  let device = {};
+  function deviceRows() {
+    return ctl('vol', 'Volume', device.volume, device.volume !== undefined) +
+      ctl('bri', 'Brightness', device.onBox ? device.brightness : undefined, device.onBox && device.brightnessSupported !== false);
+  }
+  function deviceChange(what, dir) {
+    fetch('/device?' + what + '=' + dir, { method: 'POST' }).then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
+    clearTimeout(menuIdle); menuIdle = setTimeout(closeMenu, 20000);
+  }
+  function refreshRows() {
+    const rows = menuList.querySelector('.rows');
+    if (!rows) return;
+    rows.innerHTML = deviceRows();
+    wireRows();
+  }
+  function wireRows() {
+    for (const [id, what] of [['vol', 'volume'], ['bri', 'brightness']]) {
+      const up = document.getElementById(id + 'Up'), down = document.getElementById(id + 'Down');
+      if (up) up.onclick = (e) => { e.stopPropagation(); deviceChange(what, 'up'); };
+      if (down) down.onclick = (e) => { e.stopPropagation(); deviceChange(what, 'down'); };
+    }
+  }
   function showMenu() {
-    menu('<h1>Max</h1><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
-      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Cancel</button>', {
+    fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
+    menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
+      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Close</button>', {
       mOff: () => confirmPower('poweroff'),
       mRestart: () => confirmPower('reboot'),
       mWifi: () => {

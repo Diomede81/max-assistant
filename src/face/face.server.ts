@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { DeviceService, STEP } from '../device/device.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { FaceInfo, FaceService } from './face.service';
@@ -23,6 +24,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly face: FaceService,
+    @Optional() private readonly device?: DeviceService,
   ) {}
 
   onModuleInit(): void {
@@ -60,6 +62,23 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      return;
+    }
+    if (url.pathname === '/device' && this.device) {
+      // Volume and brightness from the screen's menu. Only the screen itself (same origin).
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      void (async () => {
+        const d = this.device!;
+        const v = url.searchParams.get('volume');
+        const b = url.searchParams.get('brightness');
+        if (req.method === 'POST' && v) await (v === 'up' ? d.changeVolume(STEP) : v === 'down' ? d.changeVolume(-STEP) : d.setVolume(Number(v)));
+        if (req.method === 'POST' && b) b === 'up' ? d.changeBrightness(STEP) : b === 'down' ? d.changeBrightness(-STEP) : d.setBrightness(Number(b));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ...(await d.status()), onBox: this.cfg.face.onBox }));
+      })();
       return;
     }
     if (req.method === 'POST' && url.pathname === '/power') {

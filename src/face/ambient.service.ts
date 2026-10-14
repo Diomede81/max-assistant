@@ -30,6 +30,10 @@ export interface AmbientSettings {
   frameEverySec: number;
   /** Live captions under the face: what Max heard and what he says. Off unless switched on. */
   captions: boolean;
+  /** Notifications on the screen (NotifyService). */
+  notifyBriefing: boolean;
+  notifyEmail: boolean;
+  notifyTodos: boolean;
 }
 
 const CAL_MS = 20 * 60_000;
@@ -47,7 +51,7 @@ const PHOTO_EXT: Record<string, string> = { ffd8ff: 'jpg', '89504e': 'png', '524
 export class AmbientService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Ambient');
   private readonly store: SealedStore<AmbientSettings>;
-  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false };
+  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true };
   private events: { list: CalEvent[]; at: number; mode: string } = { list: [], at: 0, mode: '' };
   private timer?: NodeJS.Timeout;
   private readonly photoDir: string;

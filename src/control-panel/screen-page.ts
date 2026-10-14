@@ -6,6 +6,9 @@ export interface PanelScreen {
   frameTo: string;
   frameEverySec: number;
   captions: boolean;
+  notifyBriefing: boolean;
+  notifyEmail: boolean;
+  notifyTodos: boolean;
   photos: { name: string; size: number }[];
   /** The home location's name (the weather is for it), if set. */
   place?: string;
@@ -37,8 +40,12 @@ export function screenSection(s: PanelScreen, esc: Esc): string {
 <label class="meta tick"><input type="checkbox" name="frame" value="on" ${s.frame ? 'checked' : ''}> <b>Evening photo frame</b>: your pictures, one fading into the next, with the clock (after 2 minutes of quiet; "Hey Max" or a touch brings him back)</label>
 <div class="addfact"><label class="meta" for="ff">From</label><input id="ff" type="time" name="frameFrom" value="${esc(s.frameFrom)}" required>
 <label class="meta" for="ft">to</label><input id="ft" type="time" name="frameTo" value="${esc(s.frameTo)}" required>
-<label class="meta" for="fe">next picture every</label><input id="fe" type="number" name="frameEverySec" min="5" max="600" value="${s.frameEverySec}" style="width:5em"><span class="meta">seconds</span>
-<button class="btn" type="submit">Save</button></div>
+<label class="meta" for="fe">next picture every</label><input id="fe" type="number" name="frameEverySec" min="5" max="600" value="${s.frameEverySec}" style="width:5em"><span class="meta">seconds</span></div>
+<p class="meta"><b>Notifications</b>: a card on the screen when something needs you (never while you're talking to Max, during his sleep hours, or in guest mode):</p>
+<label class="meta tick"><input type="checkbox" name="notifyBriefing" value="on" ${s.notifyBriefing ? 'checked' : ''}> Your news briefing is ready</label>
+<label class="meta tick"><input type="checkbox" name="notifyEmail" value="on" ${s.notifyEmail ? 'checked' : ''}> An important email arrives (marked important in Gmail, or high importance in Outlook; checked every 10 minutes, 07:00–22:00)</label>
+<label class="meta tick"><input type="checkbox" name="notifyTodos" value="on" ${s.notifyTodos ? 'checked' : ''}> A to-do is overdue (once a day each, with Done and Tomorrow buttons)</label>
+<div><button class="btn" type="submit">Save</button></div>
 </form>
 <h3>Pictures (${s.photos.length})</h3>
 <div class="photos">${photos || '<p class="meta">No pictures yet.</p>'}</div>

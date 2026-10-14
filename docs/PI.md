@@ -88,6 +88,16 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     an address), Max puts it on screen as well as saying it. Ask for a **recipe** or other instructions and
     they show one step at a time: tap **Next** / **Back**, or say "next step", "go back" or "step 4".
   - **News:** while Max reads your briefing, the headlines and their sources are on screen.
+- **Notifications:** a card when something needs you, even if you didn't ask:
+  - **News briefing ready**, with a **Headlines** button.
+  - **Important email** (marked important in Gmail, or high importance in Outlook), checked every 10 minutes
+    from 07:00 to 22:00 in the current mode's email. **Read it** reads out who it's from, the subject and the
+    first lines.
+  - **Overdue to-do**, once a day each (from 08:00), with **Done** and **Tomorrow** buttons.
+
+  They wait for a good moment: never while you're talking to Max, never over a card you're using (a recipe, a
+  timer), never during his sleep hours, and never in guest mode. Each can be switched off in
+  **Settings → Screen** on the control panel.
   - **"What's going on in my day?"**: your reminders and to-dos (overdue and critical ones marked), with your
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
   - **Captions** (off unless you switch them on in **Settings → Screen** on the control panel): what Max

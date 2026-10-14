@@ -24,9 +24,16 @@ export interface PanelRoutine {
     running: boolean;
     at?: string;
     error?: string;
-    items: { url: string; name: string; why: string; via: string; feedUrl?: string; sample?: string; headlines: number }[];
+    items: { url: string; name: string; why: string; via: string; feedUrl?: string; sample?: string; samples?: string[]; headlines: number; score?: number }[];
   };
-  briefing?: { at: string; checked: number; failed: string[]; heard?: boolean; articles: { title: string; url: string; source: string; summary: string; why?: string }[] };
+  briefing?: {
+    at: string;
+    checked: number;
+    failed: string[];
+    heard?: boolean;
+    note?: string;
+    articles: { title: string; url: string; source: string; summary: string; why?: string; score?: number; feedback?: string }[];
+  };
 }
 
 type Esc = (s: unknown) => string;
@@ -54,16 +61,21 @@ function routineCard(x: PanelRoutine, firecrawl: boolean, esc: Esc): string {
       : '<span class="badge off">paused</span>';
   const articles = b?.articles.length
     ? `<ol class="news">${b.articles
-        .map((a) => `<li><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(a.title)}</b></a> <span class="meta">${esc(a.source)}${a.why ? ` · ${esc(a.why)}` : ''}</span><div>${esc(a.summary)}</div></li>`)
+        .map((a) => {
+          const vote = (up: boolean) =>
+            `<form method="post" action="/routines/feedback"><input type="hidden" name="id" value="${esc(x.id)}"><input type="hidden" name="url" value="${esc(a.url)}"><input type="hidden" name="vote" value="${up ? 'up' : 'down'}"><button class="vote ${a.feedback === (up ? 'up' : 'down') ? 'on' : ''}" type="submit" title="${up ? 'More like this' : 'Not for me: fewer like this'}">${up ? '👍' : '👎'}</button></form>`;
+          return `<li><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(a.title)}</b></a> <span class="meta">${esc(a.source)}${a.why ? ` · ${esc(a.why)}` : ''}${a.score ? ` · match ${a.score}/10` : ''}</span><div>${esc(a.summary)}</div><div class="votes">${vote(true)}${vote(false)}</div></li>`;
+        })
         .join('')}</ol>`
-    : `<p class="empty">${b ? 'The last run found nothing new.' : 'Not run yet: it runs at the next scheduled time, or press Run now.'}</p>`;
+    : `<p class="empty">${b ? 'The last run found nothing to report.' : 'Not run yet: it runs at the next scheduled time, or press Run now.'}</p>`;
   const meta = b
     ? `Gathered ${esc(new Date(b.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} from ${b.checked} headlines${b.heard ? ' · already read out' : ''}${b.failed.length ? ` · <span class="warntext">couldn't read ${esc(b.failed.join(', '))}</span>` : ''}`
     : '';
+  const note = b?.note ? `<p class="${/couldn't|not in the expected|empty answer|Only adverts/.test(b.note) ? 'hint' : 'meta'}">${esc(b.note)}</p>` : '';
   return `<section id="routine-${esc(x.id)}"><h2>${esc(x.name)} ${status}</h2>
 <p class="meta">${esc(x.daysText)} at ${esc(x.time)} · ${x.count} articles · ${esc(LIST[x.vault] ?? x.vault)} · ${x.sources.length} website${x.sources.length === 1 ? '' : 's'}: ${esc(x.sources.map(host).join(', ') || 'none')}${x.search ? ' · plus a news search' : ''}</p>
 ${x.lastError && !x.running ? `<p class="hint">Last run: ${esc(x.lastError)}</p>` : ''}
-<h3>Latest briefing</h3>${meta ? `<p class="meta">${meta}</p>` : ''}${articles}
+<h3>Latest briefing</h3>${meta ? `<p class="meta">${meta}</p>` : ''}${note}${articles}${b?.articles.length ? '<p class="meta">👍 / 👎 teach Max what you like: he uses them when choosing the next articles.</p>' : ''}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/routines/run"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn" type="submit" ${x.running ? 'disabled' : ''}>Run now</button></form>
 <form method="post" action="/routines/toggle"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">${x.enabled ? 'Pause' : 'Resume'}</button></form>
@@ -91,10 +103,11 @@ function suggestBlock(x: PanelRoutine, esc: Esc): string {
         .map(
           (i) => `<li><label><input type="checkbox" name="url" value="${esc(i.url)}" ${i.via === 'feed' ? 'checked' : ''}>
 <span><span><b>${esc(i.name)}</b> ${VIA[i.via] ?? ''}</span><span class="meta">${esc(i.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</span>
-<span class="meta">${esc(i.why)}${i.sample ? ` · latest: “${esc(i.sample.slice(0, 90))}”` : ''}</span></span></label></li>`,
+<span class="meta">${esc(i.why)}${i.score ? ` · match ${i.score}/10` : ''}</span>
+${(i.samples?.length ? i.samples : i.sample ? [i.sample] : []).map((t) => `<span class="meta">• “${esc(t.slice(0, 110))}”</span>`).join('')}</span></label></li>`,
         )
         .join('')}</ul><div class="acts"><button class="btn" type="submit">Add selected</button></div>
-<p class="meta">Sites with a news feed are the most reliable and cost no Firecrawl credits, so they're ticked already.</p></form>`
+<p class="meta">Each site was opened and checked: the headlines shown are its recent ones that match your interests. Sites with a news feed are the most reliable and cost no Firecrawl credits, so they're ticked already.</p></form>`
     : s?.error
       ? `<p class="hint">${esc(s.error)}</p>`
       : '';
@@ -116,13 +129,14 @@ function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc):
 <label class="inline">Articles <select name="count">${counts}</select></label>
 <label class="inline">Whose <select name="vault">${lists}</select></label></div>
 <div class="days">${DAY.map((d, i) => `<label class="day"><input type="checkbox" name="days" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
-<label class="check"><input type="checkbox" name="search" value="yes" ${x?.search ? 'checked' : ''} ${firecrawl ? '' : 'disabled'}> Also search the news for my interests${firecrawl ? ' (uses Firecrawl credits)' : ' (needs Firecrawl)'}</label>
+<label class="check"><input type="checkbox" name="search" value="yes" ${(x ? x.search : firecrawl) ? 'checked' : ''} ${firecrawl ? '' : 'disabled'}> Research: also search the news for each of my interests${firecrawl ? ' (recommended; a few Firecrawl credits a day)' : ' (needs Firecrawl)'}</label>
 ${x ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${x.enabled ? 'checked' : ''}> On</label>` : ''}
 <div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button></div>
 <p class="meta">Work briefings are only read out in work mode, personal ones in personal mode. Pick a time a little before you usually ask: gathering takes a minute or two.</p></form>`;
 }
 
 export const ROUTINES_CSS =
+  '.votes{display:flex;gap:6px;margin-top:4px}.vote{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;cursor:pointer;font-size:14px;opacity:.6}.vote.on,.vote:hover{opacity:1;border-color:var(--accent)}' +
   '.suggest li{border-top:1px solid var(--line);padding:10px 0}.suggest label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.suggest label>span{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.suggest input{margin-top:4px}' +
   '.routine label{display:block;margin:10px 0 4px;font-weight:600}.routine label input:not([type=checkbox]),.routine label textarea{display:block;width:100%;margin-top:4px;font-weight:400}' +
   '.routine input[name=name],.routine input[name=avoid]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}' +

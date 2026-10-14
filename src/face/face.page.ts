@@ -168,6 +168,21 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue' },
       { time: 'todo', text: 'Send the Q3 report', tag: 'critical' }] },
   };
+  SCENES.push(['speaking', 'happy', 'Card steps'], ['speaking', 'neutral', 'Card answer'], ['speaking', 'neutral', 'Card news']);
+  DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
+    big: 'Fry the guanciale in a dry pan until golden, about 5 minutes',
+    lines: [{ time: 'next', text: 'Whisk 3 egg yolks and 1 whole egg with 50 g pecorino', tag: 'done' }],
+    actions: [{ id: 'previous', label: 'Back' }, { id: 'next', label: 'Next', style: 'primary' }] };
+  DEMO_CARDS['Card answer'] = { id: 'd5', kind: 'list', icon: '🌦️', title: 'Weekend weather', subtitle: 'Clapham', until: FOREVER, lines: [
+    { time: 'Sat', text: '☀️ 18° / 9°', sub: 'Sunny, light breeze' },
+    { time: 'Sun', text: '🌧️ 14° / 8°', sub: 'Rain from midday, 80%' },
+    { time: 'Mon', text: '⛅ 15° / 7°', sub: 'Cloudy spells' }] };
+  DEMO_CARDS['Card news'] = { id: 'd6', kind: 'list', icon: '📰', title: 'Morning news', subtitle: '5 articles · today at 07:00', until: FOREVER, lines: [
+    { time: '1', text: 'Bank of England holds rates as inflation eases', sub: 'BBC News' },
+    { time: '2', text: 'New Raspberry Pi AI board doubles performance', sub: 'The Verge' },
+    { time: '3', text: 'Serie A: Inter top the table after derby win', sub: 'Gazzetta' },
+    { time: '4', text: 'London Underground strike called off', sub: 'Evening Standard' },
+    { time: '5', text: 'Why sleep matters more than you think', sub: 'The Guardian' }] };
   const slug = (t) => t.toLowerCase().replace(/[^a-z]+/g, '-');
   let demoLabel = '';
   if (demo) {

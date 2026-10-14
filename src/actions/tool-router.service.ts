@@ -8,6 +8,7 @@ import { EXTERNAL_FLAG } from './builtin-actions.service';
 import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
+import { ScreenToolsService } from './screen-tools.service';
 import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
 import { RoutinesService } from '../routines/routines.service';
@@ -57,6 +58,7 @@ export class ToolRouterService {
     @Optional() private readonly web?: WebService,
     @Optional() private readonly routines?: RoutinesService,
     @Optional() private readonly updates?: UpdatesService,
+    @Optional() private readonly screenTools?: ScreenToolsService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -93,7 +95,7 @@ export class ToolRouterService {
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
     const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
-    return [...this.builtin.tools, ...(this.web?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
+    return [...this.builtin.tools, ...(this.web?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
   }
 
   get homeAssistantConnected(): boolean {
@@ -137,6 +139,7 @@ export class ToolRouterService {
         return await this.routines.call(name, args);
       }
       if (this.updates?.has(name)) return await this.updates.call(name, args);
+      if (this.screenTools?.has(name)) return await this.screenTools.call(name, args);
       if (this.music?.has(name)) return await this.music.call(name, args);
       const server = this.mcp.serverFor(name);
       if (!server) return await this.ha.call(name, args);

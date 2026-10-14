@@ -84,6 +84,10 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   - **Timer done / reminder:** with **OK** / **Again**, or **Done** / **Snooze 10 min**.
   - **Music:** cover, title, a progress bar and ⏮ ⏯ ⏭ buttons, when a song starts, or **tap the face** while
     music plays.
+  - **Answers worth seeing:** when something is easier to see than hear (a list, a comparison, a forecast,
+    an address), Max puts it on screen as well as saying it. Ask for a **recipe** or other instructions and
+    they show one step at a time: tap **Next** / **Back**, or say "next step", "go back" or "step 4".
+  - **News:** while Max reads your briefing, the headlines and their sources are on screen.
   - **"What's going on in my day?"**: your reminders and to-dos (overdue and critical ones marked), with your
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
   - **Captions** (off unless you switch them on in **Settings → Screen** on the control panel): what Max

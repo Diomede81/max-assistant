@@ -3,6 +3,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { matchesAny } from './glob';
+import { compactResult } from './compact';
+
+/** How much of an app's answer the AI gets (after removing the clutter): a full day of meetings or a page of emails. */
+const RESULT_CHARS = 16_000;
 
 export interface McpServerConfig {
   /** Short name shown in logs and the control panel, e.g. "composio". */
@@ -95,8 +99,11 @@ export class McpConnection {
     const result = await this.client.callTool({ name, arguments: args });
     const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
     const text = content.map((c) => (c.type === 'text' ? c.text : `[${c.type}]`)).join('\n') || 'ok';
-    // Keep tool results short: they go back into the AI's context on every turn.
-    return text.length > 6000 ? `${text.slice(0, 6000)}\n…(truncated)` : text;
+    // Keep tool results short (they go back into the AI's context on every turn) without losing items.
+    const out = compactResult(text, RESULT_CHARS);
+    if (out.truncated) this.log.warn(`${name}: the answer was too long even after tidying (${text.length} characters); the AI got the first ${RESULT_CHARS}`);
+    else if (out.compacted) this.log.debug(`${name}: answer tidied from ${text.length} to ${out.text.length} characters`);
+    return out.text;
   }
 
   async close(): Promise<void> {

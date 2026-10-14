@@ -17,6 +17,7 @@ import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
+import { AmbientService } from '../face/ambient.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -36,6 +37,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
+  @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -163,6 +165,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       this.memory.clearActivity();
       return this.redirect(res, '/?ok=Activity%20log%20cleared.#activity');
     }
+    if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
     if (req.method === 'POST' && url.pathname === '/location' && this.location) {
       const f = await readForm(req);
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
@@ -372,6 +375,40 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Settings → Screen: the glance and photo frame settings, and the pictures. */
+  private async screenAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const a = this.ambient!;
+    if (req.method === 'GET' && action.startsWith('photos/')) {
+      const p = a.photo(action.slice('photos/'.length));
+      if (!p) res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+      else res.writeHead(200, { 'Content-Type': p.type, 'Cache-Control': 'private, max-age=86400' }).end(p.data);
+      return;
+    }
+    if (req.method !== 'POST') return this.redirect(res, '/#screen');
+    if (action === 'photo') {
+      const data = await readBody(req, MAX_PHOTO_BYTES);
+      const out = data ? a.addPhoto(data) : { error: 'That picture is too large (15 MB at most).' };
+      if (out.name) this.log.log('Photo added for the screen');
+      return this.json(res, out);
+    }
+    const f = await readForm(req);
+    if (action === 'photo-delete') {
+      const ok = a.removePhoto(f.get('name') ?? '');
+      return this.redirect(res, `/?${ok ? 'ok=Picture%20removed.' : 'error=Picture%20not%20found.'}#screen`);
+    }
+    if (action === 'save') {
+      const msg = a.save({
+        glance: f.get('glance') === 'on',
+        frame: f.get('frame') === 'on',
+        frameFrom: f.get('frameFrom') ?? '',
+        frameTo: f.get('frameTo') ?? '',
+        frameEverySec: Number(f.get('frameEverySec') ?? 20),
+      });
+      return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#screen`);
+    }
+    return this.redirect(res, '/#screen');
+  }
+
   private async data(): Promise<PanelData> {
     const rt = this.cfg.realtime;
     const apps = this.composio.enabled ? await this.composio.apps('personal').catch(() => []) : [];
@@ -406,6 +443,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: await this.device?.status(),
+      screen: this.ambient && this.cfg.face.enabled
+        ? { ...this.ambient.settings, photos: this.ambient.photos(), place: this.location?.home?.place || undefined }
+        : undefined,
       updates: this.updates && {
         onBox: this.updates.onBox,
         version: this.updates.version(),
@@ -517,6 +557,18 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 }
 
 const MAX_FORM_BYTES = 16 * 1024;
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
+async function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer | undefined> {
+  const parts: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > maxBytes) return undefined;
+    parts.push(chunk as Buffer);
+  }
+  return Buffer.concat(parts);
+}
 
 async function readForm(req: IncomingMessage, maxBytes = MAX_FORM_BYTES): Promise<URLSearchParams> {
   let body = '';

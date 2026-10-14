@@ -410,8 +410,11 @@ export class BuiltinActionsService implements OnModuleInit {
       .join('\n');
   }
 
-  /** "Your day" on the screen: reminders and to-dos now; calendar events join it when Max reads the calendar. */
-  private dayCard(): void {
+  /**
+   * "Your day" on the screen: reminders and to-dos now; calendar events join it when Max reads the
+   * calendar. Tapping the face shows it too, with the events and weather the screen already knows.
+   */
+  dayCard(extra: { events?: CardLine[]; weather?: string } = {}): void {
     const tz = timeZone();
     const day = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms));
     const hm = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
@@ -421,6 +424,7 @@ export class BuiltinActionsService implements OnModuleInit {
       .filter((x) => x.reminder && day(x.endsAt) === today)
       .sort((x, y) => x.endsAt - y.endsAt)
       .map((x) => ({ time: hm(x.endsAt), text: x.reminder!.charAt(0).toUpperCase() + x.reminder!.slice(1), tag: 'reminder' as const }));
+    lines.unshift(...(extra.events ?? []));
     for (const { task, project } of this.todos.items()) {
       const d = task.due?.slice(0, 10);
       const overdue = !!d && d < today;
@@ -438,7 +442,7 @@ export class BuiltinActionsService implements OnModuleInit {
       kind: 'list',
       icon: '☀',
       title: 'Your day',
-      subtitle: date,
+      subtitle: extra.weather ? `${date} · ${extra.weather}` : date,
       lines: lines.length ? lines : [{ text: 'Nothing due today', sub: 'Calendar events appear here as Max reads them' }],
       ttlMs: 60_000,
     });

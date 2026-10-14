@@ -69,6 +69,15 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #caption[hidden] { display: none; }
 #caption.you { color: #9fc7ff; }
 #caption b { font-weight: 700; }
+/* Evening photo frame: your pictures fading one into the next, with the clock. */
+#frame { position: fixed; inset: 0; background: #000; }
+#frame[hidden] { display: none; }
+#frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 2.5s ease; }
+#frame img.on { opacity: 1; }
+#frame .fclock { position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center; color: #fff; text-shadow: 0 .4vmin 2.4vmin rgba(0,0,0,.75);
+  font-size: 10vmin; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+#frame .fclock small { display: block; font-size: 3.4vmin; font-weight: 600; margin-top: 1.2vmin; opacity: .9; }
+#frame .fshade { position: absolute; left: 0; right: 0; bottom: 0; height: 40vh; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -97,6 +106,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <div id="setup" hidden><div class="card" id="card"></div></div>
 <div id="cardEl" hidden></div>
 <div id="caption" hidden></div>
+<div id="frame" hidden><img id="fa" alt=""><img id="fb" alt=""><div class="fshade"></div><div class="fclock" id="fclock"></div></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
 (() => {
@@ -127,7 +137,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -144,6 +154,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     ['idle', 'happy', 'Happy'], ['idle', 'curious', 'Curious'], ['idle', 'surprised', 'Surprised'], ['idle', 'concerned', 'Concerned'],
     ['idle', 'focused', 'Focused'], ['idle', 'sleepy', 'Sleepy'], ['sleeping', 'neutral', 'Asleep'], ['setup', 'neutral', 'WiFi setup'],
     ['idle', 'surprised', 'Card timer'], ['speaking', 'happy', 'Card music'], ['speaking', 'neutral', 'Card day'], ['listening', 'neutral', 'Captions'],
+    ['idle', 'neutral', 'Glance'], ['idle', 'neutral', 'Photo frame'],
   ];
   const FOREVER = Date.now() + 1e10;
   const DEMO_CARDS = {
@@ -176,8 +187,14 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
         card: DEMO_CARDS[label],
         caption: label === 'Captions' ? { who: 'you', text: "What's the weather like this afternoon?" } : undefined,
+        glance: label === 'Glance' || label === 'Photo frame' ? {
+          weather: { icon: '⛅', temp: 14, text: 'Partly cloudy', hi: 16, lo: 9, rain: 30 },
+          next: { time: '10:00', title: 'Q4 planning', now: false },
+          todos: { critical: 2, overdue: 1, today: 3 },
+          frame: label === 'Photo frame' ? { photos: ['demo-1.jpg', 'demo-2.jpg', 'demo-3.jpg'], everySec: 6 } : undefined,
+        } : undefined,
       };
-      setTimeout(() => { renderCard(); renderCaption(); }, 0); // after the card code below is set up
+      setTimeout(() => { renderCard(); renderCaption(); renderFrame(); }, 0); // after the card code below is set up
       renderSetup();
     };
     if (fixed) show(fixed);
@@ -299,14 +316,60 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     captionEl.innerHTML = (c.who === 'you' ? '<b>You: </b>' : '') + escC(c.text);
   }
 
+  // ---------- evening photo frame (while Max is idle; "Hey Max" or a touch brings him back) ----------
+  const FRAME_IDLE_MS = 2 * 60000;
+  const frameEl = document.getElementById('frame');
+  const frameImgs = [document.getElementById('fa'), document.getElementById('fb')];
+  const fclock = document.getElementById('fclock');
+  let idleSince = demo ? 0 : Date.now(), frameIdx = -1, frameTop = 0, frameNext = 0;
+  function demoPhoto(i) {
+    const c = document.createElement('canvas'); c.width = 360; c.height = 360;
+    const x = c.getContext('2d');
+    const hues = [[210, 30], [25, 340], [140, 190]][i % 3];
+    const gr = x.createLinearGradient(0, 0, 360, 360);
+    gr.addColorStop(0, 'hsl(' + hues[0] + ',55%,45%)'); gr.addColorStop(1, 'hsl(' + hues[1] + ',60%,25%)');
+    x.fillStyle = gr; x.fillRect(0, 0, 360, 360);
+    x.fillStyle = 'rgba(255,255,255,.18)';
+    for (let k = 0; k < 6; k++) { x.beginPath(); x.arc(60 + k * 55, 120 + 60 * Math.sin(k + i), 30 + k * 6, 0, Math.PI * 2); x.fill(); }
+    return c.toDataURL();
+  }
+  function renderFrame() {
+    const f = info.glance && info.glance.frame;
+    const busy = info.state !== 'idle' || cardShown() || !menuEl.hidden || !captionEl.hidden;
+    if (busy) idleSince = Math.max(idleSince, Date.now());
+    const want = f && f.photos && f.photos.length && !busy && Date.now() - idleSince >= (demo ? 0 : FRAME_IDLE_MS);
+    if (!want) {
+      if (!frameEl.hidden) { frameEl.hidden = true; for (const im of frameImgs) im.classList.remove('on'); frameIdx = -1; frameNext = 0; }
+      return;
+    }
+    frameEl.hidden = false;
+    const d = new Date();
+    fclock.innerHTML = escC(d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })) +
+      '<small>' + escC(d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })) + '</small>';
+    if (Date.now() < frameNext) return;
+    frameNext = Date.now() + Math.max(5, f.everySec || 20) * 1000;
+    frameIdx = (frameIdx + 1) % f.photos.length;
+    // Load the next picture behind the current one, then fade it in.
+    const back = frameImgs[1 - frameTop];
+    back.onload = () => { back.classList.add('on'); frameImgs[frameTop].classList.remove('on'); frameTop = 1 - frameTop; };
+    back.src = demo ? demoPhoto(frameIdx) : '/photos/' + encodeURIComponent(f.photos[frameIdx]);
+  }
+  setInterval(renderFrame, 1000);
+
   // ---------- hold for 2 s: the options menu (turn off, restart, WiFi setup) ----------
   const HOLD_MS = 2000;
   const menuEl = document.getElementById('menu');
   const menuList = document.getElementById('menuList');
   let pressAt = 0, pressFired = false, toast = '', toastUntil = 0, menuIdle = 0, countdown = 0;
-  addEventListener('pointerdown', () => { if (!menuEl.hidden) return; pressAt = performance.now(); pressFired = false; });
+  let frameTouch = false;
+  addEventListener('pointerdown', () => {
+    if (!frameEl.hidden) { frameTouch = true; idleSince = Date.now() + (demo ? 15000 : 0); renderFrame(); return; }
+    if (!menuEl.hidden) return;
+    pressAt = performance.now(); pressFired = false;
+  });
   // A short tap on the face (not a hold): Max shows what's useful (e.g. the music card).
   addEventListener('pointerup', () => {
+    if (frameTouch) { frameTouch = false; pressAt = 0; return; }
     const quick = pressAt && performance.now() - pressAt < 350 && !pressFired && menuEl.hidden && !cardShown();
     pressAt = 0;
     if (quick && !demo) fetch('/tap', { method: 'POST' }).catch(() => undefined);
@@ -745,8 +808,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       g.fillStyle = info.mode === 'work' ? 'rgba(255,196,120,0.18)' : 'rgba(150,140,220,0.2)'; g.fill();
       g.fillStyle = info.mode === 'work' ? '#ffc478' : '#b8b0f0'; g.fillText(label, cx, cy - 269 * s);
     }
+    // weather at the top while idle
+    const gl = info.glance || {};
+    if (gl.weather && state === 'idle' && cmp < 0.3) {
+      const w = gl.weather;
+      g.font = '600 ' + Math.round(30 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.8);
+      const top = info.mode && info.mode !== 'personal' ? cy - 218 * s : cy - 262 * s;
+      g.fillText(fit(w.icon + '  ' + w.temp + '°  ·  ' + w.text, 330 * s), cx, top);
+      if (w.hi !== undefined) {
+        g.font = '500 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.45);
+        g.fillText(w.lo + '° – ' + w.hi + '°' + (w.rain ? '  ·  ' + w.rain + '% rain' : ''), cx, top + 32 * s);
+      }
+    }
     // bottom line: timer, music, or the clock
-    let text = '', sub = '';
+    let text = '', sub = '', sub2 = '', sub2Warn = false;
     const timer = (info.timers || []).slice().sort((a, b) => a.endsAt - b.endsAt)[0];
     let noteColor = '';
     // A card or captions use the space under the face: the bottom line waits.
@@ -774,10 +849,23 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         text = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
         if (state === 'offline') sub = info.updating ? 'Updating… back in a few minutes' : 'Reconnecting…';
         else if (info.updating) sub = 'Updating…';
-        else if (info.reminder) {
-          // Reminders aren't countdowns: just the next one, with a bell, under the clock.
-          const at = new Date(info.reminder.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-          sub = '🔔 ' + at + ' · ' + info.reminder.text.charAt(0).toUpperCase() + info.reminder.text.slice(1);
+        else if (state === 'idle' || state === 'sleeping') {
+          // Under the clock: the next reminder, the next meeting and the to-dos that matter (two lines at most).
+          const lines = [];
+          if (info.reminder) {
+            // Reminders aren't countdowns: just the next one, with a bell.
+            const at = new Date(info.reminder.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            lines.push(['🔔 ' + at + ' · ' + info.reminder.text.charAt(0).toUpperCase() + info.reminder.text.slice(1), false]);
+          }
+          if (gl.next && state === 'idle') lines.push(['📅 ' + (gl.next.now ? 'Now' : gl.next.time) + ' · ' + gl.next.title, false]);
+          const t = gl.todos;
+          if (t && state === 'idle') {
+            const parts = [t.critical ? t.critical + ' critical' : '', t.overdue ? t.overdue + ' overdue' : '', t.today && !t.critical && !t.overdue ? t.today + ' due today' : ''].filter(Boolean);
+            if (parts.length) lines.push(['✓ ' + parts.join(' · '), Boolean(t.critical || t.overdue)]);
+          }
+          if (lines[0]) sub = lines[0][0];
+          if (lines[1]) { sub2 = lines[1][0]; sub2Warn = lines[1][1]; }
+          if (lines[0] && lines[0][1] && !lines[1]) { sub = ''; sub2 = lines[0][0]; sub2Warn = true; }
         }
       }
     }
@@ -790,6 +878,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       g.fillText(fit(text, 380 * s), tx, cy + 238 * s);
       g.textAlign = 'center';
       if (sub) { g.font = '500 ' + Math.round(22 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.5); g.fillText(fit(sub, 300 * s), cx, cy + 274 * s); }
+      if (sub2) { g.font = '600 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = sub2Warn ? '#ffb36b' : rgb(0.5); g.fillText(fit(sub2, 250 * s), cx, cy + (sub ? 304 : 274) * s); }
     }
     if (demo && demoLabel && state !== 'setup') {
       g.font = '600 ' + Math.round(18 * s) + 'px system-ui, sans-serif'; g.fillStyle = 'rgba(255,255,255,0.35)';

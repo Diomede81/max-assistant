@@ -1,6 +1,7 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
+import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 
 export interface PanelData {
   music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
@@ -17,6 +18,8 @@ export interface PanelData {
     auto: { auto: boolean; time: string };
   };
   models?: PanelModels;
+  /** The round screen's glance and photo frame (when the face is on). */
+  screen?: PanelScreen;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
   notice?: { kind: 'ok' | 'error'; text: string };
@@ -509,7 +512,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
-${ROUTINES_CSS}${MODELS_CSS}
+${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
@@ -564,6 +567,7 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 </div>
 
 <div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
+${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>

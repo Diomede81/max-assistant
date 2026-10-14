@@ -28,7 +28,8 @@ die()  { printf '\033[1;31mXX  %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run with sudo: sudo ./scripts/pi/setup.sh"
 BOX_CONF=/etc/max/box.conf
-saved() { grep -m1 "^$1=" "$BOX_CONF" 2>/dev/null | cut -d= -f2-; }
+# A saved answer, or nothing (never an error: on the first run there's no file yet).
+saved() { [ -f "$BOX_CONF" ] && sed -n "/^$1=/{s/^$1=//p;q}" "$BOX_CONF" || true; }
 # The updater runs this as root, naming the user in MAX_USER.
 USER_NAME="${SUDO_USER:-${MAX_USER:-}}"
 [ -n "$USER_NAME" ] && [ "$USER_NAME" != root ] || die "Run with sudo from your normal user account (not as root)."

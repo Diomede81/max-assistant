@@ -20,6 +20,12 @@ export interface PanelRoutine {
   search: boolean;
   running: boolean;
   lastError?: string;
+  suggestions?: {
+    running: boolean;
+    at?: string;
+    error?: string;
+    items: { url: string; name: string; why: string; via: string; feedUrl?: string; sample?: string; headlines: number }[];
+  };
   briefing?: { at: string; checked: number; failed: string[]; heard?: boolean; articles: { title: string; url: string; source: string; summary: string; why?: string }[] };
 }
 
@@ -62,9 +68,37 @@ ${x.lastError && !x.running ? `<p class="hint">Last run: ${esc(x.lastError)}</p>
 <form method="post" action="/routines/run"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn" type="submit" ${x.running ? 'disabled' : ''}>Run now</button></form>
 <form method="post" action="/routines/toggle"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">${x.enabled ? 'Pause' : 'Resume'}</button></form>
 </div>
+${suggestBlock(x, esc)}
 <details><summary class="meta">Settings</summary>${routineForm(x, firecrawl, esc)}
 <form class="addfact danger" method="post" action="/routines/delete"><input type="hidden" name="id" value="${esc(x.id)}"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this routine and its briefings</label><button class="btn secondary" type="submit">Delete</button></form></details>
 </section>`;
+}
+
+const VIA: Record<string, string> = {
+  feed: '<span class="badge ok">news feed</span>',
+  page: '<span class="badge off">page headlines</span>',
+  firecrawl: '<span class="badge off">via Firecrawl</span>',
+};
+
+/** "Suggest websites": Max proposes sources for the interests; tick the ones to add. */
+function suggestBlock(x: PanelRoutine, esc: Esc): string {
+  const s = x.suggestions;
+  const button = `<form method="post" action="/routines/suggest"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit" ${s?.running || !x.interests ? 'disabled' : ''}>${s?.items.length ? 'Suggest again' : 'Suggest websites'}</button></form>`;
+  const intro = `<p class="meta">${x.interests ? `Max finds websites for your interests (${esc(x.interests.slice(0, 120))}${x.interests.length > 120 ? '…' : ''}) and checks each one, looking for its news feed.` : 'Add your interests in Settings below, then Max can suggest websites.'}</p>`;
+  if (s?.running) return `<h3>Suggested websites</h3><p class="meta"><span class="badge warn">looking…</span> Finding and checking websites: this takes about a minute. The page refreshes by itself.</p><span data-wait></span>`;
+  const list = s?.items.length
+    ? `<form method="post" action="/routines/add-suggested"><input type="hidden" name="id" value="${esc(x.id)}"><ul class="suggest">${s.items
+        .map(
+          (i) => `<li><label><input type="checkbox" name="url" value="${esc(i.url)}" ${i.via === 'feed' ? 'checked' : ''}>
+<span><span><b>${esc(i.name)}</b> ${VIA[i.via] ?? ''}</span><span class="meta">${esc(i.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</span>
+<span class="meta">${esc(i.why)}${i.sample ? ` · latest: “${esc(i.sample.slice(0, 90))}”` : ''}</span></span></label></li>`,
+        )
+        .join('')}</ul><div class="acts"><button class="btn" type="submit">Add selected</button></div>
+<p class="meta">Sites with a news feed are the most reliable and cost no Firecrawl credits, so they're ticked already.</p></form>`
+    : s?.error
+      ? `<p class="hint">${esc(s.error)}</p>`
+      : '';
+  return `<h3>Suggested websites</h3>${intro}${list}<div class="acts" style="margin-top:8px">${button}</div>`;
 }
 
 function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc): string {
@@ -73,7 +107,7 @@ function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc):
   const counts = [3, 4, 5, 6, 7, 8, 10].map((n) => `<option ${n === (x?.count ?? 6) ? 'selected' : ''}>${n}</option>`).join('');
   return `<form class="stack routine" method="post" action="/routines/save">${x ? `<input type="hidden" name="id" value="${esc(x.id)}">` : ''}
 <label>Name<input name="name" maxlength="60" value="${esc(x?.name ?? 'Morning news')}"></label>
-<label>Websites <span class="meta">(one per line: a news site, a section of it, or its RSS feed)</span>
+<label>Websites <span class="meta">(one per line: a news site, a section of it, or its RSS feed. Not sure? Leave it empty: Max suggests some for your interests)</span>
 <textarea name="sources" rows="4" placeholder="bbc.co.uk/news&#10;theverge.com&#10;formula1.com/en/latest">${esc((x?.sources ?? []).join('\n'))}</textarea></label>
 <label>What interests you <span class="meta">(topics, people, places; separated by commas)</span>
 <textarea name="interests" rows="2" placeholder="Formula 1, AI start-ups, Brighton local news, Italian politics">${esc(x?.interests ?? '')}</textarea></label>
@@ -89,6 +123,7 @@ ${x ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${
 }
 
 export const ROUTINES_CSS =
+  '.suggest li{border-top:1px solid var(--line);padding:10px 0}.suggest label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.suggest label>span{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.suggest input{margin-top:4px}' +
   '.routine label{display:block;margin:10px 0 4px;font-weight:600}.routine label input:not([type=checkbox]),.routine label textarea{display:block;width:100%;margin-top:4px;font-weight:400}' +
   '.routine input[name=name],.routine input[name=avoid]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}' +
   '.routine label.inline{display:flex;align-items:center;gap:8px;margin:0}.routine label.inline input,.routine label.inline select{display:inline-block;width:auto;margin:0}' +

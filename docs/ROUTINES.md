@@ -19,8 +19,17 @@ Control panel → **Routines** → *New news briefing*:
 | Whose | Personal, Work or Household: a work briefing is only read out in work mode, like the rest of Max |
 | Also search the news | Besides your websites, run a news search for each interest (needs Firecrawl; uses credits) |
 
+**Not sure which websites?** Fill in your interests and leave the websites empty (or press **Suggest
+websites** on an existing briefing). Max proposes sources for your interests, plus a web search for each
+one when Firecrawl is set up, and **checks every one**: does it load, does it have a news feed, are there
+fresh headlines. You see each site with the interest it covers, how Max can read it (*news feed* is the
+most reliable, and those are ticked already) and its latest headline. Tick the ones you want and press **Add selected**.
+For sites with a feed, the feed address itself is added. You can always add your own as well.
+Which AI model makes the suggestions is up to you: see [MODELS.md](MODELS.md).
+
 You can also do it by voice: "Add theverge.com to my news", "I'm interested in tennis", "Leave out
-celebrity news", "Gather my news at 6:45", "What are my news settings?".
+celebrity news", "Gather my news at 6:45", "What are my news settings?", "Suggest some news websites for me"
+(the suggestions then appear on the Routines tab).
 
 ## Using it
 

@@ -107,7 +107,12 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Routines: your news briefing**: give Max a list of websites and your interests; every morning he
   gathers the news, picks the 5–6 articles that suit you and prepares a short summary of each, ready when
-  you ask "What's the news?". See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
+  you ask "What's the news?". He can also suggest websites for your interests and find their news feeds.
+  See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
+
+- **Bring your own AI model**: add keys for OpenAI, Anthropic, Gemini, OpenRouter, Groq, DeepSeek,
+  Mistral, a local Ollama or any compatible service, then choose which model does each background job
+  (news, suggestions, memory) on the control panel. See **[docs/MODELS.md](docs/MODELS.md)**.
 
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 

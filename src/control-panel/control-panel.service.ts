@@ -13,6 +13,7 @@ import { PanelAuth } from './panel-auth';
 import { localToday, ProjectsService, taskText } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
+import { ModelsService, Task, TASKS } from '../models/models.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -29,6 +30,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
+  @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -99,6 +101,14 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/models/') && this.models) {
+      const f = await readForm(req);
+      const task = (f.get('task') ?? '') as Task;
+      if (!(task in TASKS)) return this.redirect(res, '/?error=Unknown%20job#models');
+      const msg = url.pathname === '/models/test' ? await this.models.test(task) : this.models.assign(task, f.get('provider') ?? 'default', f.get('model') ?? '');
+      const ok = !/failed|isn't set up|Choose|Unknown/.test(msg);
+      return this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#models`);
+    }
     if (req.method === 'POST' && url.pathname.startsWith('/routines/') && this.routines) return this.routineAction(req, res, url.pathname.slice('/routines/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
@@ -168,6 +178,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async modelsData(m: ModelsService): Promise<PanelData['models']> {
+    const providers = await Promise.all(
+      m.providers().map(async (p) => ({ ...p, ...(p.configured && p.id !== 'default' ? await m.available(p.id) : { models: [] as string[] }) })),
+    );
+    return {
+      main: this.cfg.llm.model,
+      providers,
+      tasks: (Object.keys(TASKS) as Task[]).map((t) => ({ id: t, ...TASKS[t], ...m.assignment(t), describe: m.describe(t) })),
+    };
+  }
+
   private async routineAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
     const r = this.routines!;
     const f = await readForm(req);
@@ -195,7 +216,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         );
         const ok = /^(Created|Saved)/.test(msg);
         const created = !id && ok ? r.routines[r.routines.length - 1] : undefined;
+        // A new briefing with interests but no websites yet: start suggesting straight away.
+        if (created && !created.sources.length) {
+          void r.suggest(created.id);
+          return back(`${msg} Max is now finding websites for your interests: tick the ones you want.`, true, `routine-${created.id}`);
+        }
         return back(msg, ok, created ? `routine-${created.id}` : id ? `routine-${id}` : 'routine-new');
+      }
+      case 'suggest': {
+        void r.suggest(routine!.id);
+        return back('Finding websites for your interests: about a minute.');
+      }
+      case 'add-suggested': {
+        const msg = r.addSuggested(routine!.id, f.getAll('url'));
+        return back(msg, msg.startsWith('Added'));
       }
       case 'run':
         void r.run(routine!.id, true);
@@ -318,9 +352,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               daysText: daysText(x.days),
               running: this.routines!.isRunning(x.id),
               briefing: this.routines!.briefings[x.id],
+              suggestions: this.routines!.suggestions(x.id),
             })),
           }
         : undefined,
+      models: this.models && (await this.modelsData(this.models)),
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

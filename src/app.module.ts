@@ -9,10 +9,11 @@ import { SoulModule } from './soul/soul.module';
 import { WebModule } from './web/web.module';
 import { LocationModule } from './location/location.module';
 import { RoutinesModule } from './routines/routines.module';
+import { ModelsModule } from './models/models.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), ModelsModule, SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

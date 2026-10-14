@@ -2,6 +2,8 @@
 export interface PanelData {
   music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
   voice: string;
+  /** The tab to open first (overview, max, memory, projects, connections, settings). */
+  tab?: string;
   notice?: { kind: 'ok' | 'error'; text: string };
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
@@ -195,9 +197,6 @@ function memorySection(m: NonNullable<PanelData['memory']>): string {
   const sel = m.selected ?? 'personal';
   const q = (m.query ?? '').toLowerCase();
   const v = m.vaults.find((x) => x.name === sel) ?? m.vaults[0];
-  const modes = (['personal', 'work', 'guest', 'auto'] as const)
-    .map((x) => post('/mode', { mode: x }, x === 'auto' ? 'Automatic' : `${x[0].toUpperCase()}${x.slice(1)}`, `btn ${m.mode === x ? '' : 'secondary'}`))
-    .join('');
   const tabs = m.vaults
     .map((x) => {
       const locked = !m.readable.includes(x.name);
@@ -227,9 +226,7 @@ ${post('/memory/delete', { id: f.id, vault: v.name }, 'Forget')}</div></li>`,
   const kinds = ['fact', 'person', 'preference', 'routine', 'date', 'project'].map((k) => `<option>${k}</option>`).join('');
   return `<section id="memory"><h2>Memory</h2>
 ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.</p>'}
-<div class="name">${esc(m.modeText)}</div>
-<p class="meta">Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: Personal vault locked · Guest: only Household. Household is shared. Say "Max, work mode", "personal mode" or "guest mode".</p>
-<div class="modes">${modes}</div>
+<p class="meta">${esc(m.modeText)} Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: Personal vault locked · Guest: only Household. Household is shared. <a href="#mode">Change mode</a></p>
 <div class="tabs">${tabs}</div>
 <form class="search" method="get" action="/#memory">${hidden('vault', v.name)}<input name="q" value="${esc(m.query ?? '')}" placeholder="Search ${VAULT_LABEL[v.name]}…"><button class="btn secondary" type="submit">Search</button></form>
 <ul>${facts}</ul>
@@ -252,6 +249,47 @@ const NOTES: Record<string, string> = {
 
 const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
+
+const TABS: [string, string][] = [
+  ['overview', 'Overview'],
+  ['max', 'Max'],
+  ['memory', 'Memory'],
+  ['projects', 'Projects'],
+  ['connections', 'Connections'],
+  ['settings', 'Settings'],
+];
+
+/** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
+function overview(d: PanelData): string {
+  const m = d.memory;
+  const modes = m
+    ? (['personal', 'work', 'guest', 'auto'] as const)
+        .map((x) => post('/mode', { mode: x }, x === 'auto' ? 'Automatic' : `${x[0].toUpperCase()}${x.slice(1)}`, `btn ${m.mode === x ? '' : 'secondary'}`))
+        .join('')
+    : '';
+  const count = (list: { connected: boolean }[]) => `${list.filter((a) => a.connected).length} of ${list.length}`;
+  const tile = (href: string, k: string, v: string, meta: string) =>
+    `<a class="tile" href="${href}"><div class="k">${k}</div><div class="v">${v}</div><div class="meta">${meta}</div></a>`;
+  const facts = m ? m.vaults.filter((v) => m.readable.includes(v.name)).reduce((n, v) => n + v.facts.length, 0) : 0;
+  const tasks = m ? m.projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'open').length, 0) : 0;
+  const music = d.music && d.music.state !== 'off' ? (d.music.state === 'ready' ? badge(true, 'Ready') : badge(false, '', d.music.state === 'pairing' ? 'Sign-in needed' : 'Not running')) : '';
+  const tiles = [
+    d.composio.configured
+      ? tile('#apps', 'Apps', `${count(d.composio.apps)} personal · ${count(d.composio.workApps)} work`, 'Email, calendar, messaging and more')
+      : tile('#apps', 'Apps', badge(false, '', 'Not set up'), 'Add a Composio key to connect email and other apps'),
+    tile('#web', 'Web search', d.web?.configured ? badge(d.web.connected) : badge(false, '', 'Not set up'), d.web?.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages'),
+    tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
+    music ? tile('#music', 'Music', `Spotify ${music}`, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
+    m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
+    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
+    d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
+    d.location ? tile('#location', 'Home location', d.location.place ? esc(d.location.place) : badge(false, '', 'Not set'), 'For local answers and search results') : '',
+  ].join('');
+  return `${m ? `<section id="mode"><h2>Mode</h2><div class="name">${esc(m.modeText)}</div>
+<p class="meta">Each mode has its own behaviour, memories and accounts. You can also say "Max, work mode", "personal mode" or "guest mode".</p>
+<div class="modes">${modes}</div></section>` : ''}
+<div class="tiles">${tiles}</div>`;
+}
 
 export function renderPanel(d: PanelData): string {
   const appRows = (list: PanelData['composio']['apps'], side: 'personal' | 'work') =>
@@ -295,6 +333,13 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
+  const show: Record<string, boolean> = { overview: true, max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
+  const attention: Record<string, boolean> = {
+    connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
+    settings: Boolean(d.location && !d.location.place),
+    memory: Boolean(d.memory?.vaults.some((v) => v.status !== 'open' || v.facts.some((f) => f.unverified))),
+  };
+
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Max Control Panel</title>
@@ -324,24 +369,63 @@ input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-s
 code{background:var(--offbg);padding:1px 5px;border-radius:5px;font-size:13px}a{color:var(--accent)}
 form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 @media (max-width:520px){.row{flex-direction:column;align-items:stretch}.btn{text-align:center}.addfact{flex-wrap:wrap}.addfact input{flex-basis:100%}}
-</style></head><body><main>
+.nav{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;margin:0 -16px 16px;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}.nav a{flex:none;padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600}
+.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
+section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block}.pane>h2.title{font-size:13px;margin:0 0 10px}
+.jump{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}.jump a{font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--text)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--text)}
+.tile:hover{border-color:var(--accent)}.tile .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}.tile .v{font-weight:600;margin:4px 0 2px}
+</style><script>document.documentElement.className='js'</script></head><body data-tab="${esc(TABS.some((t) => t[0] === d.tab) ? d.tab : 'overview')}"><main>
 <div class="top"><div><h1>Max</h1><p class="sub">Voice: ${esc(d.voice)}</p></div>
 <div class="acts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div></div>
+<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id]).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}</nav>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
-<section><h2>Apps</h2><ul>${apps}${hints}</ul>
+
+<div class="pane" id="tab-overview">${overview(d)}</div>
+
+<div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
+
+<div class="pane" id="tab-memory">${d.memory ? memorySection(d.memory) : ''}</div>
+
+<div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
+
+<div class="pane" id="tab-connections">
+<div class="jump"><a href="#apps">Apps</a><a href="#web">Web search</a><a href="#home-assistant">Home Assistant</a>${musicSection(d.music) ? '<a href="#music">Music</a>' : ''}${servers ? '<a href="#servers">Other</a>' : ''}</div>
+<section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
-${musicSection(d.music)}
-${d.location ? locationSection(d.location) : ''}
-<section><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
+<section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
 <div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
-<section><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
+<section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
-${d.soul ? soulSection(d.soul) : ''}
-${d.memory ? projectsSection(d.memory) : ''}
-${d.memory ? memorySection(d.memory) : ''}
-${servers ? `<section><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
+${musicSection(d.music)}
+${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
 <p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>
-</main></body></html>`;
+</div>
+
+<div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
+<section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
+<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
+<li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
+</main>
+<script>
+(function () {
+  var panes = [].slice.call(document.querySelectorAll('.pane'));
+  var links = [].slice.call(document.querySelectorAll('.nav a'));
+  function route() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var el = id && document.getElementById(id);
+    var pane = el && (el.classList.contains('pane') ? el : el.closest('.pane'));
+    if (!pane) pane = document.getElementById('tab-' + document.body.getAttribute('data-tab')) || panes[0];
+    panes.forEach(function (p) { p.classList.toggle('on', p === pane); });
+    links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + pane.id); });
+    if (el && el !== pane) el.scrollIntoView(); else window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', route);
+  route();
+})();
+</script></body></html>`;
 }
 
 function musicSection(m: PanelData['music']): string {

@@ -84,7 +84,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'GET' && url.pathname === '/callback') {
       await this.composio.refresh();
       const failed = url.searchParams.get('status') === 'failed' || url.searchParams.has('error');
-      return this.redirect(res, failed ? '/?error=Sign-in%20was%20not%20completed' : '/?connected=1');
+      return this.redirect(res, failed ? '/?error=Sign-in%20was%20not%20completed' : '/?connected=1#apps');
     }
     if (req.method === 'POST' && url.pathname === '/refresh') {
       await Promise.all([this.mcp.refreshAll(), this.composio.refresh(), this.music?.poll(), this.web?.check()]);
@@ -112,7 +112,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
       if (['personal', 'work', 'guest', 'auto'].includes(m)) this.modes.set(m as Mode | 'auto');
-      return this.redirect(res, '/#memory');
+      return this.redirect(res, '/?ok=Mode%20changed.#mode');
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
   }
@@ -290,13 +290,16 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (url.searchParams.has('connected')) d.notice = { kind: 'ok', text: 'Signed in. Max can use this app now.' };
     else if (url.searchParams.has('refreshed')) d.notice = { kind: 'ok', text: 'Refreshed.' };
     else if (url.searchParams.get('ok')) d.notice = { kind: 'ok', text: url.searchParams.get('ok')! };
+    else if (url.searchParams.get('error')) d.notice = { kind: 'error', text: url.searchParams.get('error')! };
     if (d.memory) {
       d.memory.selected = (VAULTS.includes(url.searchParams.get('vault') as VaultName) ? url.searchParams.get('vault') : 'personal') as VaultName;
       d.memory.query = url.searchParams.get('q') ?? '';
       d.memory.project = url.searchParams.get('project') ?? undefined;
     }
     if (d.soul && SOUL_DOCS.includes(url.searchParams.get('doc') as SoulDoc)) d.soul.doc = url.searchParams.get('doc') as SoulDoc;
-    else if (url.searchParams.get('error')) d.notice = { kind: 'error', text: url.searchParams.get('error')! };
+    // Which tab opens first (a #section in the address, e.g. after saving, takes precedence in the browser).
+    const q = url.searchParams;
+    d.tab = q.get('tab') ?? (q.has('doc') ? 'max' : q.has('project') ? 'projects' : q.has('vault') || q.has('q') ? 'memory' : q.has('connected') ? 'connections' : undefined);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderPanel(d));
   }
 

@@ -81,6 +81,16 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       })();
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/wifi-cancel') {
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      const ok = this.face.cancelWifiSetup();
+      res.writeHead(ok ? 202 : 503, { 'Content-Type': 'text/plain' }).end(ok ? 'cancelled' : 'Only available on the Max box');
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/power') {
       // Only the screen itself (same origin, and this port is only open on the box) may do this.
       const origin = req.headers.origin;

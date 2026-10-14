@@ -37,6 +37,8 @@ AP_SSID = 'Max-Setup'
 AP_CON = 'max-setup'
 STATUS = os.path.join(RUN_DIR, 'wifi.json')
 REQUEST = os.path.join(RUN_DIR, 'wifi-request')
+CANCEL = os.path.join(RUN_DIR, 'wifi-cancel')  # "Back to Max" on the screen
+CANCEL_PAUSE_S = int(os.environ.get('MAX_WIFI_CANCEL_PAUSE_S', '300'))
 TICK_S = 3
 
 
@@ -320,8 +322,22 @@ def main():
                 os.remove(REQUEST)
             except OSError:
                 pass
+        cancelled = os.path.exists(CANCEL)
+        if cancelled:
+            try:
+                os.remove(CANCEL)
+            except OSError:
+                pass
         if SETUP.connecting:
             pass
+        elif cancelled and SETUP.active:
+            # "Back to Max" on the screen: leave setup mode and try the known networks again. If the
+            # box is still offline, setup mode only comes back by itself after a pause.
+            SETUP.stop('cancelled from the screen')
+            clear_status()
+            nmcli('device', 'connect', IFACE)
+            offline_since = None
+            cooldown_until = time.time() + CANCEL_PAUSE_S
         elif SETUP.active:
             idle = time.time() - SETUP.last_activity
             if idle > SETUP_TIMEOUT_S:

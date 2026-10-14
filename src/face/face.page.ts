@@ -33,6 +33,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 .err { font-size: 3vmin; color: var(--warn); max-width: 50vmin; }
 .spinner { width: 10vmin; height: 10vmin; border-radius: 50%; border: 1.2vmin solid #1b2a28; border-top-color: var(--ink); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.back { font: inherit; font-size: 3.6vmin; font-weight: 700; padding: 1.8vmin 6vmin; border-radius: 99vmin; border: .5vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; margin-top: 1vmin; }
+.back:active { transform: scale(.97); }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -152,9 +154,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     return s + '</svg>';
   }
 
+  // "Back to Max" on the WiFi screen: hide it at once (the box takes a few seconds to leave setup mode).
+  let wifiBackUntil = 0;
   function renderSetup() {
     const w = info.wifi;
-    const show = info.state === 'setup' && w;
+    const show = info.state === 'setup' && w && Date.now() > wifiBackUntil;
     setupEl.hidden = !show;
     if (!show) return;
     const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -166,7 +170,15 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         '<div class="qr">' + (w.qrSvg || '') + '</div>' +
         '<div class="line">Network <b>' + esc(w.ssid) + '</b></div>' +
         '<div class="line">Password <b>' + esc(w.password) + '</b></div>' +
-        '<div class="hint">Scan with your phone camera, then choose your WiFi on the page that opens.</div>';
+        '<div class="hint">Scan with your phone camera, then choose your WiFi on the page that opens.</div>' +
+        '<button class="back" id="wifiBack">Back to Max</button>';
+      const back = document.getElementById('wifiBack');
+      if (back) back.onclick = (e) => {
+        e.stopPropagation();
+        wifiBackUntil = Date.now() + 15000;
+        setupEl.hidden = true;
+        fetch('/wifi-cancel', { method: 'POST' }).catch(() => undefined);
+      };
     }
   }
 
@@ -227,7 +239,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   function showMenu() {
     fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
     menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
-      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Close</button>', {
+      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Back to Max</button>', {
       mOff: () => confirmPower('poweroff'),
       mRestart: () => confirmPower('reboot'),
       mWifi: () => {
@@ -245,7 +257,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     const off = action === 'poweroff';
     let left = 5;
     const draw = () => menu('<h1>' + (off ? 'Turning off' : 'Restarting') + ' in ' + left + '…</h1>' +
-      '<button class="quiet" id="pCancel">Cancel</button>', { pCancel: closeMenu });
+      '<button class="quiet" id="pCancel">Cancel: back to Max</button>', { pCancel: closeMenu });
     draw();
     countdown = setInterval(() => {
       left -= 1;
@@ -257,8 +269,15 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
           ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button on the Raspberry Pi.</p>'
           : '<h1>Restarting…</h1><p>Back in about a minute.</p>', {});
         clearTimeout(menuIdle);
+        // If the box hasn't gone down after 30 s, something stopped it: offer the way back.
+        setTimeout(() => {
+          if (menuEl.hidden) return;
+          menuList.insertAdjacentHTML('beforeend', '<button class="quiet" id="pBack">Back to Max</button>');
+          const bb = document.getElementById('pBack');
+          if (bb) bb.onclick = (e) => { e.stopPropagation(); closeMenu(); };
+        }, 30000);
       }).catch(() => {
-        menu('<h1>Not available</h1><p>Turning off and restarting only work on the Max box.</p><button class="quiet" id="pOk">OK</button>', { pOk: closeMenu });
+        menu('<h1>Not available</h1><p>Turning off and restarting only work on the Max box.</p><button class="quiet" id="pOk">Back to Max</button>', { pOk: closeMenu });
       });
     }, 1000);
   }
@@ -304,7 +323,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
     last = now;
     const offline = !connected && !demo && Date.now() - lastMsg > 4000;
-    const state = offline ? 'offline' : info.state;
+    const state = offline ? 'offline' : info.state === 'setup' && Date.now() < wifiBackUntil ? 'idle' : info.state;
     let emotion = offline ? 'concerned' : (info.emotion || 'neutral');
     if (state === 'thinking' && emotion === 'neutral') emotion = 'focused';
 

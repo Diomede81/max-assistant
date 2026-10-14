@@ -50,21 +50,24 @@ async function download(url: string): Promise<{ type: string; body: string; url:
 const isFeed = (type: string, body: string) => /xml|rss|atom/i.test(type) || /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<(rss|feed|rdf:RDF)\b/i.test(body);
 
 /** Feed first, then the page's own headline links. `minFromPage`: fewer than this from the page counts as failure. */
-export async function headlinesFrom(url: string, minFromPage = 6): Promise<{ items: Candidate[]; via: 'feed' | 'page' } | undefined> {
+export async function headlinesFrom(url: string, minFromPage = 6, guessFeeds = false): Promise<{ items: Candidate[]; via: 'feed' | 'page'; feedUrl?: string; title?: string } | undefined> {
   const page = await download(url);
   const source = host(page.url);
-  if (isFeed(page.type, page.body)) return { items: parseFeed(page.body, source), via: 'feed' };
-  for (const feedUrl of feedLinks(page.body, page.url).slice(0, 2)) {
+  if (isFeed(page.type, page.body)) return { items: parseFeed(page.body, source), via: 'feed', feedUrl: page.url, title: text(tag(page.body, 'title')) || undefined };
+  const title = text(tag(page.body, 'title')).slice(0, 80) || undefined;
+  // The feeds the page announces, then (when checking a suggestion) the usual feed addresses.
+  const guesses = guessFeeds ? ['/feed', '/rss', '/feed.xml', '/rss.xml', '/index.xml'].map((p) => new URL(p, page.url).toString()) : [];
+  for (const feedUrl of [...feedLinks(page.body, page.url).slice(0, 2), ...guesses]) {
     try {
       const feed = await download(feedUrl);
       const items = isFeed(feed.type, feed.body) ? parseFeed(feed.body, source) : [];
-      if (items.length) return { items, via: 'feed' };
+      if (items.length) return { items, via: 'feed', feedUrl: feed.url || feedUrl, title };
     } catch {
       // try the next feed, then the page
     }
   }
   const items = linksFromHtml(page.body, page.url, source);
-  return items.length >= minFromPage ? { items, via: 'page' } : undefined;
+  return items.length >= minFromPage ? { items, via: 'page', title } : undefined;
 }
 
 /** <link rel="alternate" type="application/rss+xml" href="..."> in a page. */

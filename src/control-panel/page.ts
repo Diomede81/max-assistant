@@ -1,10 +1,12 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
+import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 
 export interface PanelData {
   music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
   voice: string;
   routines?: PanelRoutines;
+  models?: PanelModels;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
   notice?: { kind: 'ok' | 'error'; text: string };
@@ -472,7 +474,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
-${ROUTINES_CSS}
+${ROUTINES_CSS}${MODELS_CSS}
 .wrap{flex-wrap:wrap}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
@@ -527,6 +529,7 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 </div>
 
 <div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
+${d.models ? modelsSection(d.models, esc) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
@@ -546,6 +549,8 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
   }
   window.addEventListener('hashchange', route);
   route();
+  // Something is being prepared (website suggestions): look again shortly.
+  if (document.querySelector('[data-wait]')) setTimeout(function () { location.reload(); }, 15000);
 })();
 </script></body></html>`;
 }

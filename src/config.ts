@@ -75,6 +75,11 @@ export interface AppConfig {
   };
   /** Web search and page reading (Firecrawl), built in. selfHosted: FIRECRAWL_API_URL set without a key. */
   firecrawl: { apiKey: string; apiUrl: string; selfHosted: boolean; country: string };
+  /**
+   * Extra AI providers for background jobs (news briefings, memory filing...): one key per
+   * provider in .env; which model does which job is chosen on the control panel.
+   */
+  models: { keys: Record<string, string>; ollamaUrl: string; customUrl: string };
   /** Default home location (the control panel's setting wins): town/area and ISO country code. */
   location: { place: string; country: string };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
@@ -227,6 +232,20 @@ export function loadConfig(): AppConfig {
     location: {
       place: env.HOME_LOCATION ?? '',
       country: (env.HOME_COUNTRY || env.FIRECRAWL_COUNTRY || 'GB').toUpperCase(),
+    },
+    models: {
+      keys: {
+        openai: env.OPENAI_API_KEY ?? '',
+        anthropic: env.ANTHROPIC_API_KEY ?? '',
+        gemini: env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '',
+        openrouter: env.OPENROUTER_API_KEY ?? '',
+        groq: env.GROQ_API_KEY ?? '',
+        deepseek: env.DEEPSEEK_API_KEY ?? '',
+        mistral: env.MISTRAL_API_KEY ?? '',
+        custom: env.CUSTOM_LLM_API_KEY ?? '',
+      },
+      ollamaUrl: env.OLLAMA_BASE_URL ?? '',
+      customUrl: env.CUSTOM_LLM_BASE_URL ?? '',
     },
     firecrawl: {
       apiKey: env.FIRECRAWL_API_KEY ?? '',

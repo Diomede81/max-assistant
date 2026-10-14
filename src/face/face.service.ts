@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import { PowerAction, requestPower } from './power';
 import { Card, CardHandlers, screen } from './screen';
 import { eventLines, extractEvents } from './events';
+import { extractEmails } from './emails';
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -115,7 +116,10 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     screen.on('card', (card: Card, handlers: CardHandlers) => this.showCard(card, handlers));
     screen.on('dismiss', (id: string) => this.dismissCard(id));
     this.timerService?.on('fired', (t: Timer) => this.timerCard(t));
-    this.toolRouter?.activity.on('result', (r: { name: string; out: string }) => this.calendarCard(r.name, r.out));
+    this.toolRouter?.activity.on('result', (r: { name: string; out: string }) => {
+      this.calendarCard(r.name, r.out);
+      this.emailCard(r.name, r.out);
+    });
     // Show what he's doing while actions run (email, calendar, web, the house...).
     this.toolRouter?.activity.on('start', (e: ActivityEvent) => {
       this.activities.set(e.id, { icon: e.icon, label: e.label });
@@ -482,6 +486,47 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.showCard({ id: 'calendar', kind: 'list', icon: '📅', title: 'Calendar', subtitle: `${events.length} event${events.length === 1 ? '' : 's'}`, lines, ttlMs: DAY_CARD_MS });
   }
 
+
+  /**
+   * Max read your email: show it (one email: who, when, the subject and the start of the text; several:
+   * a list). If the AI then shows its own summary with show_on_screen, that replaces this card.
+   */
+  private emailCard(tool: string, out: string): void {
+    if (!/^(GMAIL|OUTLOOK)_/i.test(tool) || !/(FETCH|LIST|GET|SEARCH|READ|FIND).*(EMAIL|MESSAGE|MAIL)/i.test(tool)) return;
+    if (/(SEND|REPLY|DRAFT|DELETE|MOVE|FORWARD|ATTACHMENT|LABEL|FOLDER)/i.test(tool)) return;
+    const mails = extractEmails(out);
+    if (!mails.length) return;
+    const when = (ms?: number) => {
+      if (!ms) return '';
+      const tz = timeZone();
+      const day = (x: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(x);
+      const hm = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms);
+      return day(ms) === day(Date.now()) ? hm : `${new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }).format(ms)} ${hm}`;
+    };
+    if (mails.length === 1) {
+      const m = mails[0];
+      this.showCard({
+        id: 'email',
+        kind: 'list',
+        icon: '✉️',
+        title: 'Email',
+        subtitle: [m.from ? `From ${m.from}` : '', when(m.at)].filter(Boolean).join(' · ') || undefined,
+        big: m.subject,
+        body: m.body ?? m.snippet,
+        ttlMs: DAY_CARD_MS * 2,
+      });
+      return;
+    }
+    this.showCard({
+      id: 'email',
+      kind: 'list',
+      icon: '✉️',
+      title: 'Email',
+      subtitle: `${mails.length} messages`,
+      lines: mails.slice(0, 10).map((m) => ({ time: when(m.at).slice(-5) || undefined, text: m.subject, sub: [m.from, m.snippet].filter(Boolean).join(' · ').slice(0, 140) || undefined })),
+      ttlMs: DAY_CARD_MS * 2,
+    });
+  }
 
   /** Whether the box's updater is working (/run/max/update.json, written by max-update.py). */
   private updating(): boolean {

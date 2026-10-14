@@ -91,6 +91,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     "go back" or "step 4". If the AI ever only talks, Max builds the steps from what he said and shows them
     anyway.
   - **News:** while Max reads your briefing, the headlines and their sources are on screen.
+  - **Email:** when Max reads your email, it's on screen: one email shows who it's from, when, the subject and
+    a short summary of what it says (or the start of the text); several show as a list.
 - **Notifications:** a card when something needs you, even if you didn't ask:
   - **News briefing ready**, with a **Headlines** button.
   - **Important email** (marked important in Gmail, or high importance in Outlook), checked every 10 minutes

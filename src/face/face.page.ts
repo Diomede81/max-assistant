@@ -44,6 +44,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #cardEl .ctitle { font-size: 5vmin; font-weight: 800; line-height: 1.15; }
 #cardEl .csub { font-size: 3.2vmin; color: #a9cfc6; margin-top: -.6vmin; }
 #cardEl .cbig { font-size: 6vmin; font-weight: 800; line-height: 1.2; margin: 1vmin 0; }
+#cardEl .cbody { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; font-size: 3.5vmin; line-height: 1.4; color: #cfeee6; text-align: left; margin: 0 2vmin; }
+#cardEl .cbody::-webkit-scrollbar { display: none; }
 #cardEl .cimg { width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
 #cardEl .clines { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; text-align: left; display: grid; align-content: start; gap: 1.1vmin; margin: .6vmin 1vmin 0; }
 #cardEl .clines::-webkit-scrollbar { display: none; }
@@ -178,6 +180,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   DEMO_CARDS['Card ingredients'] = { id: 'd9', kind: 'list', icon: '🧀', title: 'Macaroni cheese', subtitle: 'Ingredients · then 6 steps', until: FOREVER,
     lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
     actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
+  SCENES.push(['speaking', 'neutral', 'Card email']);
+  DEMO_CARDS['Card email'] = { id: 'd10', kind: 'list', icon: '✉️', title: 'Email', subtitle: 'From Anna Rossi · 09:42', big: 'Milan launch: venue confirmed', until: FOREVER,
+    body: 'Anna confirms the venue for the Milan launch on 12 November and has signed the contract. She needs your final guest list by Friday, and asks whether you want the evening or the afternoon slot.' };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
     big: 'Fry the guanciale in a dry pan until golden, about 5 minutes',
     lines: [{ time: 'next', text: 'Whisk 3 egg yolks and 1 whole egg with 50 g pecorino', tag: 'done' }],
@@ -299,6 +304,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     } else {
       if (c.subtitle) h += '<div class="csub">' + escC(c.subtitle) + '</div>';
       if (c.big) h += '<div class="cbig">' + escC(c.big) + '</div>';
+      if (c.body) h += '<div class="cbody">' + escC(c.body) + '</div>';
       if (c.image) h += '<img class="cimg" src="' + escC(c.image) + '" alt="">';
       if (c.lines && c.lines.length) {
         h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +

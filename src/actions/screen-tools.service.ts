@@ -14,11 +14,11 @@ const STEPS_MS = 15 * 60_000;
 const REPLY_SETTLE_MS = 4000;
 
 /**
- * Requests that must end with something on screen: recipes, how-tos, step-by-step instructions,
- * and anything the user explicitly asks to be shown.
+ * Recipes, how-tos and step-by-step instructions: they must go on screen as steps. (A plain
+ * "show me my email" isn't one: Max has to read the email first, so it isn't forced.)
  */
 const WANTS_SCREEN =
-  /\b(recipes?|ingredients|step[- ]by[- ]step|instructions|walk me through|show me|on (the|your) screen|how (do|can|should|would) (i|you|we) (make|cook|bake|prepare|do|fix|set up|install|clean|change|replace|build)|how to (make|cook|bake|prepare|do|fix|set up|install|clean|change|replace|build))\b/i;
+  /\b(recipes?|ingredients|step[- ]by[- ]step|instructions|walk me through|how (do|can|should|would) (i|you|we) (make|cook|bake|prepare|do|fix|set up|install|clean|change|replace|build)|how to (make|cook|bake|prepare|do|fix|set up|install|clean|change|replace|build))\b/i;
 
 export function wantsScreen(request: string): boolean {
   return WANTS_SCREEN.test(request);
@@ -30,7 +30,9 @@ export const SCREEN_RULE =
   'request, and whenever the user says "show me", you MUST call show_on_screen FIRST (a recipe: title, ingredients ' +
   'and steps, one step per item), and only then speak a short summary such as "The recipe is on my screen. First, ' +
   '...". Never read a whole recipe or long instructions out loud instead of showing them. Use it for other answers ' +
-  'that are easier to see than hear too (lists, comparisons, forecasts).';
+  'that are easier to see than hear too (lists, comparisons, forecasts). To show an email: first read it with the ' +
+  'email app, then show_on_screen with title "Email", subtitle "From <sender> · <when>", big = the subject, and ' +
+  'body = a 2-4 sentence summary of what it says and anything it asks of the user, in your own words.';
 
 interface Steps {
   title: string;
@@ -84,7 +86,8 @@ export class ScreenToolsService {
               title: { type: 'string', description: 'Short heading, e.g. "Macaroni cheese" or "Weekend weather"' },
               icon: { type: 'string', description: 'One emoji, e.g. 🍝 🧀 🌦️ 📰 🛒' },
               subtitle: { type: 'string', description: 'One short line under the title, e.g. "Serves 4 · 30 min" (optional)' },
-              big: { type: 'string', description: 'One large line, for a single key fact (optional)' },
+              big: { type: 'string', description: 'One large line, for a single key fact or an email subject (optional)' },
+              body: { type: 'string', description: 'A short paragraph, e.g. a summary of an email in your own words (optional, up to ~4 sentences)' },
               ingredients: { type: 'array', items: { type: 'string' }, description: 'For a recipe: what you need, one item each, e.g. "300 g macaroni"' },
               steps: { type: 'array', items: { type: 'string' }, description: 'Instructions in order, one short step each' },
               lines: {
@@ -143,7 +146,8 @@ export class ScreenToolsService {
       .filter((l) => l.text);
     if (!lines.length && ingredients.length) lines.push(...ingredients.map((text) => ({ text })));
     const big = clean(a.big, 140);
-    if (!title && !lines.length && !big) return 'Nothing to show: give a title, lines, big or steps.';
+    const body = clean(a.body, 700);
+    if (!title && !lines.length && !big && !body) return 'Nothing to show: give a title, lines, big, body or steps.';
     const image = typeof a.image === 'string' && /^https:\/\/[^\s"'<>]+$/.test(a.image) ? a.image : undefined;
     showCard({
       id: 'answer',
@@ -152,9 +156,10 @@ export class ScreenToolsService {
       title: title || 'Max',
       subtitle: clean(a.subtitle, 100) || undefined,
       big: big || undefined,
+      body: body || undefined,
       image,
       lines: lines.length ? lines : undefined,
-      ttlMs: lines.length > 3 ? LIST_MS : BIG_MS,
+      ttlMs: lines.length > 3 || body ? LIST_MS : BIG_MS,
     });
     return `Shown on the screen${lines.length ? ` (${lines.length} rows)` : ''}.`;
   }

@@ -9,6 +9,7 @@ exec cage -s -- "$BROWSER" \
   --kiosk --app="$URL" \
   --ozone-platform=wayland \
   --noerrdialogs --disable-infobars --no-first-run --incognito \
+  --password-store=basic \
   --disable-features=Translate,TouchpadOverscrollHistoryNavigation \
   --overscroll-history-navigation=0 --disable-pinch \
   --check-for-update-interval=31536000 \

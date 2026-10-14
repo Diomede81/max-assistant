@@ -95,6 +95,7 @@ if [ "$SCREEN" = dsi ]; then
 fi
 if [ "$SCREEN" != none ]; then
   install -m 755 "$REPO/scripts/pi/max-face-kiosk.sh" /usr/local/bin/max-face-kiosk
+  python3 "$REPO/scripts/pi/make-invisible-cursor.py" /usr/share/icons
   sed "s/__USER__/$USER_NAME/" "$REPO/scripts/pi/systemd/max-face.service" > /etc/systemd/system/max-face.service
   systemctl disable getty@tty1.service 2>/dev/null || true
   systemctl set-default graphical.target

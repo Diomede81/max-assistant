@@ -174,6 +174,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     actions: [{ id: 'read', label: 'Read it', style: 'primary' }, { id: 'ok', label: 'OK' }] };
   DEMO_CARDS['Notify todo'] = { id: 'd8', kind: 'alert', icon: '⏰', title: 'Overdue', big: 'Renew the car insurance', subtitle: 'Home admin · critical', until: FOREVER,
     actions: [{ id: 'done', label: 'Done', style: 'primary' }, { id: 'tomorrow', label: 'Tomorrow' }] };
+  SCENES.push(['speaking', 'happy', 'Card ingredients']);
+  DEMO_CARDS['Card ingredients'] = { id: 'd9', kind: 'list', icon: '🧀', title: 'Macaroni cheese', subtitle: 'Ingredients · then 6 steps', until: FOREVER,
+    lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
+    actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
     big: 'Fry the guanciale in a dry pan until golden, about 5 minutes',
     lines: [{ time: 'next', text: 'Whisk 3 egg yolks and 1 whole egg with 50 g pecorino', tag: 'done' }],

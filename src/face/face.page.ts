@@ -169,6 +169,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       { time: 'todo', text: 'Send the Q3 report', tag: 'critical' }] },
   };
   SCENES.push(['speaking', 'happy', 'Card steps'], ['speaking', 'neutral', 'Card answer'], ['speaking', 'neutral', 'Card news']);
+  SCENES.push(['idle', 'neutral', 'Notify email'], ['idle', 'concerned', 'Notify todo']);
+  DEMO_CARDS['Notify email'] = { id: 'd7', kind: 'notice', icon: '✉️', title: 'Important email', subtitle: 'From Anna Rossi', big: 'Contract signed: next steps for the Milan launch', until: FOREVER,
+    actions: [{ id: 'read', label: 'Read it', style: 'primary' }, { id: 'ok', label: 'OK' }] };
+  DEMO_CARDS['Notify todo'] = { id: 'd8', kind: 'alert', icon: '⏰', title: 'Overdue', big: 'Renew the car insurance', subtitle: 'Home admin · critical', until: FOREVER,
+    actions: [{ id: 'done', label: 'Done', style: 'primary' }, { id: 'tomorrow', label: 'Tomorrow' }] };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
     big: 'Fry the guanciale in a dry pan until golden, about 5 minutes',
     lines: [{ time: 'next', text: 'Whisk 3 egg yolks and 1 whole egg with 50 g pecorino', tag: 'done' }],

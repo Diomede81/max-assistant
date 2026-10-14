@@ -9,7 +9,7 @@ export interface Activity {
 }
 
 const INSTANT = new Set([
-  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'device_power',
+  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'device_power', 'device_settings',
 ]);
 
 const SENDING = /(SEND|REPLY|FORWARD|CREATE_DRAFT|DRAFT)/;

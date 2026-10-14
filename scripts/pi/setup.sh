@@ -129,15 +129,18 @@ systemctl daemon-reload
 systemctl enable --now max-wifi.service
 
 # ---------------------------------------------------------------- 5b. turning off / on
-say "Installing turn off / restart (screen menu, voice, control panel, power button)"
+say "Installing turn off / restart and screen brightness (screen menu, voice, control panel, power button)"
 install -D -m 755 "$REPO/scripts/pi/max-power.sh" /usr/local/lib/max/max-power.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-power.path" /etc/systemd/system/max-power.path
 install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/max-power.service
 # The Pi 5's own power button: a short press turns the box off safely (pressed again, it starts).
 mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
+install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
+install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service
 systemctl daemon-reload
-systemctl enable --now max-power.path
+systemctl enable --now max-power.path max-brightness.path
 
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d
@@ -167,7 +170,8 @@ fi
 say "Done."
 echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"
 echo "  Logs: cd $REPO && docker compose logs -f max"
-echo "  Hold the screen for 2 seconds for the menu: Turn off, Restart, WiFi setup. Turn on: the Pi's power button."
+echo "  Hold the screen for 2 seconds for the menu: volume, brightness, Turn off, Restart, WiFi setup."
+echo "  Turn on: the Pi's power button."
 echo "  WiFi setup also starts by itself if the box is offline for a minute."
 [ "$SCREEN" = dsi ] && echo "  Reboot now to activate the screen: sudo reboot"
 exit 0

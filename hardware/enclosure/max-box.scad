@@ -33,7 +33,7 @@ lip            = 1.4;   // front lip that holds the glass
 /* ---------------- Speaker (Visaton FRS 7, 4 ohm) ---------------- */
 spk_frame     = 66.5;   // square frame size
 spk_cutout_d  = 61;     // baffle cutout (datasheet)
-spk_hole_sq   = 56;     // MEASURE: square spacing of the 4 mounting holes
+spk_hole_sq   = 49.3;   // MEASURED: square spacing of the 4 mounting holes
 spk_depth     = 32;     // mounting depth
 spk_cz        = 46;     // centre height of the speaker
 grille_hole   = 3.0;    // grille hole size
@@ -53,12 +53,14 @@ pi_holes = [[3.5,3.5],[61.5,3.5],[3.5,52.5],[61.5,52.5]]; // board coords (mm)
 pi_standoff = 8;        // gap between back wall and board
 pi_x0 = wall + 3;       // board left edge (microSD end): close to the wall so the card is reachable
 pi_z0 = 40;             // board bottom edge (USB-C power edge faces down)
-pi_stack = 30;          // MEASURE: board + Active Cooler (+ optional SSD HAT) height, for clearance
+pi_stack = 30;          // board + Active Cooler (19.7 mm, measured) + room for the optional SSD HAT
 sd_z = 28;              // MEASURE: microSD slot centre from the board's bottom (USB-C) edge
 sd_slot = [9, 18];      // side access slot (depth Y, height Z)
 
 /* ---------------- Mic board (ReSpeaker XVF3800 USB 4-mic array) ---------------- */
-mic_board_d = 100;      // MEASURE: board diameter (or width if square)
+mic_board_d = 100.2;    // MEASURED: board diameter
+mic_stack   = 15.5;     // MEASURED: board plus parts and speaker cable underneath (7.8 mm board alone)
+mic_cy      = D/2 + 5;  // board moved back so the parts underneath clear the screen and its ring
 mic_post_r  = 44;       // MEASURE: radius of the board's mounting holes from its centre
 mic_post_angles = [45, 135, 225, 315]; // MEASURE: hole angles
 mic_gap     = 4;        // board-to-top gap (fill with a foam ring to seal the mics)
@@ -96,7 +98,7 @@ module body() {
       for (h = pi_holes) translate([pi_x0 + h[0], D - wall - pi_standoff, pi_z0 + h[1]])
         rotate([-90, 0, 0]) cylinder(d = 6.5, h = pi_standoff + 0.5);
       // Mic posts hanging from the top
-      for (a = mic_post_angles) translate([cx + mic_post_r*cos(a), cy + mic_post_r*sin(a), H - wall - mic_gap])
+      for (a = mic_post_angles) translate([cx + mic_post_r*cos(a), mic_cy + mic_post_r*sin(a), H - wall - mic_gap])
         cylinder(d = 6, h = mic_gap + 0.5);
     }
     // open front
@@ -105,12 +107,12 @@ module body() {
     for (h = pi_holes) translate([pi_x0 + h[0], D - wall - pi_standoff - 1, pi_z0 + h[1]])
       rotate([-90, 0, 0]) cylinder(d = m25_pilot, h = pi_standoff);
     // mic post pilots
-    for (a = mic_post_angles) translate([cx + mic_post_r*cos(a), cy + mic_post_r*sin(a), H - wall - mic_gap - 1])
+    for (a = mic_post_angles) translate([cx + mic_post_r*cos(a), mic_cy + mic_post_r*sin(a), H - wall - mic_gap - 1])
       cylinder(d = m25_pilot, h = mic_gap);
     // top perforation over the mic board (hex pattern)
     intersection() {
-      translate([cx, cy, H - wall - 1]) cylinder(d = mic_area_d, h = wall + 2);
-      for (i = [-12:12], j = [-12:12]) translate([cx + i*4 + (j % 2)*2, cy + j*3.46, H - wall - 1])
+      translate([cx, mic_cy, H - wall - 1]) cylinder(d = mic_area_d, h = wall + 2);
+      for (i = [-12:12], j = [-12:12]) translate([cx + i*4 + (j % 2)*2, mic_cy + j*3.46, H - wall - 1])
         cylinder(d = mic_hole_d, h = wall + 2, $fn = 12);
     }
     // side screws into the front panel tabs (countersunk outside)
@@ -242,7 +244,7 @@ module stand_ins() {
   color("#0a5") translate([pi_x0, D - wall - pi_standoff - 1.6, pi_z0]) cube([pi_l, 1.6, pi_w]);
   color("#999") translate([pi_x0 + 5, D - wall - pi_standoff - pi_stack, pi_z0 + 3]) cube([pi_l - 10, pi_stack - 1.6, pi_w - 6]);
   // mic board
-  color("#36c") translate([cx, cy, H - wall - mic_gap - 1.6]) cylinder(d = mic_board_d, h = 1.6, $fn = 120);
+  color("#36c") translate([cx, mic_cy, H - wall - mic_gap - mic_stack]) cylinder(d = mic_board_d, h = mic_stack, $fn = 120);
 }
 
 if (part == "body") rotate([-90, 0, 0]) translate([0, -D, 0]) body();               // print on its back, open front up

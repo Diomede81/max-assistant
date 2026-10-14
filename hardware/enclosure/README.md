@@ -60,11 +60,12 @@ taken from the real parts.
 | `screen_pcb` | Screen face down: the board behind the glass, long and short side, including the connector | **85.3 × 68.6 mm** (measured) |
 | `screen_glass_t` | Calipers on the very edge of the glass, where it overhangs the board | **5.9 mm** (measured) |
 | `screen_depth` | Screen face down: from the back of the glass to the highest point, including the ribbon socket | **16.8 mm** (measured) |
-| `mic_board_d` | Across the mic board at its widest (say if it's square) | 100 mm (estimate) |
-| `mic_post_r`, `mic_post_angles` | Centre-to-centre between two diagonally opposite holes, halved; plus the gap between neighbouring holes (equal gaps = square pattern) | 44 mm, 45/135/225/315° (estimate) |
-| `spk_hole_sq` | Centre-to-centre between two side-by-side speaker holes (tip: left edge of one hole to left edge of the other) | 56 mm (estimate) |
+| `mic_board_d` | Across the mic board at its widest (say if it's square) | **100.2 mm** (measured) |
+| `mic_stack` | Mic board plus the parts and speaker cable underneath it | **15.5 mm** (measured; board alone 7.8 mm) |
+| `mic_post_r`, `mic_post_angles` | The board has 3 holes in a triangle (measured: 60.1, 60.1 and 40.7 mm apart). Still needed: each hole's distance to the nearest board edge, and which hole points towards the USB socket | 44 mm, 4 holes (placeholder) |
+| `spk_hole_sq` | Centre-to-centre between two side-by-side speaker holes (tip: left edge of one hole to left edge of the other) | **49.3 mm** (measured) |
 | `sd_z` | Pi held with the USB-C socket at the bottom: from that edge up to the middle of the microSD slot | 28 mm (estimate) |
-| `pi_stack` | Pi with the fan fitted, flat on a table: from the underside of the board to the top of the fan | 30 mm allowed (estimate) |
+| `pi_stack` | Pi with the fan fitted, flat on a table: from the underside of the board to the top of the fan | **19.7 mm** (measured); 30 mm allowed for the SSD kit |
 
 Then re-export the parts (below). Printing just the front panel's screen area as a test ring first is
 a cheap way to check the screen fit.

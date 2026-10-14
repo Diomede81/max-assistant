@@ -31,7 +31,7 @@ screen_boss_h  = 7;     // from the back of the front panel; the ring sits on to
 lip            = 1.4;   // front lip that holds the glass
 
 /* ---------------- Speaker (Visaton FRS 7, 4 ohm) ---------------- */
-spk_frame     = 66.5;   // square frame size
+spk_frame     = 66.5;   // CONFIRMED: square frame size fits
 spk_cutout_d  = 61;     // baffle cutout (datasheet)
 spk_hole_sq   = 52.5;   // MEASURED: square spacing of the 4 mounting holes, centre to centre
 spk_depth     = 32;     // mounting depth

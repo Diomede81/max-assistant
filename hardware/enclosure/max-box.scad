@@ -43,7 +43,7 @@ grille_pitch  = 4.4;
 ch_wall = 2.4;
 tab_w   = 9;            // side tabs that hold the front panel (chamber must clear them)
 ch_w    = W - 2*wall - 2*tab_w - 3;
-ch_z0   = wall + 2;     // bottom of chamber
+ch_z0   = wall + 5;     // bottom of chamber (clear of the body's rounded bottom-front edge)
 ch_z1   = screen_cz - screen_glass_d/2 - 3; // top of chamber (below the screen glass and ring)
 ch_d    = 58;           // outer depth behind the front panel
 

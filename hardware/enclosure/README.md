@@ -27,7 +27,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | --- | --- | --- |
 | `stl/body.stl` | Back, sides, top (mic grille) and bottom, open at the front | On its back, open side up |
 | `stl/front.stl` | Front panel: screen window, speaker grille, mounting tabs | Face down |
-| `stl/chamber.stl` | Sealed speaker box (≈0.45 L) that screws to the back of the front panel | Back wall down |
+| `stl/chamber.stl` | Sealed speaker box (≈0.44 L) that screws to the back of the front panel | Back wall down |
 | `stl/screen_ring.stl` | Clamp ring that holds the screen in its recess | Flat |
 
 PLA or PETG, 0.2 mm layers, 3 walls, 20% infill. No supports needed. A matte filament looks best;
@@ -104,7 +104,7 @@ front panel take a few minutes each to compute because of the grille holes.
 
 ## Design notes
 
-- **Sound:** the speaker sits in its own sealed 0.45 L chamber. Sealed is what gives a small driver
+- **Sound:** the speaker sits in its own sealed 0.44 L chamber. Sealed is what gives a small driver
   fuller, tighter sound; a driver loose inside a case sounds thin and boxy.
 - **Microphones:** the mic board is foam-sealed to the perforated top and kept away from the speaker
   chamber, so the speaker's vibration and sound reach the mics as little as possible. The XVF3800's

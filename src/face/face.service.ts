@@ -279,7 +279,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
       updating: this.updating(),
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
-      caption: this.cfg.face.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
+      caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),
     };
   }

@@ -86,8 +86,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     music plays.
   - **"What's going on in my day?"**: your reminders and to-dos (overdue and critical ones marked), with your
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
-  - **Captions:** what Max heard you say and what he's saying, under the face. `FACE_CAPTIONS=off` in `.env`
-    hides them.
+  - **Captions** (off unless you switch them on in **Settings → Screen** on the control panel): what Max
+    heard you say and what he's saying, under the face.
 - **Glance (while Max is idle):** the weather at the top (for the home location set on the control panel,
   from Open-Meteo: free, no key), and under the clock your next meeting and a line like "2 critical ·
   1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather). The next

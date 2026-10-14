@@ -12,6 +12,6 @@ import { ScreenToolsService } from './screen-tools.service';
 @Module({
   imports: [HaMcpModule, McpModule, ComposioModule, MemoryModule],
   providers: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService],
-  exports: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, MemoryModule],
+  exports: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService, MemoryModule],
 })
 export class ActionsModule {}

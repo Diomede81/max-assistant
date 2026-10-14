@@ -16,6 +16,7 @@ import { analyse, CLOSED, Mouth } from './visemes';
 import { Emotion, emotionFor } from './emotion';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
 import { BuiltinActionsService } from '../actions/builtin-actions.service';
+import { ScreenToolsService } from '../actions/screen-tools.service';
 import { AmbientService, Glance } from './ambient.service';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
@@ -99,6 +100,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly toolRouter?: ToolRouterService,
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly actions?: BuiltinActionsService,
+    @Optional() private readonly screenTools?: ScreenToolsService,
   ) {
     super();
     this.setMaxListeners(50);
@@ -187,6 +189,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   heard(text: string): void {
     const t = text.replace(/\s+/g, ' ').trim();
     if (!t) return;
+    this.screenTools?.userSaid(t);
     this.caption = { who: 'you', text: t.slice(-220), until: Date.now() + CAPTION_MS };
     void this.tickInfo();
   }
@@ -198,6 +201,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   said(text: string): void {
     const t = text.replace(/\s+/g, ' ').trim();
     if (t) {
+      this.screenTools?.maxSaid(t); // a recipe only spoken still ends up on screen
       // Captions: his sentences follow one another; keep the latest (a sentence or two).
       const cont = this.caption?.who === 'max' && Date.now() < this.caption.until && this.caption.text.length + t.length < 160;
       this.caption = { who: 'max', text: cont ? `${this.caption!.text} ${t}` : t.slice(-220), until: Date.now() + CAPTION_MS };

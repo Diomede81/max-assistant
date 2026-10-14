@@ -85,8 +85,11 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   - **Music:** cover, title, a progress bar and ⏮ ⏯ ⏭ buttons, when a song starts, or **tap the face** while
     music plays.
   - **Answers worth seeing:** when something is easier to see than hear (a list, a comparison, a forecast,
-    an address), Max puts it on screen as well as saying it. Ask for a **recipe** or other instructions and
-    they show one step at a time: tap **Next** / **Back**, or say "next step", "go back" or "step 4".
+    an address), Max puts it on screen as well as saying it. Ask for a **recipe** or other instructions
+    ("how do I make...", "how to...", "step by step", "show me...") and they always go on screen: the
+    ingredients first, then one step at a time. Tap **Start** / **Next** / **Back**, or say "next step",
+    "go back" or "step 4". If the AI ever only talks, Max builds the steps from what he said and shows them
+    anyway.
   - **News:** while Max reads your briefing, the headlines and their sources are on screen.
 - **Notifications:** a card when something needs you, even if you didn't ask:
   - **News briefing ready**, with a **Headlines** button.

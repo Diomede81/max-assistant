@@ -8,6 +8,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { describeCapabilities } from '../actions/capabilities';
 import { ToolRouterService } from '../actions/tool-router.service';
 import { describeNow } from '../actions/clock';
+import { wantsScreen } from '../actions/screen-tools.service';
 import { MemoryService } from '../memory/memory.service';
 import { SoulService } from '../soul/soul.service';
 
@@ -59,11 +60,14 @@ export class LlmService {
       ...this.capabilities(),
       ...history,
     ];
+    // A recipe, a how-to or "show me": the first move must be putting it on the screen.
+    const forceScreen =
+      typeof lastUser?.content === 'string' && wantsScreen(lastUser.content) && this.tools.tools.some((t) => t.type === 'function' && t.function.name === 'show_on_screen');
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const started = Date.now();
       let stream: Awaited<ReturnType<LlmService['openStream']>>;
       try {
-        stream = await this.openStream(messages);
+        stream = await this.openStream(messages, round === 0 && forceScreen);
       } catch (err) {
         // Some models try to call a device action even when Home Assistant is offline
         // (no tools sent); the provider then rejects the request. Say so plainly.
@@ -139,20 +143,30 @@ export class LlmService {
     return text ? [{ role: 'system', content: text }] : [];
   }
 
-  private async openStream(messages: ChatCompletionMessageParam[]) {
+  private async openStream(messages: ChatCompletionMessageParam[], forceScreen = false) {
     const tools = this.tools.tools;
-    const body = (model: string, reasoningEffort?: string) => ({
+    const screen = tools.some((t) => t.type === 'function' && t.function.name === 'show_on_screen');
+    const body = (model: string, reasoningEffort?: string, force = forceScreen) => ({
       model,
       messages,
       stream: true as const,
       temperature: 0.3,
-      max_tokens: 300,
-      ...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
+      // Spoken replies are short, but a recipe sent to the screen needs room (or it's cut off and lost).
+      max_tokens: force ? 1500 : screen ? 800 : 300,
+      ...(tools.length ? { tools, tool_choice: force ? { type: 'function' as const, function: { name: 'show_on_screen' } } : ('auto' as const) } : {}),
       // Provider-specific values (e.g. DeepSeek's "none") aren't in the SDK's type list.
       ...(reasoningEffort ? { reasoning_effort: reasoningEffort as 'low' } : {}),
     });
+    if (forceScreen) {
+      try {
+        return await this.primary.chat.completions.create(body(this.cfg.llm.model, this.cfg.llm.reasoningEffort), { timeout: this.cfg.llm.timeoutMs, maxRetries: 0 });
+      } catch (err) {
+        // Some models don't accept a required action (e.g. in thinking mode): ask normally instead.
+        this.log.warn(`could not require the screen (${(err as Error).message}); asking normally`);
+      }
+    }
     try {
-      return await this.primary.chat.completions.create(body(this.cfg.llm.model, this.cfg.llm.reasoningEffort), {
+      return await this.primary.chat.completions.create(body(this.cfg.llm.model, this.cfg.llm.reasoningEffort, false), {
         timeout: this.cfg.llm.timeoutMs,
         maxRetries: 0,
       });
@@ -160,7 +174,7 @@ export class LlmService {
       if (!this.fallback) throw err;
       this.log.warn(`primary LLM failed (${(err as Error).message}); using fallback`);
       return this.fallback.chat.completions.create(
-        body(this.cfg.llm.fallbackModel!, this.cfg.llm.fallbackReasoningEffort),
+        body(this.cfg.llm.fallbackModel!, this.cfg.llm.fallbackReasoningEffort, false),
       );
     }
   }

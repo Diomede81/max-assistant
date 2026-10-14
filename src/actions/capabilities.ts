@@ -1,4 +1,5 @@
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
+import { SCREEN_RULE } from './screen-tools.service';
 
 /** Plain-English names for common Composio apps (tool names start with the app's slug). */
 const APPS: Record<string, string> = {
@@ -36,8 +37,10 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
   }
   // Built-in web search (Firecrawl, no Composio).
   if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
-  if (!apps.size) return '';
+  const screen = names.includes('show_on_screen') ? SCREEN_RULE : '';
+  if (!apps.size) return screen;
   return (
+    (screen ? `${screen}\n` : '') +
     `Live connections you have RIGHT NOW through your tools: ${[...apps.values()].join('; ')}. ` +
     'You DO have access to these: when the user asks about any of them, call the matching tool straight away ' +
     'instead of saying you cannot. Never claim you have no access to email, calendar or the internet while ' +

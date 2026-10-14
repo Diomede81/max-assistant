@@ -1,7 +1,10 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
+import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
+
 export interface PanelData {
   music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
   voice: string;
+  routines?: PanelRoutines;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
   notice?: { kind: 'ok' | 'error'; text: string };
@@ -335,6 +338,7 @@ const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
 const TABS: [string, string][] = [
   ['overview', 'Overview'],
   ['myday', 'My Day'],
+  ['routines', 'Routines'],
   ['max', 'Max'],
   ['memory', 'Memory'],
   ['projects', 'Projects'],
@@ -352,6 +356,18 @@ function myDayTile(m: NonNullable<PanelData['memory']>, tile: (href: string, k: 
     'My Day',
     `${today} due today${overdue ? ` · <span class="warntext">${overdue} overdue</span>` : ''}`,
     `${critical} critical · ${open.length} open to-do${open.length === 1 ? '' : 's'}`,
+  );
+}
+
+function newsTile(r: PanelRoutines, tile: (href: string, k: string, v: string, meta: string) => string): string {
+  if (!r.list.length) return tile('#tab-routines', 'Routines', 'No news briefing yet', 'Set one up: Max prepares your news each morning');
+  const first = r.list[0];
+  const b = first.briefing;
+  return tile(
+    '#tab-routines',
+    'News briefing',
+    first.running ? 'Gathering now…' : b?.articles.length ? `${b.articles.length} articles ready` : 'Nothing gathered yet',
+    `${first.daysText} at ${first.time}${r.list.length > 1 ? ` · ${r.list.length} routines` : ''}`,
   );
 }
 
@@ -377,6 +393,7 @@ function overview(d: PanelData): string {
     tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
     music ? tile('#music', 'Music', `Spotify ${music}`, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
     m ? myDayTile(m, tile) : '',
+    d.routines ? newsTile(d.routines, tile) : '',
     m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
     m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
@@ -430,10 +447,11 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
-  const show: Record<string, boolean> = { overview: true, myday: Boolean(d.memory), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
+  const show: Record<string, boolean> = { overview: true, myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
   const attention: Record<string, boolean> = {
     connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
     settings: Boolean(d.location && !d.location.place),
+    routines: Boolean(d.routines?.list.some((r) => r.enabled && r.lastError && !r.running)),
     myday: Boolean(d.memory?.todos.some((t) => !t.done && t.due && t.due.slice(0, 10) < d.memory!.today)),
     memory: Boolean(d.memory?.vaults.some((v) => v.status !== 'open' || v.facts.some((f) => f.unverified))),
   };
@@ -454,6 +472,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
+${ROUTINES_CSS}
 .wrap{flex-wrap:wrap}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
@@ -485,6 +504,8 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-overview">${overview(d)}</div>
 
 <div class="pane" id="tab-myday">${d.memory ? myDaySection(d.memory) : ''}</div>
+
+<div class="pane" id="tab-routines">${d.routines ? routinesSection(d.routines, esc) : ''}</div>
 
 <div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
 

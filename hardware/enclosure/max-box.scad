@@ -71,6 +71,12 @@ mic_gap     = 4;        // board-to-top gap (fill with a foam ring to seal the m
 mic_hole_d  = 1.6;      // top perforation
 mic_area_d  = 92;
 
+/* ---------------- Buttons (12 mm panel-mount momentary push buttons) ---------------- */
+btn_d     = 12.2;           // hole for a 12 mm button (use 16.2 for 16 mm buttons)
+btn_body  = [16, 22];       // nut size and depth behind the wall, for clearance
+mute_btn  = [W - 22, 21];   // mute: on top, front right corner (X, Y), on the flat and clear of the mic board
+power_btn = [W/2, 130];     // power: on the back (X, Z), above the Pi and its cables
+
 /* ---------------- Fasteners ---------------- */
 insert_d = 4.2;         // M3 heat-set insert hole
 insert_l = 6;
@@ -137,6 +143,9 @@ module body() {
     // microSD access slot in the left side wall (card sits under the board, at its left end)
     translate([-1, D - wall - pi_standoff + 1.5 - sd_slot[0]/2, pi_z0 + sd_z]) rotate([0, 90, 0])
       hull() for (dz = [-1, 1]) translate([dz*(sd_slot[1] - sd_slot[0])/2, 0, 0]) translate([0, sd_slot[0]/2, 0]) cylinder(d = sd_slot[0], h = wall + 2, $fn = 32);
+    // buttons: mute on top, power on the back
+    translate([mute_btn[0], mute_btn[1], H - wall - 1]) cylinder(d = btn_d, h = wall + 2);
+    translate([power_btn[0], D - wall - 1, power_btn[1]]) rotate([-90, 0, 0]) cylinder(d = btn_d, h = wall + 2);
     // power cable notch at the bottom of the back wall (USB-C from the Pi goes down and out)
     translate([pi_x0 + 20, D - wall - 10, -1]) cube([14, wall + 12, 9]);
     // rubber feet recesses
@@ -247,6 +256,9 @@ module stand_ins() {
   // Pi stack
   color("#0a5") translate([pi_x0, D - wall - pi_standoff - 1.6, pi_z0]) cube([pi_l, 1.6, pi_w]);
   color("#999") translate([pi_x0 + 5, D - wall - pi_standoff - pi_stack, pi_z0 + 3]) cube([pi_l - 10, pi_stack - 1.6, pi_w - 6]);
+  // buttons
+  color("#b33") translate([mute_btn[0], mute_btn[1], H - wall - btn_body[1]]) cylinder(d = btn_body[0], h = btn_body[1]);
+  color("#b33") translate([power_btn[0], D - wall - btn_body[1], power_btn[1]]) rotate([-90, 0, 0]) cylinder(d = btn_body[0], h = btn_body[1]);
   // mic board
   color("#36c") translate([cx, mic_cy, H - wall - mic_gap - mic_stack]) cylinder(d = mic_board_d, h = mic_stack, $fn = 120);
 }

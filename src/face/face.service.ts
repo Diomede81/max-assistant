@@ -4,7 +4,7 @@ import { Card, CardHandlers, screen } from './screen';
 import { eventLines, extractEvents } from './events';
 import { extractEmails } from './emails';
 import { EventEmitter } from 'node:events';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -49,6 +49,8 @@ export interface FaceInfo {
   notice?: string;
   /** The box is installing an update (Max restarts during it: the face says so instead of "Reconnecting"). */
   updating?: boolean;
+  /** The mute button is on: Max can't hear anything. */
+  muted?: boolean;
   /** The card on screen (Max's face shrinks to the top while it shows). */
   card?: Card & { until: number };
   /** Live captions: what Max heard, or what he's saying. */
@@ -286,6 +288,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       activity: this.activities.size ? [...this.activities.values()].pop() : undefined,
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
       updating: this.updating(),
+      muted: this.cfg.face.onBox && existsSync(join(this.cfg.face.runDir, 'muted')),
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
       caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),

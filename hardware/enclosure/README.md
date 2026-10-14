@@ -20,6 +20,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | Microphones / sound | ReSpeaker XVF3800 USB 4-mic array (its built-in 5 W amplifier drives the speaker) |
 | Speaker | Visaton FRS 7, 4 Ω (2.5″ full-range) |
 | Power | Raspberry Pi 27 W USB-C power supply |
+| Buttons | 2 × 12 mm panel-mount momentary push buttons (normally open): power on the back, mute on top |
 
 ## Printed parts
 
@@ -46,6 +47,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
   clear), and **3 mm thick** for the speaker chamber gasket
 - 4 × 10 mm rubber feet
 - About 30 cm of speaker wire, a short right-angle USB-A to USB-C cable (mic board to Pi)
+- For the buttons: 4 female-to-female jumper wires (20 cm) and a 2-pin header (2.54 mm) soldered to the Pi's
+  power button pads (J2). Buttons with solder tabs: solder the jumper wires to them, or use crimp
+  connectors
 
 ## Measure before printing
 
@@ -96,10 +100,17 @@ front panel take a few minutes each to compute because of the grille holes.
 4. **Pi:** fit the Active Cooler (and the SSD kit, if you have one) and insert the microSD card, then
    screw the Pi to the four posts on the back wall (USB-C power socket facing down). The card can later
    be swapped through the slot in the left side, using a fingernail or tweezers, without opening the box.
-5. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
+5. **Buttons:** fit the mute button through the hole in the top (front right) and the power button
+   through the hole in the back, and tighten their nuts from inside.
+   - **Power:** solder a 2-pin header to the Pi 5's J2 pads (its power button connection; see "Adding
+     your own power button" in the Raspberry Pi 5 documentation) and connect the button to it. It
+     works like the Pi's own button: press to turn on, press to turn off safely, hold to force off.
+   - **Mute:** connect the button to GPIO 17 (pin 11) and ground (pin 9). Each press turns the
+     microphone off or back on; the face shows "Microphone off" while it is off.
+6. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
    under the top grille (the hole at the point of the triangle, by the USB socket, faces the back). Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.
-6. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
+7. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
    (or `0`: the setup script asks which), slide the front panel in, and fix
    it with the four side screws. Route the USB-C power cable through the notch at the back.
 

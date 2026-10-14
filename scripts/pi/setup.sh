@@ -177,6 +177,16 @@ install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/sy
 systemctl daemon-reload
 systemctl enable --now max-power.path max-brightness.path
 
+# ---------------------------------------------------------------- 5c. mute button
+# The button on top of the box (GPIO 17 and ground) turns the microphone off and on.
+say "Installing the mute button"
+python3 -c 'import gpiozero' 2>/dev/null || apt-get install -y -q python3-gpiozero python3-lgpio
+install -D -m 755 "$REPO/scripts/pi/max-mute-button.py" /usr/local/lib/max/max-mute-button.py
+install -m 644 "$REPO/scripts/pi/systemd/max-mute-button.service" /etc/systemd/system/max-mute-button.service
+systemctl daemon-reload
+systemctl enable max-mute-button.service
+systemctl restart max-mute-button.service || warn "The mute button service didn't start; see: journalctl -u max-mute-button"
+
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nSystemMaxUse=50M\n' > /etc/systemd/journald.conf.d/max.conf
@@ -229,7 +239,7 @@ say "Done."
 echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"
 echo "  Logs: cd $REPO && docker compose logs -f max"
 echo "  Hold the screen for 2 seconds for the menu: volume, brightness, Turn off, Restart, WiFi setup."
-echo "  Turn on: the Pi's power button."
+echo "  Turn on: the Pi's power button. Mute: the button on top (the face shows \"Microphone off\")."
 echo "  WiFi setup also starts by itself if the box is offline for a minute."
 [ "$SCREEN" = dsi ] && echo "  Reboot now to activate the screen: sudo reboot"
 exit 0

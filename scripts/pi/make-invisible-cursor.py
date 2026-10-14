@@ -41,7 +41,16 @@ def main():
         if os.path.lexists(link):
             os.remove(link)
         os.symlink('default', link)
-    print(f'Invisible pointer theme: {theme}')
+    # Some versions of cage ignore XCURSOR_THEME and always load the theme called "default": a
+    # separate pointer folder (XCURSOR_PATH in max-face-kiosk.sh) where "default" is this theme.
+    # The system's own default pointer, used by everything else, is left alone.
+    only = os.path.join(base, 'max-cursor')
+    os.makedirs(only, exist_ok=True)
+    link = os.path.join(only, 'default')
+    if os.path.lexists(link):
+        os.remove(link)
+    os.symlink(theme, link)
+    print(f'Invisible pointer theme: {theme} (also as "default" in {only})')
 
 
 if __name__ == '__main__':

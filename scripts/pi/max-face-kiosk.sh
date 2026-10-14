@@ -5,8 +5,12 @@
 URL="${MAX_FACE_URL:-http://localhost:8098}"
 until curl -fsS -o /dev/null "$URL/health"; do sleep 2; done
 BROWSER="$(command -v chromium || command -v chromium-browser)"
-# No pointer arrow on Max's face: an invisible pointer theme (made by the setup).
-[ -d /usr/share/icons/max-invisible ] && export XCURSOR_THEME=max-invisible XCURSOR_SIZE=24
+# No pointer arrow on Max's face: an invisible pointer theme (made by the setup), both by name and
+# as the "default" theme in a pointer folder of its own (some versions of cage only load "default").
+if [ -d /usr/share/icons/max-invisible ]; then
+  export XCURSOR_THEME=max-invisible XCURSOR_SIZE=24
+  export XCURSOR_PATH=/usr/share/icons/max-cursor:/usr/share/icons:/usr/share/pixmaps
+fi
 exec cage -s -- "$BROWSER" \
   --kiosk --app="$URL" \
   --ozone-platform=wayland \

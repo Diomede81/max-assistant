@@ -1,0 +1,9 @@
+[Unit]
+Description=Max update requests (control panel, voice, nightly automatic update)
+
+[Path]
+PathExists=/run/max/update-request
+Unit=max-update.service
+
+[Install]
+WantedBy=multi-user.target

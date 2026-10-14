@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { DeviceService, STEP } from '../device/device.service';
+import { UpdatesService } from '../updates/updates.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { FaceInfo, FaceService } from './face.service';
@@ -25,6 +26,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly face: FaceService,
     @Optional() private readonly device?: DeviceService,
+    @Optional() private readonly updates?: UpdatesService,
   ) {}
 
   onModuleInit(): void {
@@ -62,6 +64,28 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      return;
+    }
+    if (url.pathname === '/update' && this.updates) {
+      // The screen menu's Update button: what's new (GET), install it (POST). Same origin only.
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      const u = this.updates;
+      const send = (data: unknown) => res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
+      if (req.method === 'POST') {
+        const message = u.request('screen');
+        send({ ok: message.startsWith('Updating'), message });
+        return;
+      }
+      void (async () => {
+        const state = u.state();
+        if (u.busy) return send({ onBox: u.onBox, busy: true, message: state?.message ?? 'An update is running.' });
+        const a = u.onBox ? await u.check(true) : undefined;
+        send({ onBox: u.onBox, behind: a?.behind ?? 0, changes: a?.changes ?? [], error: u.onBox && !a ? 'The installed version is unknown.' : a?.error });
+      })();
       return;
     }
     if (url.pathname === '/device' && this.device) {

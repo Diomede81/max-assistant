@@ -9,6 +9,13 @@ export interface PanelData {
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
   device?: { volume?: number; brightness: number; brightnessSupported?: boolean };
+  updates?: {
+    onBox: boolean;
+    version?: { sha: string; date: string; subject: string; repo: string };
+    state?: { state: string; message: string; at: number };
+    available?: { behind: number; changes: string[]; error?: string };
+    auto: { auto: boolean; time: string };
+  };
   models?: PanelModels;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
@@ -376,6 +383,31 @@ function newsTile(r: PanelRoutines, tile: (href: string, k: string, v: string, m
   );
 }
 
+function updatesSection(u: NonNullable<PanelData['updates']>): string {
+  if (!u.onBox) return '<section id="updates"><h2>Updates</h2><p class="meta">One-click updates work when Max runs on the Max box (Raspberry Pi).</p></section>';
+  const v = u.version;
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const busy = u.state && ['checking', 'updating', 'rebooting'].includes(u.state.state);
+  const state = u.state
+    ? `<p class="${u.state.state === 'failed' ? 'hint' : 'meta'}">${busy ? '<span class="badge warn">in progress</span> ' : ''}${esc(u.state.message)} <span class="meta">(${esc(when(new Date(u.state.at).toISOString()))})</span></p>`
+    : '';
+  const a = u.available;
+  const list = a && !a.error && a.behind
+    ? `<p><b>${a.behind} new change${a.behind === 1 ? '' : 's'} available:</b></p><ul class="items">${a.changes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
+    : a?.error
+      ? `<p class="hint">${esc(a.error)}</p>`
+      : a
+        ? '<p class="meta">Max is up to date.</p>'
+        : '';
+  return `<section id="updates"><h2>Updates</h2>
+<p class="meta">Installed: ${v ? `<b>${esc(v.subject)}</b> · ${esc(when(v.date))} · <code>${esc(v.sha.slice(0, 7))}</code>` : 'unknown (run the setup on the box once)'}</p>
+${state}${busy ? '<span data-updating></span><p class="meta">Max restarts during the update: this page comes back by itself.</p>' : list}
+<div class="acts" style="margin:12px 0">${!busy && a && a.behind ? '<form method="post" action="/updates/install"><button class="btn" type="submit">Update now</button></form>' : ''}
+${busy ? '' : '<form method="post" action="/updates/check"><button class="btn secondary" type="submit">Check again</button></form>'}</div>
+<form class="addfact" method="post" action="/updates/auto"><label class="meta"><input type="checkbox" name="auto" value="yes" ${u.auto.auto ? 'checked' : ''}> Install updates automatically at</label><input type="time" name="time" value="${esc(u.auto.time)}"><button class="btn secondary" type="submit">Save</button></form>
+<p class="meta">New versions come from GitHub (${esc(v?.repo || 'your repository')}): merge a change there and it shows up here. Your settings, keys and Max's memory stay as they are.</p></section>`;
+}
+
 /** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
 function overview(d: PanelData): string {
   const m = d.memory;
@@ -543,6 +575,7 @@ ${d.onBox
 <form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="poweroff"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, turn Max off now</label><button class="btn secondary" type="submit">Turn off</button></form>`
   : '<p class="meta">Turning off and restarting are available when Max runs on the Max box (Raspberry Pi).</p>'}
 </section>
+${d.updates ? updatesSection(d.updates) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
@@ -562,6 +595,14 @@ ${d.onBox
   }
   window.addEventListener('hashchange', route);
   route();
+  // An update is running: Max restarts during it. Look every 10 s; reload when he's back.
+  if (document.querySelector('[data-updating]')) {
+    var down = false;
+    setInterval(function () {
+      fetch('/api/status', { cache: 'no-store' }).then(function (r) { if (r.ok && down) location.reload(); }).catch(function () { down = true; });
+    }, 10000);
+    setTimeout(function () { if (!down) location.reload(); }, 30000);
+  }
   // Something is being prepared (website suggestions): look again shortly.
   if (document.querySelector('[data-wait]')) setTimeout(function () { location.reload(); }, 15000);
 })();

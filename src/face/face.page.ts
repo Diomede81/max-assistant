@@ -53,6 +53,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #menu .bar { height: .9vmin; border-radius: 1vmin; background: #1b2a28; margin-top: .8vmin; overflow: hidden; }
 #menu .bar i { display: block; height: 100%; background: var(--ink); }
 #menu .ctl.off { opacity: .45; }
+#menu .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1.8vmin; }
+#menu .changes { font-size: 3vmin; text-align: left; color: #cfeee6; margin: 0 2vmin; }
+#menu .changes div { margin: .8vmin 0; }
 #menu .rows { display: grid; gap: 2.6vmin; margin-bottom: 1.2vmin; }
 </style></head>
 <body>
@@ -239,7 +242,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   function showMenu() {
     fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
     menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
-      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Back to Max</button>', {
+      '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div><button class="quiet" id="mCancel">Back to Max</button>', {
+      mUpdate: showUpdate,
       mOff: () => confirmPower('poweroff'),
       mRestart: () => confirmPower('reboot'),
       mWifi: () => {
@@ -251,6 +255,30 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       },
       mCancel: closeMenu,
     });
+  }
+  // Update: check GitHub for a new version, show what's new, install on request.
+  const escH = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const BACK = '<button class="quiet" id="uBack">Back to Max</button>';
+  function showUpdate() {
+    menu('<h1>Updates</h1><p>Checking for a new version…</p>' + BACK, { uBack: closeMenu });
+    fetch('/update').then((r) => r.json()).then((d) => {
+      if (menuEl.hidden) return;
+      if (d.busy) return menu('<h1>Updating…</h1><p>' + escH(d.message) + '</p>' + BACK, { uBack: closeMenu });
+      if (!d.onBox) return menu('<h1>Updates</h1><p>Updating from here only works on the Max box.</p>' + BACK, { uBack: closeMenu });
+      if (d.error) return menu('<h1>Updates</h1><p>' + escH(d.error) + '</p>' + BACK, { uBack: closeMenu });
+      if (!d.behind) return menu('<h1>Up to date</h1><p>Max has the latest version.</p>' + BACK, { uBack: closeMenu });
+      const list = (d.changes || []).slice(0, 3).map((c) => '<div>• ' + escH(c) + '</div>').join('') +
+        ((d.changes || []).length > 3 ? '<div>…and ' + (d.changes.length - 3) + ' more</div>' : '');
+      menu('<h1>' + d.behind + ' new change' + (d.behind === 1 ? '' : 's') + '</h1><div class="changes">' + list + '</div>' +
+        '<button id="uGo">Update now</button>' + BACK, {
+        uBack: closeMenu,
+        uGo: () => fetch('/update', { method: 'POST' }).then((r) => r.json()).then((x) => {
+          menu(x.ok
+            ? '<h1>Updating…</h1><p>Max downloads the new version and restarts by himself. Back in 5 to 15 minutes.</p>' + BACK
+            : '<h1>Updates</h1><p>' + escH(x.message) + '</p>' + BACK, { uBack: closeMenu });
+        }).catch(() => menu('<h1>Updates</h1><p>Could not start the update.</p>' + BACK, { uBack: closeMenu })),
+      });
+    }).catch(() => menu('<h1>Updates</h1><p>Could not check for updates.</p>' + BACK, { uBack: closeMenu }));
   }
   // A few seconds to change your mind, then the box is asked to turn off / restart.
   function confirmPower(action) {
@@ -621,7 +649,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         text = '♪  ' + info.music.title; sub = info.music.artist;
       } else if (state === 'idle' || state === 'sleeping' || state === 'offline') {
         text = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-        if (state === 'offline') sub = 'Reconnecting…';
+        if (state === 'offline') sub = info.updating ? 'Updating… back in a few minutes' : 'Reconnecting…';
+        else if (info.updating) sub = 'Updating…';
         else if (info.reminder) {
           // Reminders aren't countdowns: just the next one, with a bell, under the clock.
           const at = new Date(info.reminder.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });

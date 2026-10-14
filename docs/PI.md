@@ -132,11 +132,27 @@ With Max running in Docker on your Mac (`docker compose --profile max up -d --bu
 
 ## Updating
 
-Copy the new version from your Mac with the same `rsync` command, then on the box:
+Once the setup has run on the box, updates come **straight from GitHub**: no Mac, no `rsync`, no SSH.
 
-```bash
-cd ~/max-assistant && sudo ./scripts/pi/setup.sh
-```
+- **On the box's screen:** hold it for 2 seconds and tap **Update**: it shows what's new and offers
+  **Update now**.
+- **Control panel → Settings → Updates** shows the installed version and, when there's a newer one, the list
+  of what's new (the titles of the changes merged on GitHub). Press **Update now**.
+- Or say **"Max, are there any updates?"** and **"Max, update yourself"** (he asks you to confirm).
+- Or tick **Install updates automatically** (default 03:30): if there's something new, the box updates itself
+  at night.
+
+The box downloads the new version, runs the setup with the answers you gave the first time (kept in
+`/etc/max/box.conf`), rebuilds Max and, only if a start-up setting changed, restarts. It takes 5 to 15
+minutes; the face says "Updating…" and the control panel comes back by itself. Your `.env`, Max's memory,
+your `boot-logo.png` and anything else that isn't part of the code stay as they are. If something goes
+wrong, the box stays on the version it had, and the control panel says so (details in
+`/var/log/max-update.log`).
+
+By hand, on the box: `sudo python3 /usr/local/lib/max/max-update.py`.
+
+The very first time (to install this updater) it's the old way: copy the new version from your Mac with the
+`rsync` command, then run `cd ~/max-assistant && sudo ./scripts/pi/setup.sh`.
 
 ## Troubleshooting
 

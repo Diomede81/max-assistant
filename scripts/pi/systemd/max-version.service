@@ -1,0 +1,10 @@
+[Unit]
+Description=Max: note the installed version for the control panel
+After=local-fs.target systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/max/max-update.py version
+
+[Install]
+WantedBy=multi-user.target

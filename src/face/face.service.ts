@@ -41,6 +41,8 @@ export interface FaceInfo {
   activity?: { icon: string; label: string };
   /** A short-lived note when something didn't work ("Couldn't finish: Checking your email"). */
   notice?: string;
+  /** The box is installing an update (Max restarts during it: the face says so instead of "Reconnecting"). */
+  updating?: boolean;
 }
 
 const FRAME_MS = 50;
@@ -235,6 +237,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       emotion: this.emotion,
       activity: this.activities.size ? [...this.activities.values()].pop() : undefined,
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
+      updating: this.updating(),
     };
   }
 
@@ -280,6 +283,16 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   /** The box's WiFi service writes its status here; announce changes out loud. */
+  /** Whether the box's updater is working (/run/max/update.json, written by max-update.py). */
+  private updating(): boolean {
+    try {
+      const u = JSON.parse(readFileSync(join(this.cfg.face.runDir, 'update.json'), 'utf8')) as { state?: string; at?: number };
+      return (u.state === 'updating' || u.state === 'rebooting') && Date.now() - (u.at ?? 0) < 3600_000;
+    } catch {
+      return false;
+    }
+  }
+
   private async readWifi(): Promise<void> {
     let next: WifiStatus | undefined;
     try {

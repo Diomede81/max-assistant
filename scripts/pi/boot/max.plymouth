@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Max
+Description=Max's face (or your own logo) while the box starts and shuts down
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/max
+ScriptFile=/usr/share/plymouth/themes/max/max.script

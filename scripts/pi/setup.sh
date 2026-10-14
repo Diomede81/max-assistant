@@ -115,6 +115,32 @@ else
   systemctl disable max-face.service 2>/dev/null || true
 fi
 
+# ---------------------------------------------------------------- 4b. boot screen
+# Max's face (or your own logo: put a PNG called boot-logo.png in the max-assistant folder)
+# while the box starts and shuts down, instead of raspberries and scrolling text.
+if [ "$SCREEN" != none ] && [ "${MAX_BOOT_LOGO:-on}" != off ]; then
+  say "Setting up the boot screen"
+  LOGO="$REPO/boot-logo.png"; [ -f "$LOGO" ] || LOGO="$REPO/scripts/pi/boot/logo.png"
+  if [ "$(head -c 8 "$LOGO" | od -An -tx1 | tr -d ' \n')" != 89504e470d0a1a0a ]; then
+    warn "$LOGO is not a PNG picture; using Max's face instead."
+    LOGO="$REPO/scripts/pi/boot/logo.png"
+  fi
+  command -v plymouth-set-default-theme >/dev/null 2>&1 || apt-get install -y -q plymouth plymouth-themes
+  THEME_DIR=/usr/share/plymouth/themes/max
+  install -d "$THEME_DIR"
+  install -m 644 "$REPO/scripts/pi/boot/max.plymouth" "$REPO/scripts/pi/boot/max.script" "$THEME_DIR/"
+  install -m 644 "$LOGO" "$THEME_DIR/logo.png"
+  # No rainbow square from the firmware, no raspberries or blinking cursor from Linux.
+  grep -q '^disable_splash=1' "$CONFIG_TXT" || echo 'disable_splash=1' >> "$CONFIG_TXT"
+  CMDLINE=/boot/firmware/cmdline.txt; [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
+  for OPT in quiet splash logo.nologo vt.global_cursor_default=0; do
+    grep -qw -- "$OPT" "$CMDLINE" || sed -i "s/\$/ $OPT/" "$CMDLINE"
+  done
+  # Rebuilds the start-up files with the new theme (takes a minute).
+  plymouth-set-default-theme -R max >/dev/null || warn "Could not apply the boot screen; the box starts as before."
+  echo "  Boot screen: $( [ "$LOGO" = "$REPO/boot-logo.png" ] && echo 'your boot-logo.png' || echo "Max's face" )"
+fi
+
 # ---------------------------------------------------------------- 5. WiFi setup mode
 say "Installing WiFi setup mode"
 install -D -m 755 "$REPO/scripts/pi/max-wifi-setup.py" /usr/local/lib/max/max-wifi-setup.py

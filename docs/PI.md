@@ -68,6 +68,17 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 ## Using the box
 
 - **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi.
+- **Boot screen:** while the box starts (and shuts down) it shows Max's face on a dark screen instead of
+  raspberries and scrolling text. To use **your own logo**:
+  1. Make a **PNG** picture, ideally square, about **400 × 400 pixels**, with the important part inside a
+     circle (the screen is round) and a transparent or dark background.
+  2. Name it **`boot-logo.png`** and put it in the `max-assistant` folder on your Mac (next to `README.md`).
+  3. Send Max to the box as usual (the `rsync` command) and run `sudo ./scripts/pi/setup.sh` on the box,
+     then `sudo reboot`.
+
+  To go back to Max's face, delete `boot-logo.png` from the folder on the Mac **and** on the box
+  (`rm ~/max-assistant/boot-logo.png`), then run the setup again. `MAX_BOOT_LOGO=off sudo ./scripts/pi/setup.sh`
+  leaves the boot screen alone.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.

@@ -88,6 +88,15 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
   - **Captions:** what Max heard you say and what he's saying, under the face. `FACE_CAPTIONS=off` in `.env`
     hides them.
+- **Glance (while Max is idle):** the weather at the top (for the home location set on the control panel,
+  from Open-Meteo: free, no key), and under the clock your next meeting and a line like "2 critical ·
+  1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather). The next
+  meeting comes from the current mode's calendar app, checked quietly every 20 minutes between 06:00 and
+  23:00. In **guest mode** only the time and weather show, and a tap shows the weather for the next hours.
+- **Evening photo frame:** upload pictures on the control panel (**Settings → Screen**; JPEG, PNG or WebP,
+  kept on the box only) and switch it on. During the hours you choose (19:00–23:00 by default), after two
+  quiet minutes, your pictures fade one into the next with the clock on top. "Hey Max" or a touch brings
+  his face back. The glance can be switched off there too.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.

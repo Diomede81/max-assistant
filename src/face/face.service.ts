@@ -15,6 +15,8 @@ import type { PcmFormat } from '../audio/speaker.service';
 import { analyse, CLOSED, Mouth } from './visemes';
 import { Emotion, emotionFor } from './emotion';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
+import { BuiltinActionsService } from '../actions/builtin-actions.service';
+import { AmbientService, Glance } from './ambient.service';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -49,6 +51,8 @@ export interface FaceInfo {
   card?: Card & { until: number };
   /** Live captions: what Max heard, or what he's saying. */
   caption?: { who: 'you' | 'max'; text: string };
+  /** Around the face when idle: weather, next meeting, to-dos; and the evening photo frame. */
+  glance?: Glance;
 }
 
 const FRAME_MS = 50;
@@ -93,6 +97,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly modes?: ModesService,
     @Optional() private readonly musicService?: MusicService,
     @Optional() private readonly toolRouter?: ToolRouterService,
+    @Optional() private readonly ambient?: AmbientService,
+    @Optional() private readonly actions?: BuiltinActionsService,
   ) {
     super();
     this.setMaxListeners(50);
@@ -274,6 +280,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       updating: this.updating(),
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
       caption: this.cfg.face.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
+      glance: this.ambient?.glance(),
     };
   }
 
@@ -359,9 +366,35 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     return true;
   }
 
-  /** A short tap on the face: show what's useful right now (the music, if any). */
+  /** A short tap on the face: show what's useful right now (the music if it's playing, otherwise your day). */
   async tapped(): Promise<void> {
-    if (this.music || (await this.musicService?.player().catch(() => undefined))) await this.musicCard(TAP_CARD_MS);
+    if (this.music || (await this.musicService?.player().catch(() => undefined))) {
+      await this.musicCard(TAP_CARD_MS);
+      return;
+    }
+    const w = this.ambient?.weatherNow;
+    const weather = w ? `${w.icon} ${w.temp}°${w.hi !== undefined ? ` (${w.lo}°–${w.hi}°)` : ''}` : undefined;
+    // Visitors (guest mode) see only the weather, not your meetings or to-dos.
+    if (this.modes?.mode === 'guest') {
+      if (w) this.weatherCard();
+      return;
+    }
+    this.actions?.dayCard({ events: eventLines(this.ambient?.todaysEvents() ?? []), weather });
+  }
+
+  /** The weather for the next hours (guest mode's tap). */
+  private weatherCard(): void {
+    const w = this.ambient?.weatherNow;
+    if (!w) return;
+    this.showCard({
+      id: 'weather',
+      kind: 'list',
+      icon: w.icon,
+      title: `${w.temp}° · ${w.text}`,
+      subtitle: [w.place, w.hi !== undefined ? `${w.lo}°–${w.hi}°` : '', w.rain ? `${w.rain}% rain` : ''].filter(Boolean).join(' · '),
+      lines: w.hours.map((h) => ({ time: h.time, text: `${h.icon} ${h.temp}°`, sub: h.rain ? `${h.rain}% rain` : undefined })),
+      ttlMs: TAP_CARD_MS,
+    });
   }
 
   private async musicCard(ttlMs: number): Promise<void> {
@@ -434,6 +467,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     if (!/CALENDAR|EVENT/i.test(tool) || /(CREATE|UPDATE|DELETE|CANCEL|ACCEPT|DECLINE|RESPOND|MOVE)/i.test(tool)) return;
     const events = extractEvents(out);
     if (!events.length) return;
+    this.ambient?.noteEvents(events);
     const lines = eventLines(events);
     const day = this.card?.id === 'my-day' && Date.now() < this.card.until ? this.card : undefined;
     if (day) {

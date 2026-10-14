@@ -6,6 +6,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { FaceInfo, FaceService } from './face.service';
 import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
+import { AmbientService } from './ambient.service';
 
 /** Changes every time Max starts: an open face page from before an update reloads itself. */
 const BOOT_ID = `${Date.now().toString(36)}-${process.pid}`;
@@ -27,6 +28,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     private readonly face: FaceService,
     @Optional() private readonly device?: DeviceService,
     @Optional() private readonly updates?: UpdatesService,
+    @Optional() private readonly ambient?: AmbientService,
   ) {}
 
   onModuleInit(): void {
@@ -60,6 +62,13 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       this.clients.add(res);
       this.send(res, 'info', this.face.info());
       req.on('close', () => this.clients.delete(res));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/photos/')) {
+      // The evening photo frame's pictures (uploaded on the control panel).
+      const p = this.ambient?.photo(url.pathname.slice('/photos/'.length));
+      if (!p) res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+      else res.writeHead(200, { 'Content-Type': p.type, 'Cache-Control': 'max-age=86400' }).end(p.data);
       return;
     }
     if (req.method === 'GET' && url.pathname === '/health') {

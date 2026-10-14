@@ -117,6 +117,7 @@ export class ToolRouterService {
     this.activity.emit('start', ev);
     const out = await this.run(name, args);
     this.activity.emit('end', { ...ev, ok: !/^Error:|^Could not do that/.test(out) });
+    this.activity.emit('result', { name, out });
     return out;
   }
 

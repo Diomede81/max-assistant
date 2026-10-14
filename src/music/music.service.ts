@@ -338,6 +338,29 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     return this.api('POST', '/player/volume', { volume: Math.round(v) });
   }
 
+  /** The player for the screen's music card: what's playing (or paused), cover, position. */
+  async player(): Promise<{ title: string; artist: string; album: string; art?: string; paused: boolean; position?: number; duration?: number } | undefined> {
+    if (this.state !== 'ready') return undefined;
+    const s = await this.status().catch(() => undefined);
+    if (!s || s.stopped || !s.track) return undefined;
+    const t = s.track as unknown as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+    return {
+      title: s.track.name,
+      artist: s.track.artist_names.join(', '),
+      album: s.track.album_name,
+      art: typeof t.album_cover_url === 'string' && /^https?:\/\//.test(t.album_cover_url) ? t.album_cover_url : undefined,
+      paused: s.paused,
+      position: n(t.position),
+      duration: n(t.duration),
+    };
+  }
+
+  /** The music card's buttons: pause, resume, next, previous. */
+  async press(action: 'pause' | 'resume' | 'next' | 'previous'): Promise<void> {
+    await this.control(action);
+  }
+
   /** What's playing right now, for the face screen (undefined when stopped or paused). */
   async nowPlaying(): Promise<{ title: string; artist: string } | undefined> {
     if (this.state !== 'ready') return undefined;

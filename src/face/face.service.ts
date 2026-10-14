@@ -1,12 +1,14 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PowerAction, requestPower } from './power';
+import { Card, CardHandlers, screen } from './screen';
+import { eventLines, extractEvents } from './events';
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { APP_CONFIG, AppConfig } from '../config';
 import { timeZone } from '../actions/clock';
-import { TimerService, describe as describeTimer } from '../actions/timer.service';
+import { Timer, TimerService, describe as describeTimer } from '../actions/timer.service';
 import { ModesService } from '../memory/modes.service';
 import { MusicService } from '../music/music.service';
 import type { PcmFormat } from '../audio/speaker.service';
@@ -43,6 +45,10 @@ export interface FaceInfo {
   notice?: string;
   /** The box is installing an update (Max restarts during it: the face says so instead of "Reconnecting"). */
   updating?: boolean;
+  /** The card on screen (Max's face shrinks to the top while it shows). */
+  card?: Card & { until: number };
+  /** Live captions: what Max heard, or what he's saying. */
+  caption?: { who: 'you' | 'max'; text: string };
 }
 
 const FRAME_MS = 50;
@@ -52,6 +58,14 @@ const NOTICE_MS = 6000;
 const MIN_ACTIVITY_MS = 3000;
 const INFO_MS = 1000;
 const MUSIC_MS = 5000;
+/** How long cards stay if nobody taps them. */
+const CARD_MS = 20_000;
+const MUSIC_CARD_MS = 12_000;
+const TAP_CARD_MS = 20_000;
+const DAY_CARD_MS = 60_000;
+const ALERT_MS = 5 * 60_000;
+/** Captions stay this long after the last words. */
+const CAPTION_MS = 7000;
 
 /**
  * Drives the animated face on the box's round screen. Other parts of Max report what they
@@ -89,6 +103,11 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.timers.push(setInterval(() => this.tickLevel(), FRAME_MS));
     this.timers.push(setInterval(() => void this.tickInfo(), INFO_MS));
     this.timers.push(setInterval(() => void this.pollMusic(), MUSIC_MS));
+    // Cards from anywhere in Max (showCard in ./screen), and the ones the face makes itself.
+    screen.on('card', (card: Card, handlers: CardHandlers) => this.showCard(card, handlers));
+    screen.on('dismiss', (id: string) => this.dismissCard(id));
+    this.timerService?.on('fired', (t: Timer) => this.timerCard(t));
+    this.toolRouter?.activity.on('result', (r: { name: string; out: string }) => this.calendarCard(r.name, r.out));
     // Show what he's doing while actions run (email, calendar, web, the house...).
     this.toolRouter?.activity.on('start', (e: ActivityEvent) => {
       this.activities.set(e.id, { icon: e.icon, label: e.label });
@@ -158,11 +177,26 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     if (this.levels.length > 4000) this.levels.splice(0, this.levels.length - 4000);
   }
 
+  /** What Max heard the user say (live captions). */
+  heard(text: string): void {
+    const t = text.replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    this.caption = { who: 'you', text: t.slice(-220), until: Date.now() + CAPTION_MS };
+    void this.tickInfo();
+  }
+
   /**
    * What Max is saying (a sentence, a reply, or a chunk of live transcript). His expression
    * follows it: happy for good news, concerned for problems, curious for questions.
    */
   said(text: string): void {
+    const t = text.replace(/\s+/g, ' ').trim();
+    if (t) {
+      // Captions: his sentences follow one another; keep the latest (a sentence or two).
+      const cont = this.caption?.who === 'max' && Date.now() < this.caption.until && this.caption.text.length + t.length < 160;
+      this.caption = { who: 'max', text: cont ? `${this.caption!.text} ${t}` : t.slice(-220), until: Date.now() + CAPTION_MS };
+      void this.tickInfo();
+    }
     const e = emotionFor(text);
     if (!e) return;
     // Replies arrive a few sentences at a time: the first cue sets the tone, so a quick
@@ -238,6 +272,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       activity: this.activities.size ? [...this.activities.values()].pop() : undefined,
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
       updating: this.updating(),
+      card: this.card && Date.now() < this.card.until ? this.card : undefined,
+      caption: this.cfg.face.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
     };
   }
 
@@ -279,10 +315,136 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   private async pollMusic(): Promise<void> {
+    const before = this.music?.title;
     this.music = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
+    // A new song: show the music card for a moment.
+    if (this.music && this.music.title !== before) await this.musicCard(MUSIC_CARD_MS);
+    else if (this.card?.id === 'music' && Date.now() < this.card.until) await this.musicCard(this.card.until - Date.now());
   }
 
-  /** The box's WiFi service writes its status here; announce changes out loud. */
+  // ---------- Cards ----------
+
+  private card?: Card & { until: number };
+  private handlers: CardHandlers = {};
+  private caption?: { who: 'you' | 'max'; text: string; until: number };
+
+  showCard(card: Card, handlers: CardHandlers = {}): void {
+    if (!this.cfg.face.enabled) return;
+    this.card = { ...card, until: Date.now() + (card.ttlMs ?? CARD_MS) };
+    this.handlers = handlers;
+    void this.tickInfo();
+  }
+
+  dismissCard(id?: string): void {
+    if (!this.card || (id && this.card.id !== id)) return;
+    this.card = undefined;
+    this.handlers = {};
+    void this.tickInfo();
+  }
+
+  /** A button on the card was tapped ("dismiss" = Back to Max). */
+  async cardAction(id: string, action: string): Promise<boolean> {
+    if (!this.card || this.card.id !== id) return false;
+    if (action === 'dismiss') {
+      this.dismissCard(id);
+      return true;
+    }
+    const h = this.handlers[action];
+    if (!h) return false;
+    try {
+      await h();
+    } catch (err) {
+      this.log.warn(`Card button "${action}" failed: ${(err as Error).message}`);
+    }
+    return true;
+  }
+
+  /** A short tap on the face: show what's useful right now (the music, if any). */
+  async tapped(): Promise<void> {
+    if (this.music || (await this.musicService?.player().catch(() => undefined))) await this.musicCard(TAP_CARD_MS);
+  }
+
+  private async musicCard(ttlMs: number): Promise<void> {
+    const p = await this.musicService?.player().catch(() => undefined);
+    if (!p) {
+      this.dismissCard('music');
+      return;
+    }
+    const press = (a: 'pause' | 'resume' | 'next' | 'previous') => async () => {
+      await this.musicService!.press(a);
+      setTimeout(() => void this.musicCard(Math.max(5000, (this.card?.until ?? 0) - Date.now())), 800);
+    };
+    this.showCard(
+      {
+        id: 'music',
+        kind: 'music',
+        icon: '♪',
+        title: p.title,
+        subtitle: p.artist,
+        image: p.art,
+        progress: p.duration ? { position: p.position ?? 0, duration: p.duration, at: Date.now(), paused: p.paused } : undefined,
+        actions: [
+          { id: 'previous', label: '⏮', style: 'icon' },
+          { id: p.paused ? 'resume' : 'pause', label: p.paused ? '▶' : '⏸', style: 'icon' },
+          { id: 'next', label: '⏭', style: 'icon' },
+        ],
+        ttlMs,
+      },
+      { previous: press('previous'), pause: press('pause'), resume: press('resume'), next: press('next') },
+    );
+  }
+
+  /** A timer or reminder went off: a card with what it was, and buttons. */
+  private timerCard(t: Timer): void {
+    if (t.say) {
+      const id = `say-${Date.now()}`;
+      this.showCard({ id, kind: 'notice', icon: '🔔', title: 'Max', big: t.say, actions: [{ id: 'ok', label: 'OK', style: 'primary' }], ttlMs: CARD_MS * 3 }, { ok: () => this.dismissCard(id) });
+      return;
+    }
+    const id = `timer-${t.id}`;
+    if (t.reminder) {
+      const reminder = t.reminder;
+      this.showCard(
+        { id, kind: 'alert', icon: '🔔', title: 'Reminder', big: reminder.charAt(0).toUpperCase() + reminder.slice(1), actions: [{ id: 'done', label: 'Done', style: 'primary' }, { id: 'snooze', label: 'Snooze 10 min' }], ttlMs: ALERT_MS },
+        {
+          done: () => this.dismissCard(id),
+          snooze: () => {
+            this.timerService?.start(600, undefined, reminder);
+            this.dismissCard(id);
+          },
+        },
+      );
+      return;
+    }
+    const name = t.name ? `${t.name.charAt(0).toUpperCase()}${t.name.slice(1)} timer done` : 'Time is up';
+    this.showCard(
+      { id, kind: 'alert', icon: '⏲', title: 'Timer', big: name, actions: [{ id: 'ok', label: 'OK', style: 'primary' }, { id: 'again', label: 'Again' }], ttlMs: ALERT_MS },
+      {
+        ok: () => this.dismissCard(id),
+        again: () => {
+          this.timerService?.start(t.durationSeconds, t.name);
+          this.dismissCard(id);
+        },
+      },
+    );
+  }
+
+  /** Max read the calendar: show the events (merged into "Your day" if it's on screen). */
+  private calendarCard(tool: string, out: string): void {
+    if (!/CALENDAR|EVENT/i.test(tool) || /(CREATE|UPDATE|DELETE|CANCEL|ACCEPT|DECLINE|RESPOND|MOVE)/i.test(tool)) return;
+    const events = extractEvents(out);
+    if (!events.length) return;
+    const lines = eventLines(events);
+    const day = this.card?.id === 'my-day' && Date.now() < this.card.until ? this.card : undefined;
+    if (day) {
+      const rest = (day.lines ?? []).filter((l) => l.tag !== 'event' && l.tag !== 'done');
+      this.showCard({ ...day, lines: [...lines, ...rest], ttlMs: Math.max(DAY_CARD_MS, day.until - Date.now()) }, this.handlers);
+      return;
+    }
+    this.showCard({ id: 'calendar', kind: 'list', icon: '📅', title: 'Calendar', subtitle: `${events.length} event${events.length === 1 ? '' : 's'}`, lines, ttlMs: DAY_CARD_MS });
+  }
+
+
   /** Whether the box's updater is working (/run/max/update.json, written by max-update.py). */
   private updating(): boolean {
     try {
@@ -293,6 +455,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     }
   }
 
+  /** The box's WiFi service writes its status here; announce changes out loud. */
   private async readWifi(): Promise<void> {
     let next: WifiStatus | undefined;
     try {

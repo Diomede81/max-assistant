@@ -47,7 +47,8 @@ export function compactResult(raw: string, limit: number): { text: string; compa
     } catch {
       text = raw;
     }
-  } else if (/<(html|body|div|p|table)\b/i.test(raw)) {
+  } else if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && /<(html|body|div|p|table)\b/i.test(raw)) {
+    // A web page (not JSON: turning HTML into text inside JSON would break its structure).
     text = htmlToText(raw);
     compacted = true;
   }

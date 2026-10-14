@@ -11,6 +11,8 @@ import { RoutinesService } from '../routines/routines.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { requestPower } from '../face/power';
 import { DeviceService, STEP } from '../device/device.service';
+import { CardLine, showCard } from '../face/screen';
+import { dueText, localToday } from '../memory/projects.service';
 import { timeZone } from './clock';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
@@ -396,6 +398,7 @@ export class BuiltinActionsService implements OnModuleInit {
       .filter((x) => x.reminder && day(x.endsAt) === today)
       .sort((x, y) => x.endsAt - y.endsAt)
       .map((x) => `- "${x.reminder}" ${spokenWhen(x.endsAt)}`);
+    this.dayCard();
     return [
       `Today is ${describeNow()}.`,
       reminders.length ? `Reminders still to come today:\n${reminders.join('\n')}` : 'No more reminders today.',
@@ -405,6 +408,40 @@ export class BuiltinActionsService implements OnModuleInit {
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  /** "Your day" on the screen: reminders and to-dos now; calendar events join it when Max reads the calendar. */
+  private dayCard(): void {
+    const tz = timeZone();
+    const day = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms));
+    const hm = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+    const today = localToday();
+    const lines: CardLine[] = this.timers
+      .list()
+      .filter((x) => x.reminder && day(x.endsAt) === today)
+      .sort((x, y) => x.endsAt - y.endsAt)
+      .map((x) => ({ time: hm(x.endsAt), text: x.reminder!.charAt(0).toUpperCase() + x.reminder!.slice(1), tag: 'reminder' as const }));
+    for (const { task, project } of this.todos.items()) {
+      const d = task.due?.slice(0, 10);
+      const overdue = !!d && d < today;
+      if (!overdue && d !== today && task.criticality !== 'critical') continue;
+      lines.push({
+        time: overdue ? 'late' : d === today ? (task.due!.includes('T') ? task.due!.slice(11, 16) : 'today') : 'todo',
+        text: task.title,
+        sub: [overdue ? `was due ${dueText(task.due!)}` : '', project?.name ?? ''].filter(Boolean).join(' · ') || undefined,
+        tag: overdue ? 'overdue' : task.criticality === 'critical' ? 'critical' : task.criticality === 'important' ? 'important' : undefined,
+      });
+    }
+    const date = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+    showCard({
+      id: 'my-day',
+      kind: 'list',
+      icon: '☀',
+      title: 'Your day',
+      subtitle: date,
+      lines: lines.length ? lines : [{ text: 'Nothing due today', sub: 'Calendar events appear here as Max reads them' }],
+      ttlMs: 60_000,
+    });
   }
 
   onModuleInit(): void {

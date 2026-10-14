@@ -134,6 +134,8 @@ With Max running in Docker on your Mac (`docker compose --profile max up -d --bu
 
 Once the setup has run on the box, updates come **straight from GitHub**: no Mac, no `rsync`, no SSH.
 
+- **On the box's screen:** hold it for 2 seconds and tap **Update**: it shows what's new and offers
+  **Update now**.
 - **Control panel → Settings → Updates** shows the installed version and, when there's a newer one, the list
   of what's new (the titles of the changes merged on GitHub). Press **Update now**.
 - Or say **"Max, are there any updates?"** and **"Max, update yourself"** (he asks you to confirm).

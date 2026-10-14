@@ -400,6 +400,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const msg = a.save({
         glance: f.get('glance') === 'on',
         frame: f.get('frame') === 'on',
+        captions: f.get('captions') === 'on',
         frameFrom: f.get('frameFrom') ?? '',
         frameTo: f.get('frameTo') ?? '',
         frameEverySec: Number(f.get('frameEverySec') ?? 20),

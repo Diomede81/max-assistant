@@ -335,6 +335,7 @@ export class ConversationService implements OnApplicationBootstrap {
     this.historyMode = mode;
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });
+    this.face?.heard(text);
     const historyStart = this.history.length;
 
     const speech = this.tts.session();

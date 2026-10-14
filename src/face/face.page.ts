@@ -35,6 +35,40 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 @keyframes spin { to { transform: rotate(360deg); } }
 .back { font: inherit; font-size: 3.6vmin; font-weight: 700; padding: 1.8vmin 6vmin; border-radius: 99vmin; border: .5vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; margin-top: 1vmin; }
 .back:active { transform: scale(.97); }
+/* Cards: under Max's small face at the top of the round screen. */
+#cardEl { position: fixed; left: 50%; top: 24vh; bottom: 9vh; transform: translateX(-50%); width: 72vmin; display: flex; flex-direction: column; justify-content: center; gap: 1.6vmin;
+  color: #e9fff8; text-align: center; transition: opacity .25s ease, transform .25s ease; }
+#cardEl[hidden] { display: none; }
+#cardEl.enter { opacity: 0; transform: translateX(-50%) translateY(3vmin); }
+#cardEl .chead { font-size: 3vmin; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+#cardEl .ctitle { font-size: 5vmin; font-weight: 800; line-height: 1.15; }
+#cardEl .csub { font-size: 3.2vmin; color: #a9cfc6; margin-top: -.6vmin; }
+#cardEl .cbig { font-size: 6vmin; font-weight: 800; line-height: 1.2; margin: 1vmin 0; }
+#cardEl .cimg { width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
+#cardEl .clines { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; text-align: left; display: grid; align-content: start; gap: 1.1vmin; margin: .6vmin 1vmin 0; }
+#cardEl .clines::-webkit-scrollbar { display: none; }
+#cardEl .cl { display: grid; grid-template-columns: 11vmin 1fr; gap: 1.6vmin; align-items: baseline; }
+#cardEl .cl .t { font-size: 2.8vmin; color: #8fb8ae; font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; }
+#cardEl .cl .x { font-size: 3.3vmin; line-height: 1.25; }
+#cardEl .cl .x small { display: block; font-size: 2.6vmin; color: var(--dim); margin-top: .2vmin; }
+#cardEl .cl.done { opacity: .45; }
+#cardEl .tag { display: inline-block; font-size: 2.2vmin; font-weight: 800; padding: .2vmin 1.2vmin; border-radius: 99vmin; margin-left: 1vmin; vertical-align: .3vmin; letter-spacing: .03em; }
+#cardEl .tag.critical, #cardEl .tag.overdue { background: #4a1714; color: #ffb4a8; }
+#cardEl .tag.important { background: #3d2c0c; color: #ffd27a; }
+#cardEl .bar { height: .9vmin; border-radius: 1vmin; background: #1b2a28; overflow: hidden; margin: .4vmin 6vmin 0; }
+#cardEl .bar i { display: block; height: 100%; background: var(--ink); width: 0; }
+#cardEl .cacts { display: flex; gap: 2vmin; justify-content: center; margin-top: 1vmin; }
+#cardEl .cacts button { font: inherit; font-size: 3.6vmin; font-weight: 700; padding: 1.8vmin 5vmin; border-radius: 99vmin; border: .5vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; }
+#cardEl .cacts button.primary { background: #1d5d52; border-color: #2f8a7a; }
+#cardEl .cacts button.icon { font-size: 5vmin; padding: 1.4vmin 3.4vmin; line-height: 1; }
+#cardEl .cacts button:active, #cardEl .cback:active { transform: scale(.96); }
+#cardEl .cback { font: inherit; font-size: 3vmin; font-weight: 700; background: transparent; border: 0; color: var(--dim); padding: 1vmin; }
+/* Live captions under the face. */
+#caption { position: fixed; left: 50%; bottom: 13vh; transform: translateX(-50%); width: 66vmin; text-align: center; font-size: 3.6vmin; line-height: 1.3;
+  color: #dff7f0; max-height: 15vh; overflow: hidden; transition: opacity .3s; }
+#caption[hidden] { display: none; }
+#caption.you { color: #9fc7ff; }
+#caption b { font-weight: 700; }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -61,6 +95,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <body>
 <canvas id="c"></canvas>
 <div id="setup" hidden><div class="card" id="card"></div></div>
+<div id="cardEl" hidden></div>
+<div id="caption" hidden></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
 (() => {
@@ -91,7 +127,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -107,7 +143,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     ['speaking', 'neutral', 'Speaking'], ['speaking', 'happy', 'Speaking happy'], ['speaking', 'concerned', 'Speaking concerned'],
     ['idle', 'happy', 'Happy'], ['idle', 'curious', 'Curious'], ['idle', 'surprised', 'Surprised'], ['idle', 'concerned', 'Concerned'],
     ['idle', 'focused', 'Focused'], ['idle', 'sleepy', 'Sleepy'], ['sleeping', 'neutral', 'Asleep'], ['setup', 'neutral', 'WiFi setup'],
+    ['idle', 'surprised', 'Card timer'], ['speaking', 'happy', 'Card music'], ['speaking', 'neutral', 'Card day'], ['listening', 'neutral', 'Captions'],
   ];
+  const FOREVER = Date.now() + 1e10;
+  const DEMO_CARDS = {
+    'Card timer': { id: 'd1', kind: 'alert', icon: '⏲', title: 'Timer', big: 'Pasta timer done', actions: [{ id: 'ok', label: 'OK', style: 'primary' }, { id: 'again', label: 'Again' }], until: FOREVER },
+    'Card music': { id: 'd2', kind: 'music', icon: '♪', title: 'Yellow', subtitle: 'Coldplay', progress: { position: 95000, duration: 266000, at: Date.now() }, actions: [{ id: 'p', label: '⏮', style: 'icon' }, { id: 'x', label: '⏸', style: 'icon' }, { id: 'n', label: '⏭', style: 'icon' }], until: FOREVER },
+    'Card day': { id: 'd3', kind: 'list', icon: '☀', title: 'Your day', subtitle: 'Wednesday 14 October', until: FOREVER, lines: [
+      { time: '08:30', text: 'Daily stand-up', sub: 'until 08:45 · Teams', tag: 'done' },
+      { time: '10:00', text: 'Q4 planning', sub: 'until 11:00 · Room 2', tag: 'event' },
+      { time: '12:30', text: 'Lunch with Marco', tag: 'event' },
+      { time: '15:00', text: 'Call Mum', tag: 'reminder' },
+      { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue' },
+      { time: 'todo', text: 'Send the Q3 report', tag: 'critical' }] },
+  };
   const slug = (t) => t.toLowerCase().replace(/[^a-z]+/g, '-');
   let demoLabel = '';
   if (demo) {
@@ -125,7 +174,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         notice: label === 'Could not finish' ? "Couldn't finish: checking your email" : undefined,
         music: label === 'Speaking' ? { title: 'Yellow', artist: 'Coldplay' } : undefined,
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
+        card: DEMO_CARDS[label],
+        caption: label === 'Captions' ? { who: 'you', text: "What's the weather like this afternoon?" } : undefined,
       };
+      setTimeout(() => { renderCard(); renderCaption(); }, 0); // after the card code below is set up
       renderSetup();
     };
     if (fixed) show(fixed);
@@ -185,13 +237,80 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     }
   }
 
+  // ---------- cards (Max's face shrinks to the top while one shows) ----------
+  const cardEl = document.getElementById('card' + 'El');
+  const captionEl = document.getElementById('caption');
+  let cardKey = '', cardGone = '';
+  const escC = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  function cardShown() { return info.card && info.card.id !== cardGone && info.card.until > Date.now() && info.state !== 'setup'; }
+  function renderCard() {
+    const c = cardShown() ? info.card : undefined;
+    const key = c ? JSON.stringify(Object.assign({}, c, { until: 0 })) : '';
+    if (key === cardKey) return;
+    const fresh = !cardKey || (c && JSON.parse(cardKey || '{}').id !== c.id);
+    cardKey = key;
+    if (!c) { cardEl.hidden = true; cardEl.innerHTML = ''; return; }
+    let h = '<div class="chead">' + escC((c.icon ? c.icon + '  ' : '') + c.title) + '</div>';
+    if (c.kind === 'music') {
+      h = (c.image ? '<img class="cimg" src="' + escC(c.image) + '" alt="">' : '<div class="chead">' + escC(c.icon || '') + '</div>') +
+        '<div class="ctitle">' + escC(c.title) + '</div>' + (c.subtitle ? '<div class="csub">' + escC(c.subtitle) + '</div>' : '') +
+        (c.progress ? '<div class="bar"><i id="cprog"></i></div>' : '');
+    } else {
+      if (c.subtitle) h += '<div class="csub">' + escC(c.subtitle) + '</div>';
+      if (c.big) h += '<div class="cbig">' + escC(c.big) + '</div>';
+      if (c.image) h += '<img class="cimg" src="' + escC(c.image) + '" alt="">';
+      if (c.lines && c.lines.length) {
+        h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +
+          (l.tag && l.tag !== 'event' && l.tag !== 'done' && l.tag !== 'reminder' ? '<span class="tag ' + l.tag + '">' + l.tag.toUpperCase() + '</span>' : '') +
+          (l.tag === 'reminder' ? ' 🔔' : '') + (l.sub ? '<small>' + escC(l.sub) + '</small>' : '') + '</div></div>').join('') + '</div>';
+      }
+    }
+    if (c.actions && c.actions.length) h += '<div class="cacts">' + c.actions.map((a) => '<button class="' + (a.style || '') + '" data-a="' + escC(a.id) + '">' + escC(a.label) + '</button>').join('') + '</div>';
+    h += '<button class="cback" data-a="dismiss">Back to Max</button>';
+    cardEl.innerHTML = h;
+    cardEl.hidden = false;
+    if (fresh) { cardEl.classList.add('enter'); requestAnimationFrame(() => requestAnimationFrame(() => cardEl.classList.remove('enter'))); }
+    for (const b of cardEl.querySelectorAll('button[data-a]')) {
+      b.onpointerdown = (e) => e.stopPropagation();
+      b.onclick = (e) => {
+        e.stopPropagation();
+        const a = b.getAttribute('data-a');
+        if (a === 'dismiss') { cardGone = c.id; renderCard(); renderCaption(); }
+        fetch('/card?id=' + encodeURIComponent(c.id) + '&action=' + encodeURIComponent(a), { method: 'POST' }).catch(() => undefined);
+      };
+    }
+    renderCaption();
+  }
+  // Music position moves on its own between updates.
+  setInterval(() => {
+    const p = cardShown() && info.card.progress, bar = document.getElementById('cprog');
+    if (!p || !bar) return;
+    const pos = p.paused ? p.position : p.position + (Date.now() - p.at);
+    bar.style.width = Math.min(100, (pos / p.duration) * 100) + '%';
+    if (info.card && info.card.until <= Date.now()) renderCard();
+  }, 500);
+  setInterval(() => { if (cardKey && !cardShown()) renderCard(); if (!captionEl.hidden && !(info.caption)) renderCaption(); }, 1000);
+  function renderCaption() {
+    const c = info.caption;
+    const show = c && !cardShown() && menuEl.hidden && info.state !== 'setup' && info.state !== 'sleeping';
+    captionEl.hidden = !show;
+    if (!show) return;
+    captionEl.className = c.who === 'you' ? 'you' : '';
+    captionEl.innerHTML = (c.who === 'you' ? '<b>You: </b>' : '') + escC(c.text);
+  }
+
   // ---------- hold for 2 s: the options menu (turn off, restart, WiFi setup) ----------
   const HOLD_MS = 2000;
   const menuEl = document.getElementById('menu');
   const menuList = document.getElementById('menuList');
   let pressAt = 0, pressFired = false, toast = '', toastUntil = 0, menuIdle = 0, countdown = 0;
   addEventListener('pointerdown', () => { if (!menuEl.hidden) return; pressAt = performance.now(); pressFired = false; });
-  addEventListener('pointerup', () => { pressAt = 0; });
+  // A short tap on the face (not a hold): Max shows what's useful (e.g. the music card).
+  addEventListener('pointerup', () => {
+    const quick = pressAt && performance.now() - pressAt < 350 && !pressFired && menuEl.hidden && !cardShown();
+    pressAt = 0;
+    if (quick && !demo) fetch('/tap', { method: 'POST' }).catch(() => undefined);
+  });
   addEventListener('pointercancel', () => { pressAt = 0; });
   function checkPress(now) {
     if (!pressAt || pressFired || !menuEl.hidden) return 0;
@@ -212,7 +331,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     clearTimeout(menuIdle);
     menuIdle = setTimeout(closeMenu, 20000); // nobody chose: back to the face
   }
-  function closeMenu() { clearInterval(countdown); clearTimeout(menuIdle); menuEl.hidden = true; }
+  function closeMenu() { clearInterval(countdown); clearTimeout(menuIdle); menuEl.hidden = true; renderCaption(); }
   // Volume and brightness rows: − and + change them in steps of 10.
   const ctl = (id, label, v, enabled) => '<div class="ctl' + (enabled ? '' : ' off') + '"><button id="' + id + 'Down" aria-label="' + label + ' down">−</button>' +
     '<div class="val">' + label + '<b>' + (v === undefined || v === null ? '–' : v + '%') + '</b><div class="bar"><i style="width:' + (v || 0) + '%"></i></div></div>' +
@@ -409,6 +528,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       return 'rgba(' + c.map(Math.round).join(',') + ',' + a + ')';
     };
     const s = R / 360; // design units: a 720 px circle
+    // While a card shows, the face shrinks to the top (still blinking, looking and talking).
+    const cmp = spring('cmp', cardShown() && menuEl.hidden ? 1 : 0, dt, 90, 0.95);
+    const fy = cy - cmp * R * 0.69, fk = 1 - cmp * 0.7;
 
     drawBackground(P, rgb, s);
     if (state === 'setup') { drawChrome(now, s, rgb, state); requestAnimationFrame(frame); return; }
@@ -416,9 +538,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Head: gentle breathing, a nod with emphasis, tilt, and a slight turn towards where he looks.
     const breathe = Math.sin(now / 1300);
     g.save();
-    g.translate(cx + P.lx * 7 * s, cy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s);
+    g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s * fk);
     g.rotate((P.tilt * Math.PI) / 180);
-    g.scale(s * (1 + breathe * 0.005), s * (1 + breathe * 0.005));
+    g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
     g.globalAlpha = P.bright;
     drawCheeks(P);
     for (const side of [-1, 1]) drawEye(side, P, rgb);
@@ -430,7 +552,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       for (let i = 0; i < 3; i++) {
         const a = now / 420 + i * 0.5;
         g.fillStyle = rgb(0.4 + 0.2 * i);
-        g.beginPath(); g.arc(cx + Math.cos(a) * R * 0.86, cy + Math.sin(a) * R * 0.86, 9 * s, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(cx + Math.cos(a) * R * 0.86 * (cmp > 0.5 ? 0.3 : 1), (cmp > 0.5 ? fy : cy) + Math.sin(a) * R * 0.86 * (cmp > 0.5 ? 0.3 : 1), 9 * s * (cmp > 0.5 ? 0.6 : 1), 0, Math.PI * 2); g.fill();
       }
     }
     if (state === 'sleeping') {
@@ -442,7 +564,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       }
       g.globalAlpha = 1;
     }
-    drawChrome(now, s, rgb, state);
+    drawChrome(now, s, rgb, state, cmp);
     requestAnimationFrame(frame);
   }
 
@@ -612,10 +734,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     g.shadowBlur = 0;
   }
 
-  function drawChrome(now, s, rgb, state) {
+  function drawChrome(now, s, rgb, state, cmp = 0) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     // mode badge
-    if (info.mode && info.mode !== 'personal' && state !== 'setup') {
+    if (info.mode && info.mode !== 'personal' && state !== 'setup' && cmp < 0.3) {
       const label = info.mode.toUpperCase();
       g.font = '700 ' + Math.round(22 * s) + 'px system-ui, sans-serif';
       const w = g.measureText(label).width + 36 * s;
@@ -627,7 +749,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     let text = '', sub = '';
     const timer = (info.timers || []).slice().sort((a, b) => a.endsAt - b.endsAt)[0];
     let noteColor = '';
-    if (state !== 'setup') {
+    // A card or captions use the space under the face: the bottom line waits.
+    if (state !== 'setup' && cmp < 0.3 && captionEl.hidden) {
       if (info.activity) {
         // Busy in the background: say what with, with a little "..." that keeps moving.
         const dots = '.'.repeat(1 + (Math.floor(now / 400) % 3));

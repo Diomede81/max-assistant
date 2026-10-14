@@ -282,6 +282,7 @@ export class RealtimeConversationService {
     client.on('user-transcript', (t: string) => {
       this.log.log(`You: "${t}"`);
       transcript.push({ who: 'user', text: t });
+      this.face?.heard(t);
       if (isStopRequest(t)) hush(`you said "${t}"`);
     });
     // His expression follows his words as they're spoken, a sentence at a time.

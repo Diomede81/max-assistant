@@ -53,6 +53,8 @@ export interface AppConfig {
     onBox: boolean;
     /** Delay the mouth to match the sound system's buffering (ms). */
     audioDelayMs: number;
+    /** Live captions on the screen: what Max heard and what he says (FACE_CAPTIONS=off to hide). */
+    captions: boolean;
   };
   music: {
     /** go-librespot API (the Spotify speaker running next to Max); empty = no music. */
@@ -323,6 +325,7 @@ export function loadConfig(): AppConfig {
       runDir: env.MAX_RUN_DIR || '/run/max',
       onBox: Boolean(env.MAX_RUN_DIR),
       audioDelayMs: num(env.FACE_AUDIO_DELAY_MS, 0),
+      captions: env.FACE_CAPTIONS !== 'off',
     },
     music: {
       spotifyUrl: env.SPOTIFY_API_URL ?? '',

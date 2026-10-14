@@ -79,6 +79,15 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   To go back to Max's face, delete `boot-logo.png` from the folder on the Mac **and** on the box
   (`rm ~/max-assistant/boot-logo.png`), then run the setup again. `MAX_BOOT_LOGO=off sudo ./scripts/pi/setup.sh`
   leaves the boot screen alone.
+- **Cards on the screen:** when there's something worth seeing, Max shrinks to a small face at the top and
+  a card fills the screen; tap **Back to Max** (or wait) to return.
+  - **Timer done / reminder:** with **OK** / **Again**, or **Done** / **Snooze 10 min**.
+  - **Music:** cover, title, a progress bar and ⏮ ⏯ ⏭ buttons, when a song starts, or **tap the face** while
+    music plays.
+  - **"What's going on in my day?"**: your reminders and to-dos (overdue and critical ones marked), with your
+    calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
+  - **Captions:** what Max heard you say and what he's saying, under the face. `FACE_CAPTIONS=off` in `.env`
+    hides them.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.

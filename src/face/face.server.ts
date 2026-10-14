@@ -105,6 +105,19 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       })();
       return;
     }
+    if (req.method === 'POST' && (url.pathname === '/card' || url.pathname === '/tap')) {
+      // Buttons on a card, and a short tap on the face. Only the screen itself (same origin).
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      void (async () => {
+        const ok = url.pathname === '/tap' ? (await this.face.tapped(), true) : await this.face.cardAction(url.searchParams.get('id') ?? '', url.searchParams.get('action') ?? '');
+        res.writeHead(ok ? 200 : 404, { 'Content-Type': 'text/plain' }).end(ok ? 'ok' : 'gone');
+      })();
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/wifi-cancel') {
       const origin = req.headers.origin;
       if (origin && new URL(origin).host !== req.headers.host) {

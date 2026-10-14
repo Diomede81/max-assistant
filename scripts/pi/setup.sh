@@ -99,6 +99,15 @@ if [ "$SCREEN" != none ]; then
   systemctl disable getty@tty1.service 2>/dev/null || true
   systemctl set-default graphical.target
   systemctl enable max-face.service
+  # Raspberry Pi OS with desktop: its desktop (started by a display manager) would take the screen
+  # instead of the face. Switch it off at boot; nothing is uninstalled.
+  for DM in lightdm gdm3 sddm; do
+    if systemctl is-enabled "$DM.service" >/dev/null 2>&1; then
+      systemctl disable "$DM.service"
+      DESKTOP_OFF="$DM"
+    fi
+  done
+  [ -n "${DESKTOP_OFF:-}" ] && warn "The desktop no longer starts at boot, so the screen shows Max's face. To get the desktop back: sudo systemctl enable $DESKTOP_OFF && sudo reboot"
   # Never blank the console underneath the face.
   CMDLINE=/boot/firmware/cmdline.txt; [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
   grep -q 'consoleblank=0' "$CMDLINE" || sed -i 's/$/ consoleblank=0/' "$CMDLINE"

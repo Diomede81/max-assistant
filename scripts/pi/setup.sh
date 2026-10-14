@@ -147,6 +147,9 @@ set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
 grep -q '^PANEL_PASSWORD=.\+' .env || warn "PANEL_PASSWORD is not set in .env. On the box the control panel is reachable from your home network, so set one."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
+# Every "docker compose" command on the box includes the Pi settings (sound, control panel on the
+# home network), so a plain "docker compose up -d" can't lock the control panel to the box itself.
+set_env COMPOSE_FILE docker-compose.yml:docker-compose.pi.yml
 
 if [ "${MAX_SKIP_START:-}" != 1 ]; then
   say "Building and starting Max (the first build takes 10-15 minutes on a Pi 5)"

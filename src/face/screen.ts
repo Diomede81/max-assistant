@@ -31,6 +31,8 @@ export interface Card {
   subtitle?: string;
   /** A large line (e.g. "Pasta timer done"). */
   big?: string;
+  /** A paragraph (e.g. an email's summary), scrolls if long. */
+  body?: string;
   /** Picture (e.g. album cover), http(s) or data: URL. */
   image?: string;
   lines?: CardLine[];

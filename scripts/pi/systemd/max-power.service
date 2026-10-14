@@ -1,0 +1,7 @@
+[Unit]
+Description=Max: turn the box off or restart it on request
+
+[Service]
+Type=oneshot
+Environment=MAX_RUN_DIR=/run/max
+ExecStart=/usr/local/lib/max/max-power.sh

@@ -3,7 +3,7 @@
 Max box WiFi setup.
 
 Watches the network. If the box has been offline for a minute (new router, moved house,
-changed password), or someone holds the screen for 5 seconds, it starts its own temporary
+changed password), or someone chooses WiFi setup in the screen's menu (hold the screen for 2 seconds), it starts its own temporary
 WiFi network "Max-Setup" with a random password. The face screen shows a QR code for it
 (this service writes the details to /run/max/wifi.json, which Max reads). Joining that
 network opens a setup page on the phone (a captive portal, like hotel WiFi), where you

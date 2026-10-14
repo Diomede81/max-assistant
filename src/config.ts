@@ -49,6 +49,8 @@ export interface AppConfig {
     sleep: string;
     /** Shared folder with the box's WiFi setup service (status + requests). */
     runDir: string;
+    /** Running on the Max box (its compose file sets MAX_RUN_DIR): turning off / restarting works. */
+    onBox: boolean;
     /** Delay the mouth to match the sound system's buffering (ms). */
     audioDelayMs: number;
   };
@@ -319,6 +321,7 @@ export function loadConfig(): AppConfig {
       host: env.FACE_HOST || '127.0.0.1',
       sleep: env.FACE_SLEEP ?? '23:00-07:00',
       runDir: env.MAX_RUN_DIR || '/run/max',
+      onBox: Boolean(env.MAX_RUN_DIR),
       audioDelayMs: num(env.FACE_AUDIO_DELAY_MS, 0),
     },
     music: {

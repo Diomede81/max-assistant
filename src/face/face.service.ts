@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { PowerAction, requestPower } from './power';
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -184,7 +185,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.audioEndsAt = 0;
   }
 
-  /** Long-press on the screen: ask the box's WiFi service to start setup mode. */
+  /** The screen's menu (hold for 2 s): ask the box's WiFi service to start setup mode. */
   requestWifiSetup(): boolean {
     try {
       writeFileSync(join(this.cfg.face.runDir, 'wifi-request'), String(Date.now()));
@@ -193,6 +194,13 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     } catch {
       return false; // not on the Max box (no WiFi service)
     }
+  }
+
+  /** The screen's menu: turn the box off or restart it. */
+  requestPower(action: PowerAction): boolean {
+    const ok = requestPower(this.cfg, action);
+    if (ok) this.log.log(action === 'poweroff' ? 'Turning off (asked from the screen)' : 'Restarting (asked from the screen)');
+    return ok;
   }
 
   // ---------- State for the face page ----------

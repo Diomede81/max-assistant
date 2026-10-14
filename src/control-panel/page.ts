@@ -6,6 +6,8 @@ export interface PanelData {
   music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
   voice: string;
   routines?: PanelRoutines;
+  /** Running on the Max box: the Device section can turn it off or restart it. */
+  onBox?: boolean;
   models?: PanelModels;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
@@ -530,6 +532,13 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 
 <div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
+<section id="device"><h2>Device</h2>
+${d.onBox
+  ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>
+<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="reboot"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, restart Max now</label><button class="btn secondary" type="submit">Restart</button></form>
+<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="poweroff"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, turn Max off now</label><button class="btn secondary" type="submit">Turn off</button></form>`
+  : '<p class="meta">Turning off and restarting are available when Max runs on the Max box (Raspberry Pi).</p>'}
+</section>
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>

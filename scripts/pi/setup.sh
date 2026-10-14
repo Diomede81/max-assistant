@@ -128,6 +128,17 @@ echo "address=/#/10.42.0.1" > /etc/NetworkManager/dnsmasq-shared.d/max-captive.c
 systemctl daemon-reload
 systemctl enable --now max-wifi.service
 
+# ---------------------------------------------------------------- 5b. turning off / on
+say "Installing turn off / restart (screen menu, voice, control panel, power button)"
+install -D -m 755 "$REPO/scripts/pi/max-power.sh" /usr/local/lib/max/max-power.sh
+install -m 644 "$REPO/scripts/pi/systemd/max-power.path" /etc/systemd/system/max-power.path
+install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/max-power.service
+# The Pi 5's own power button: a short press turns the box off safely (pressed again, it starts).
+mkdir -p /etc/systemd/logind.conf.d
+printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+systemctl daemon-reload
+systemctl enable --now max-power.path
+
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nSystemMaxUse=50M\n' > /etc/systemd/journald.conf.d/max.conf
@@ -156,6 +167,7 @@ fi
 say "Done."
 echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"
 echo "  Logs: cd $REPO && docker compose logs -f max"
-echo "  WiFi setup: hold the screen for 5 seconds, or it starts by itself if the box is offline for a minute."
+echo "  Hold the screen for 2 seconds for the menu: Turn off, Restart, WiFi setup. Turn on: the Pi's power button."
+echo "  WiFi setup also starts by itself if the box is offline for a minute."
 [ "$SCREEN" = dsi ] && echo "  Reboot now to activate the screen: sudo reboot"
 exit 0

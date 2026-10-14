@@ -33,10 +33,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 .err { font-size: 3vmin; color: var(--warn); max-width: 50vmin; }
 .spinner { width: 10vmin; height: 10vmin; border-radius: 50%; border: 1.2vmin solid #1b2a28; border-top-color: var(--ink); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+#menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .88); text-align: center; color: #e9fff8; }
+#menu[hidden] { display: none; }
+#menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
+#menu h1 { margin: 0 0 1vmin; font-size: 5vmin; font-weight: 700; }
+#menu p { margin: 0; font-size: 3.4vmin; line-height: 1.35; color: #cfeee6; }
+#menu button { font: inherit; font-size: 4.2vmin; font-weight: 700; padding: 2.6vmin 0; border-radius: 99vmin; border: .5vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; }
+#menu button:active { transform: scale(.97); }
+#menu button.off { background: #4a1714; border-color: #7a2a24; color: #ffd9d3; }
+#menu button.quiet { background: transparent; border-color: transparent; color: var(--dim); }
 </style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="setup" hidden><div class="card" id="card"></div></div>
+<div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
 (() => {
   const cv = document.getElementById('c');
@@ -150,22 +160,68 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     }
   }
 
-  // ---------- long press (5 s) to start WiFi setup ----------
-  let pressAt = 0, pressFired = false, toast = '', toastUntil = 0;
-  addEventListener('pointerdown', () => { pressAt = performance.now(); pressFired = false; });
+  // ---------- hold for 2 s: the options menu (turn off, restart, WiFi setup) ----------
+  const HOLD_MS = 2000;
+  const menuEl = document.getElementById('menu');
+  const menuList = document.getElementById('menuList');
+  let pressAt = 0, pressFired = false, toast = '', toastUntil = 0, menuIdle = 0, countdown = 0;
+  addEventListener('pointerdown', () => { if (!menuEl.hidden) return; pressAt = performance.now(); pressFired = false; });
   addEventListener('pointerup', () => { pressAt = 0; });
   addEventListener('pointercancel', () => { pressAt = 0; });
   function checkPress(now) {
-    if (!pressAt || pressFired) return 0;
-    const p = (now - pressAt) / 5000;
-    if (p >= 1) {
-      pressFired = true; pressAt = 0;
-      fetch('/wifi-setup', { method: 'POST' }).then((r) => {
-        toast = r.ok ? 'Starting WiFi setup…' : 'WiFi setup only works on the Max box';
-      }).catch(() => { toast = 'WiFi setup only works on the Max box'; });
-      toast = 'Starting WiFi setup…'; toastUntil = now + 4000;
-    }
+    if (!pressAt || pressFired || !menuEl.hidden) return 0;
+    const p = (now - pressAt) / HOLD_MS;
+    if (p >= 1) { pressFired = true; pressAt = 0; showMenu(); }
     return Math.min(1, p);
+  }
+  function menu(html, actions) {
+    clearInterval(countdown);
+    menuList.innerHTML = html;
+    menuEl.hidden = false;
+    for (const [id, fn] of Object.entries(actions)) {
+      const b = document.getElementById(id);
+      if (b) b.onclick = (e) => { e.stopPropagation(); fn(); };
+    }
+    clearTimeout(menuIdle);
+    menuIdle = setTimeout(closeMenu, 20000); // nobody chose: back to the face
+  }
+  function closeMenu() { clearInterval(countdown); clearTimeout(menuIdle); menuEl.hidden = true; }
+  function showMenu() {
+    menu('<h1>Max</h1><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
+      '<button id="mWifi">WiFi setup</button><button class="quiet" id="mCancel">Cancel</button>', {
+      mOff: () => confirmPower('poweroff'),
+      mRestart: () => confirmPower('reboot'),
+      mWifi: () => {
+        closeMenu();
+        fetch('/wifi-setup', { method: 'POST' }).then((r) => {
+          toast = r.ok ? 'Starting WiFi setup…' : 'WiFi setup only works on the Max box';
+        }).catch(() => { toast = 'WiFi setup only works on the Max box'; });
+        toast = 'Starting WiFi setup…'; toastUntil = performance.now() + 4000;
+      },
+      mCancel: closeMenu,
+    });
+  }
+  // A few seconds to change your mind, then the box is asked to turn off / restart.
+  function confirmPower(action) {
+    const off = action === 'poweroff';
+    let left = 5;
+    const draw = () => menu('<h1>' + (off ? 'Turning off' : 'Restarting') + ' in ' + left + '…</h1>' +
+      '<button class="quiet" id="pCancel">Cancel</button>', { pCancel: closeMenu });
+    draw();
+    countdown = setInterval(() => {
+      left -= 1;
+      if (left > 0) { const h = menuList.querySelector('h1'); if (h) h.textContent = (off ? 'Turning off' : 'Restarting') + ' in ' + left + '…'; return; }
+      clearInterval(countdown);
+      fetch('/power?action=' + action, { method: 'POST' }).then((r) => {
+        if (!r.ok) throw new Error();
+        menu(off
+          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button on the Raspberry Pi.</p>'
+          : '<h1>Restarting…</h1><p>Back in about a minute.</p>', {});
+        clearTimeout(menuIdle);
+      }).catch(() => {
+        menu('<h1>Not available</h1><p>Turning off and restarting only work on the Max box.</p><button class="quiet" id="pOk">OK</button>', { pOk: closeMenu });
+      });
+    }, 1000);
   }
 
   // ---------- expressions ----------
@@ -535,7 +591,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       g.lineWidth = 10 * s; g.strokeStyle = 'rgba(255,255,255,0.85)';
       g.beginPath(); g.arc(cx, cy, R - 30 * s, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); g.stroke();
       g.fillStyle = '#ffffff'; g.font = '600 ' + Math.round(26 * s) + 'px system-ui, sans-serif';
-      g.fillText('Keep holding for WiFi setup', cx, cy + 200 * s);
+      g.fillText('Keep holding for options', cx, cy + 200 * s);
     }
     if (toast && now < toastUntil) {
       g.fillStyle = '#ffffff'; g.font = '600 ' + Math.round(26 * s) + 'px system-ui, sans-serif';

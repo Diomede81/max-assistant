@@ -3,7 +3,7 @@
 A compact, 3D-printable home for Max: round 4″ face on the front, a sealed speaker below it, the
 4-microphone array under a perforated top, and the Raspberry Pi 5 on the back wall.
 
-**Outside size:** 136 mm wide × 120 mm deep × 218 mm tall.
+**Outside size:** 142 mm wide × 120 mm deep × 226 mm tall.
 
 | Assembled | Exploded | X-ray |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | --- | --- | --- |
 | `stl/body.stl` | Back, sides, top (mic grille) and bottom, open at the front | On its back, open side up |
 | `stl/front.stl` | Front panel: screen window, speaker grille, mounting tabs | Face down |
-| `stl/chamber.stl` | Sealed speaker box (≈0.44 L) that screws to the back of the front panel | Back wall down |
+| `stl/chamber.stl` | Sealed speaker box (≈0.45 L) that screws to the back of the front panel | Back wall down |
 | `stl/screen_ring.stl` | Clamp ring that holds the screen in its recess | Flat |
 
 PLA or PETG, 0.2 mm layers, 3 walls, 20% infill. No supports needed. A matte filament looks best;
@@ -35,9 +35,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
 
 ## Hardware
 
-- 11 × M3 heat-set inserts: 4 in the front-panel side tabs, 3 for the screen ring, 4 for the speaker
+- 12 × M3 heat-set inserts: 4 in the front-panel side tabs, 4 for the screen ring, 4 for the speaker
   chamber
-- 8 × M3 × 8 mm screws (4 side screws for the front panel, 4 for the chamber) and 3 × M3 × 6 mm for the
+- 8 × M3 × 8 mm screws (4 side screws for the front panel, 4 for the chamber) and 4 × M3 × 6 mm for the
   screen ring
 - 12 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 4 for the mic board, 4 for the speaker (its
   bosses are pilot holes)
@@ -49,20 +49,22 @@ print the front panel in a contrasting colour if you like a two-tone look.
 
 ## Measure before printing
 
-The screen and mic board dimensions aren't published in a form I could check, so these are best
-estimates. Measure your parts with calipers and change the values marked `MEASURE` at the top of
-`max-box.scad`:
+Some part sizes aren't published in a form I could check. Measure your parts with calipers (in mm) and
+change the values marked `MEASURE` at the top of `max-box.scad`. Values marked `MEASURED` have been
+taken from the real parts.
 
-| Setting | What to measure | Current value |
+| Setting | How to measure | Value |
 | --- | --- | --- |
-| `screen_glass_d` | Outer diameter of the screen's glass | 108 mm |
-| `screen_view_d` | Visible (lit) diameter | 101.5 mm |
-| `screen_body_d` | Largest diameter of the module behind the glass | 100 mm |
-| `screen_glass_t` | Glass thickness | 2.4 mm |
-| `mic_board_d` | Mic board diameter | 100 mm |
-| `mic_post_r`, `mic_post_angles` | Mic board mounting holes: distance from centre and angles | 44 mm, 45/135/225/315° |
-| `spk_hole_sq` | Speaker mounting holes: square spacing | 56 mm |
-| `sd_z` | Pi's microSD slot: centre height above the board's USB-C edge | 28 mm |
+| `screen_glass_d` | Screen face up: across the full glass, edge to edge, at a few angles; take the largest | **125.9 mm** (measured) |
+| `screen_view_d` | Across the part that shows the picture, not the black border | **102.3 mm** (measured) |
+| `screen_pcb` | Screen face down: the board behind the glass, long and short side, including the connector | **85.3 × 68.6 mm** (measured) |
+| `screen_glass_t` | Calipers on the very edge of the glass, where it overhangs the board | **5.9 mm** (measured) |
+| `screen_depth` | Screen face down: from the back of the glass to the highest point, including the ribbon socket | **16.8 mm** (measured) |
+| `mic_board_d` | Across the mic board at its widest (say if it's square) | 100 mm (estimate) |
+| `mic_post_r`, `mic_post_angles` | Centre-to-centre between two diagonally opposite holes, halved; plus the gap between neighbouring holes (equal gaps = square pattern) | 44 mm, 45/135/225/315° (estimate) |
+| `spk_hole_sq` | Centre-to-centre between two side-by-side speaker holes (tip: left edge of one hole to left edge of the other) | 56 mm (estimate) |
+| `sd_z` | Pi held with the USB-C socket at the bottom: from that edge up to the middle of the microSD slot | 28 mm (estimate) |
+| `pi_stack` | Pi with the fan fitted, flat on a table: from the underside of the board to the top of the fan | 30 mm allowed (estimate) |
 
 Then re-export the parts (below). Printing just the front panel's screen area as a test ring first is
 a cheap way to check the screen fit.
@@ -81,10 +83,10 @@ front panel take a few minutes each to compute because of the grille holes.
 
 ## Assembly
 
-1. **Inserts:** press the heat-set inserts into the front panel's side tabs, the three screen-ring
+1. **Inserts:** press the heat-set inserts into the front panel's side tabs, the four screen-ring
    bosses and the four chamber bosses.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
-   it (3 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
+   it (4 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
    one with one narrow and one wide end (wide end into the screen).
 3. **Speaker:** screw the speaker to the back of the front panel behind the grille, connect the wire,
    then fix the chamber over it (4 × M3) with the foam gasket around its edge. Pass the wire through
@@ -102,7 +104,7 @@ front panel take a few minutes each to compute because of the grille holes.
 
 ## Design notes
 
-- **Sound:** the speaker sits in its own sealed 0.44 L chamber. Sealed is what gives a small driver
+- **Sound:** the speaker sits in its own sealed 0.45 L chamber. Sealed is what gives a small driver
   fuller, tighter sound; a driver loose inside a case sounds thin and boxy.
 - **Microphones:** the mic board is foam-sealed to the perforated top and kept away from the speaker
   chamber, so the speaker's vibration and sound reach the mics as little as possible. The XVF3800's

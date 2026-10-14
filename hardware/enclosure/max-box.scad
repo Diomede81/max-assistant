@@ -4,26 +4,30 @@
 // Render one part at a time:  openscad -D 'part="body"' -o body.stl max-box.scad
 // Parts: "body", "front", "chamber", "screen_ring", "assembly" (preview with stand-in parts)
 //
-// IMPORTANT: the screen and mic board sizes below are best estimates. Measure your parts
-// when they arrive and adjust the "MEASURE" values before printing (see README.md).
+// IMPORTANT: values marked "MEASURE" are best estimates until measured from the real parts;
+// "MEASURED" values come from the parts themselves (see README.md).
 
 part = "assembly";
 
 /* ---------------- Overall shape ---------------- */
-W = 136;          // width  (X)
-H = 218;          // height (Z)
+W = 142;          // width  (X): the 126 mm screen glass needs this to clear the rounded edges
+H = 226;          // height (Z)
 D = 120;          // depth  (Y, front face at Y=0)
 R = 12;           // edge rounding radius
 wall = 2.6;       // shell wall thickness
 front_t = 4;      // front panel thickness
 
 /* ---------------- Round screen (Waveshare 4inch DSI LCD (C), 720x720) ---------------- */
-screen_glass_d = 108;   // MEASURE: outer diameter of the glass/cover
-screen_view_d  = 101.5; // MEASURE: visible (active) diameter
-screen_body_d  = 100;   // MEASURE: largest diameter of the module behind the glass (PCB/frame)
-screen_glass_t = 2.4;   // MEASURE: glass thickness (sits in a recess in the front panel)
-screen_depth   = 12;    // MEASURE: module depth behind the glass (for clearance only)
-screen_cz      = H - 80; // centre height of the screen
+screen_glass_d = 125.9; // MEASURED: outer diameter of the glass/cover
+screen_view_d  = 102.3; // MEASURED: visible (active) diameter
+screen_pcb     = [85.3, 68.6]; // MEASURED: rectangular board behind the glass, incl. its connector
+screen_body_d  = norm(screen_pcb); // board's diagonal: clears it whichever way round it sits
+screen_glass_t = 5.9;   // MEASURED: glass thickness (sits in a recess in the front panel)
+screen_depth   = 16.8;  // MEASURED: module depth behind the glass (for clearance only)
+screen_cz      = H - 77; // centre height of the screen
+screen_boss_a  = [35, 145, 215, 325]; // screen ring screw angles (clear of the side tabs and mic board)
+screen_boss_r  = screen_glass_d/2 + 6;
+screen_boss_h  = 7;     // from the back of the front panel; the ring sits on top of these
 lip            = 1.4;   // front lip that holds the glass
 
 /* ---------------- Speaker (Visaton FRS 7, 4 ohm) ---------------- */
@@ -40,7 +44,7 @@ ch_wall = 2.4;
 tab_w   = 9;            // side tabs that hold the front panel (chamber must clear them)
 ch_w    = W - 2*wall - 2*tab_w - 3;
 ch_z0   = wall + 2;     // bottom of chamber
-ch_z1   = screen_cz - screen_body_d/2 - 4; // top of chamber (below the screen module)
+ch_z1   = screen_cz - screen_glass_d/2 - 3; // top of chamber (below the screen glass and ring)
 ch_d    = 58;           // outer depth behind the front panel
 
 /* ---------------- Raspberry Pi 5 (+ SSD HAT+ and Active Cooler) ---------------- */
@@ -49,7 +53,7 @@ pi_holes = [[3.5,3.5],[61.5,3.5],[3.5,52.5],[61.5,52.5]]; // board coords (mm)
 pi_standoff = 8;        // gap between back wall and board
 pi_x0 = wall + 3;       // board left edge (microSD end): close to the wall so the card is reachable
 pi_z0 = 40;             // board bottom edge (USB-C power edge faces down)
-pi_stack = 30;          // board + cooler (+ optional SSD HAT) height, for clearance
+pi_stack = 30;          // MEASURE: board + Active Cooler (+ optional SSD HAT) height, for clearance
 sd_z = 28;              // MEASURE: microSD slot centre from the board's bottom (USB-C) edge
 sd_slot = [9, 18];      // side access slot (depth Y, height Z)
 
@@ -80,7 +84,7 @@ module outer() { rounded_box(W, D, H, R); }
 module inner() { translate([wall, wall, wall]) rounded_box(W - 2*wall, D - 2*wall, H - 2*wall, max(R - wall, 1)); }
 
 // Side tabs on the front panel: Z positions; screws go through the body's side walls.
-tab_z = [ch_z0 + 14, H - 40];
+tab_z = [ch_z0 + 14, H - 24];
 tab_y = front_t + 8;     // screw axis (Y)
 
 /* ================= BODY ================= */
@@ -139,17 +143,23 @@ module front_panel() {
   difference() {
     union() {
       intersection() { outer(); translate([-1, -1, -1]) cube([W + 2, front_t + 1, H + 2]); }
-      // side tabs with heat-set insert bosses (screws come in through the body sides)
-      for (s = [0, 1], z = tab_z) translate([s ? W - wall - tab_w - 0.3 : wall + 0.3, front_t - 0.5, z - 7])
-        cube([tab_w, 15, 14]);
-      // screen ring bosses
-      for (a = [90, 210, 330]) translate([cx + (screen_glass_d/2 + 6)*cos(a), front_t - 0.5, screen_cz + (screen_glass_d/2 + 6)*sin(a)])
-        rotate([-90, 0, 0]) cylinder(d = 8, h = 7);
-      // speaker screw bosses
-      for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 0.5, spk_cz + dz*spk_hole_sq/2])
-        rotate([-90, 0, 0]) cylinder(d = 7, h = 5);
-      // chamber flange bosses
-      for (p = chamber_bosses()) translate([p[0], front_t - 0.5, p[1]]) rotate([-90, 0, 0]) cylinder(d = 8, h = 6);
+      // everything behind the panel is trimmed to fit inside the body's rounded front edges
+      intersection() {
+        translate([wall + 0.3, wall + 0.3, wall + 0.3]) rounded_box(W - 2*wall - 0.6, D - 2*wall - 0.6, H - 2*wall - 0.6, max(R - wall - 0.3, 1));
+        union() {
+          // side tabs with heat-set insert bosses (screws come in through the body sides)
+          for (s = [0, 1], z = tab_z) translate([s ? W - wall - tab_w - 0.3 : wall + 0.3, front_t - 0.5, z - 7])
+            cube([tab_w, 15, 14]);
+          // screen ring bosses
+          for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t - 0.5, screen_cz + screen_boss_r*sin(a)])
+            rotate([-90, 0, 0]) cylinder(d = 8, h = screen_boss_h);
+          // speaker screw bosses
+          for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 0.5, spk_cz + dz*spk_hole_sq/2])
+            rotate([-90, 0, 0]) cylinder(d = 7, h = 5);
+          // chamber flange bosses
+          for (p = chamber_bosses()) translate([p[0], front_t - 0.5, p[1]]) rotate([-90, 0, 0]) cylinder(d = 8, h = 6);
+        }
+      }
     }
     // screen: visible window + recess for the glass from behind
     translate([cx, -1, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_view_d, h = front_t + 2, $fn = 180);
@@ -164,7 +174,7 @@ module front_panel() {
     // insert holes
     for (s = [0, 1], z = tab_z) translate([s ? W - wall - tab_w - 1 : wall - 1, tab_y, z]) rotate([0, 90, 0])
       cylinder(d = insert_d, h = tab_w + 2.6);
-    for (a = [90, 210, 330]) translate([cx + (screen_glass_d/2 + 6)*cos(a), front_t, screen_cz + (screen_glass_d/2 + 6)*sin(a)])
+    for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t, screen_cz + screen_boss_r*sin(a)])
       rotate([-90, 0, 0]) cylinder(d = insert_d, h = insert_l + 2);
     for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 1, spk_cz + dz*spk_hole_sq/2])
       rotate([-90, 0, 0]) cylinder(d = m25_pilot, h = 6);
@@ -196,27 +206,35 @@ module chamber() {
 function chamber_volume_l() = ((ch_w - 2*ch_wall) * (ch_d - ch_wall) * (ch_z1 - ch_z0 - 2*ch_wall)) / 1e6;
 
 /* ================= SCREEN RETAINING RING ================= */
+// The ring sits on the boss tops; a collar underneath reaches forward to the back of the glass.
+ring_t = 3;
+ring_seat = front_t - 0.5 + screen_boss_h;          // Y of the boss tops
+ring_collar = ring_seat - (lip + screen_glass_t);   // gap from the back of the glass to the boss tops
+assert(ring_collar >= 0, "screen glass is thicker than the ring bosses allow: raise screen_boss_h");
+
 module screen_ring() {
-  ring_od = screen_glass_d + 20;
+  // Built glass side down: collar Z 0..ring_collar, plate above it.
   difference() {
     union() {
-      cylinder(d = screen_glass_d + 4, h = 3, $fn = 180);
-      for (a = [90, 210, 330]) hull() {
-        cylinder(d = screen_glass_d - 2, h = 3, $fn = 180);
-        translate([(screen_glass_d/2 + 6)*cos(a), (screen_glass_d/2 + 6)*sin(a), 0]) cylinder(d = 10, h = 3);
+      cylinder(d = screen_glass_d - 1, h = ring_collar + 0.01, $fn = 180);
+      translate([0, 0, ring_collar]) {
+        cylinder(d = screen_glass_d + 4, h = ring_t, $fn = 180);
+        for (a = screen_boss_a) hull() {
+          cylinder(d = screen_glass_d - 2, h = ring_t, $fn = 180);
+          translate([screen_boss_r*cos(a), screen_boss_r*sin(a), 0]) cylinder(d = 10, h = ring_t);
+        }
       }
     }
-    translate([0, 0, -1]) cylinder(d = screen_body_d + 1, h = 5, $fn = 180);
-    for (a = [90, 210, 330]) translate([(screen_glass_d/2 + 6)*cos(a), (screen_glass_d/2 + 6)*sin(a), -1]) cylinder(d = m3, h = 5);
+    translate([0, 0, -1]) cylinder(d = screen_body_d + 1, h = ring_collar + ring_t + 2, $fn = 180);
+    for (a = screen_boss_a) translate([screen_boss_r*cos(a), screen_boss_r*sin(a), -1]) cylinder(d = m3, h = ring_collar + ring_t + 2);
   }
-  echo(str("screen ring outer size ~", ring_od, " mm"));
 }
 
 /* ================= ASSEMBLY PREVIEW ================= */
 module stand_ins() {
   // screen
   color("#111") translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d, h = screen_glass_t, $fn = 180);
-  color("#2a6") translate([cx, lip + screen_glass_t, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_body_d, h = screen_depth, $fn = 120);
+  color("#2a6") translate([cx - screen_pcb[0]/2, lip + screen_glass_t, screen_cz - screen_pcb[1]/2]) cube([screen_pcb[0], screen_depth, screen_pcb[1]]);
   // speaker
   color("#555") translate([cx - spk_frame/2, front_t, spk_cz - spk_frame/2]) cube([spk_frame, 4, spk_frame]);
   color("#444") translate([cx, front_t + 4, spk_cz]) rotate([-90, 0, 0]) cylinder(d1 = 50, d2 = 30, h = spk_depth - 4);
@@ -230,14 +248,14 @@ module stand_ins() {
 if (part == "body") rotate([-90, 0, 0]) translate([0, -D, 0]) body();               // print on its back, open front up
 else if (part == "front") rotate([90, 0, 0]) front_panel();                           // print face down
 else if (part == "chamber") rotate([-90, 0, 0]) translate([0, -(front_t + ch_d), 0]) chamber(); // back wall on the bed
-else if (part == "screen_ring") screen_ring();
+else if (part == "screen_ring") translate([0, 0, ring_collar + ring_t]) rotate([180, 0, 0]) screen_ring(); // flat side down
 else if (part == "assembly") {
   echo(str("Speaker chamber volume: ", chamber_volume_l(), " L"));
   color("#e8e4dc") body();
   color("#d8d2c6") translate([0, -25, 0]) front_panel();
   color("#c9c1b2", 0.9) translate([0, -25, 0]) chamber();
   translate([0, -25, 0]) stand_ins();
-  color("#c9c1b2") translate([cx, -25 + lip + screen_glass_t + 0.5, screen_cz]) rotate([-90, 0, 0]) screen_ring();
+  color("#c9c1b2") translate([cx, -25 + lip + screen_glass_t, screen_cz]) rotate([-90, 0, 0]) screen_ring();
 }
 else if (part == "closed") {
   color("#e8e4dc") body();

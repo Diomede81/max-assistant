@@ -68,8 +68,15 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 ## Using the box
 
 - **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi.
-- **Changing WiFi:** if the box can't reach a known WiFi network for a minute, or you **hold the screen
-  for 5 seconds**, Max says so and shows a QR code. Scan it with your phone: it joins Max's temporary
+- **Turning off and on:** never just pull the plug (it can damage the SD card). Instead:
+  - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**.
+    After choosing, you have 5 seconds to cancel. When the screen goes dark it's safe to unplug.
+  - Or say **"Max, turn off"** / **"Max, restart"** (he asks you to confirm), or use **Settings → Device**
+    on the control panel.
+  - Or press the **power button on the Raspberry Pi** once.
+  - **To turn it on again:** press the Pi's power button (or unplug and plug the power back in).
+- **Changing WiFi:** if the box can't reach a known WiFi network for a minute, or you choose **WiFi
+  setup** in the screen's menu, Max says so and shows a QR code. Scan it with your phone: it joins Max's temporary
   "Max-Setup" network and opens a page where you choose your WiFi and type its password. Max tells you
   when he's connected. If nobody uses the setup network for 10 minutes, it switches itself off and the
   box tries your known networks again.

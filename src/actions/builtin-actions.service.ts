@@ -8,6 +8,8 @@ import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
 import { RoutinesService } from '../routines/routines.service';
+import { APP_CONFIG, AppConfig } from '../config';
+import { requestPower } from '../face/power';
 import { timeZone } from './clock';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
@@ -22,6 +24,7 @@ export const EXTERNAL_FLAG = '__afterExternalContent';
 @Injectable()
 export class BuiltinActionsService implements OnModuleInit {
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
+  @Inject(APP_CONFIG) private readonly cfg!: AppConfig;
   /** News briefings and other scheduled routines (optional). */
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   private readonly handlers: Record<string, Handler>;
@@ -71,6 +74,17 @@ export class BuiltinActionsService implements OnModuleInit {
         },
       ),
       tool('list_timers', 'List the running timers and the upcoming reminders.', {}),
+      tool(
+        'device_power',
+        'Turn this device (the Max box) off, or restart it. ONLY when the user clearly asks to turn you off, shut down, ' +
+          'power off or restart the device. Ask "Are you sure?" first and call with confirmed=true only after they say yes. ' +
+          'Not for "stop" or "go to sleep" (that is end_conversation), and not for other devices (lights, TV: Home Assistant).',
+        {
+          action: { type: 'string', enum: ['off', 'restart'] },
+          confirmed: { type: 'boolean', description: 'True only after the user confirmed' },
+        },
+        ['action'],
+      ),
       tool(
         'cancel_timer',
         'Cancel a running timer or reminder by its name or reminder text, or all of them.',
@@ -208,6 +222,17 @@ export class BuiltinActionsService implements OnModuleInit {
           }
         : {}),
       get_current_datetime: () => `It is ${describeNow()}.`,
+      device_power: (a) => {
+        const off = a.action !== 'restart';
+        if (this.modes.mode === 'guest') return 'Not done: in guest mode the box can only be turned off by the household (the screen menu, or the power button).';
+        if (a.confirmed !== true) return `Not done yet: ask the user to confirm ("Shall I ${off ? 'turn off' : 'restart'}?"), then call again with confirmed=true.`;
+        if (!this.cfg.face.onBox) return 'Turning off and restarting only work on the Max box, not on this computer.';
+        // A few seconds to say goodbye before the box goes down.
+        setTimeout(() => requestPower(this.cfg, off ? 'poweroff' : 'reboot'), 6000);
+        return off
+          ? 'Turning off in a few seconds. Say a very short goodbye, and that pressing the power button on the Pi turns you on again.'
+          : 'Restarting in a few seconds. Say you will be back in about a minute.';
+      },
       end_conversation: () => {
         this.control?.requestEnd();
         return 'Conversation ended. Say nothing.';

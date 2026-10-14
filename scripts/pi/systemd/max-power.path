@@ -1,0 +1,9 @@
+[Unit]
+Description=Max power requests (turn off / restart from the screen, by voice or from the control panel)
+
+[Path]
+PathExists=/run/max/power-request
+Unit=max-power.service
+
+[Install]
+WantedBy=multi-user.target

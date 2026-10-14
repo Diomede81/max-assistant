@@ -14,6 +14,7 @@ import { localToday, ProjectsService, taskText } from '../memory/projects.servic
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
+import { requestPower } from '../face/power';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -101,6 +102,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname === '/device/power') {
+      const f = await readForm(req);
+      const action = f.get('action') === 'reboot' ? 'reboot' : 'poweroff';
+      if (f.get('confirm') !== 'yes') return this.redirect(res, '/?error=Tick%20the%20box%20to%20confirm.#device');
+      if (!requestPower(this.cfg, action)) return this.redirect(res, '/?error=Only%20available%20on%20the%20Max%20box.#device');
+      this.log.log(action === 'reboot' ? 'Restarting (asked from the control panel)' : 'Turning off (asked from the control panel)');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(
+        `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Max</title><body style="font:16px system-ui;margin:40px;max-width:520px">` +
+          (action === 'reboot'
+            ? '<h1>Restarting…</h1><p>Max will be back in about a minute. <a href="/">Open the control panel again</a>.</p>'
+            : "<h1>Turning off</h1><p>When Max's screen goes dark it's safe to unplug. To turn him on again, press the power button on the Raspberry Pi.</p>"),
+      );
+      return;
+    }
     if (req.method === 'POST' && url.pathname.startsWith('/models/') && this.models) {
       const f = await readForm(req);
       const task = (f.get('task') ?? '') as Task;
@@ -361,6 +376,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       models: this.models && (await this.modelsData(this.models)),
+      onBox: this.cfg.face.onBox,
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

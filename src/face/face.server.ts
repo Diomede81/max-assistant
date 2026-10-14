@@ -62,6 +62,18 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/power') {
+      // Only the screen itself (same origin, and this port is only open on the box) may do this.
+      const origin = req.headers.origin;
+      const action = url.searchParams.get('action');
+      if ((origin && new URL(origin).host !== req.headers.host) || (action !== 'poweroff' && action !== 'reboot')) {
+        res.writeHead(403).end();
+        return;
+      }
+      const ok = this.face.requestPower(action);
+      res.writeHead(ok ? 202 : 503, { 'Content-Type': 'text/plain' }).end(ok ? 'requested' : 'Only available on the Max box');
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/wifi-setup') {
       // Only the screen itself (same origin) may ask for WiFi setup.
       const origin = req.headers.origin;

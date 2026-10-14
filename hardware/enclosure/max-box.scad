@@ -33,7 +33,7 @@ lip            = 1.4;   // front lip that holds the glass
 /* ---------------- Speaker (Visaton FRS 7, 4 ohm) ---------------- */
 spk_frame     = 66.5;   // square frame size
 spk_cutout_d  = 61;     // baffle cutout (datasheet)
-spk_hole_sq   = 49.3;   // MEASURED: square spacing of the 4 mounting holes
+spk_hole_sq   = 52.5;   // MEASURED: square spacing of the 4 mounting holes, centre to centre
 spk_depth     = 32;     // mounting depth
 spk_cz        = 46;     // centre height of the speaker
 grille_hole   = 3.0;    // grille hole size
@@ -54,15 +54,19 @@ pi_standoff = 8;        // gap between back wall and board
 pi_x0 = wall + 3;       // board left edge (microSD end): close to the wall so the card is reachable
 pi_z0 = 40;             // board bottom edge (USB-C power edge faces down)
 pi_stack = 30;          // board + Active Cooler (19.7 mm, measured) + room for the optional SSD HAT
-sd_z = 28;              // MEASURE: microSD slot centre from the board's bottom (USB-C) edge
+sd_z = 28;              // MEASURED (22.3 mm to the slot's edge): microSD slot centre from the board's bottom (USB-C) edge
 sd_slot = [9, 18];      // side access slot (depth Y, height Z)
 
 /* ---------------- Mic board (ReSpeaker XVF3800 USB 4-mic array) ---------------- */
 mic_board_d = 100.2;    // MEASURED: board diameter
 mic_stack   = 15.5;     // MEASURED: board plus parts and speaker cable underneath (7.8 mm board alone)
 mic_cy      = D/2 + 5;  // board moved back so the parts underneath clear the screen and its ring
-mic_post_r  = 44;       // MEASURE: radius of the board's mounting holes from its centre
-mic_post_angles = [45, 135, 225, 315]; // MEASURE: hole angles
+// 3 mounting holes in a triangle, measured 60.1, 60.1 and 40.7 mm apart, all on one circle round the
+// board's centre. The hole between the two long sides faces the USB socket, which points back
+// towards the Pi (90 degrees = towards the back wall).
+mic_tri     = [60.1, 40.7]; // MEASURED: long sides, short side
+mic_post_r  = mic_tri[0]^2 / sqrt(4*mic_tri[0]^2 - mic_tri[1]^2); // circle through the 3 holes (~31.9)
+mic_post_angles = [90, 90 + 2*asin(mic_tri[0]/2/mic_post_r), 90 - 2*asin(mic_tri[0]/2/mic_post_r)];
 mic_gap     = 4;        // board-to-top gap (fill with a foam ring to seal the mics)
 mic_hole_d  = 1.6;      // top perforation
 mic_area_d  = 92;

@@ -39,7 +39,7 @@ print the front panel in a contrasting colour if you like a two-tone look.
   chamber
 - 8 × M3 × 8 mm screws (4 side screws for the front panel, 4 for the chamber) and 4 × M3 × 6 mm for the
   screen ring
-- 12 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 4 for the mic board, 4 for the speaker (its
+- 11 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 3 for the mic board, 4 for the speaker (its
   bosses are pilot holes)
 - Closed-cell EVA foam strip, single-sided adhesive, about 10 mm wide: **5 mm thick** for the ring
   between the mic board and the top (the gap is 4 mm, so it squashes and seals; keep the 4 mic holes
@@ -49,9 +49,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
 
 ## Measure before printing
 
-Some part sizes aren't published in a form I could check. Measure your parts with calipers (in mm) and
-change the values marked `MEASURE` at the top of `max-box.scad`. Values marked `MEASURED` have been
-taken from the real parts.
+Some part sizes aren't published in a form I could check, so they were measured from the real parts
+with calipers (in mm). If you use different parts, measure them the same way and change the values
+marked `MEASURED` at the top of `max-box.scad`.
 
 | Setting | How to measure | Value |
 | --- | --- | --- |
@@ -62,9 +62,9 @@ taken from the real parts.
 | `screen_depth` | Screen face down: from the back of the glass to the highest point, including the ribbon socket | **16.8 mm** (measured) |
 | `mic_board_d` | Across the mic board at its widest (say if it's square) | **100.2 mm** (measured) |
 | `mic_stack` | Mic board plus the parts and speaker cable underneath it | **15.5 mm** (measured; board alone 7.8 mm) |
-| `mic_post_r`, `mic_post_angles` | The board has 3 holes in a triangle (measured: 60.1, 60.1 and 40.7 mm apart). Still needed: each hole's distance to the nearest board edge, and which hole points towards the USB socket | 44 mm, 4 holes (placeholder) |
-| `spk_hole_sq` | Centre-to-centre between two side-by-side speaker holes (tip: left edge of one hole to left edge of the other) | **49.3 mm** (measured) |
-| `sd_z` | Pi held with the USB-C socket at the bottom: from that edge up to the middle of the microSD slot | 28 mm (estimate) |
+| `mic_tri` | The 3 mounting holes form a triangle: the two long sides and the short side, centre to centre. The hole between the two long sides faces the USB socket | **60.1, 60.1, 40.7 mm** (measured; holes 16.9 mm from the edge) |
+| `spk_hole_sq` | Centre-to-centre between two side-by-side speaker holes (tip: left edge of one hole to left edge of the other) | **52.5 mm** (measured: 56.1 outer edge to outer edge) |
+| `sd_z` | Pi held with the USB-C socket at the bottom: from that edge up to the middle of the microSD slot | **28 mm** (checked: 22.3 mm to the slot's edge; the access opening is 18 mm tall) |
 | `pi_stack` | Pi with the fan fitted, flat on a table: from the underside of the board to the top of the fan | **19.7 mm** (measured); 30 mm allowed for the SSD kit |
 
 Then re-export the parts (below). Printing just the front panel's screen area as a test ring first is
@@ -96,8 +96,8 @@ front panel take a few minutes each to compute because of the grille holes.
 4. **Pi:** fit the Active Cooler (and the SSD kit, if you have one) and insert the microSD card, then
    screw the Pi to the four posts on the back wall (USB-C power socket facing down). The card can later
    be swapped through the slot in the left side, using a fingernail or tweezers, without opening the box.
-5. **Mic board:** stick the foam ring to the top of the board, then screw the board to the four posts
-   under the top grille. Connect it to the Pi with the right-angle USB cable, and connect the speaker
+5. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
+   under the top grille (the hole at the point of the triangle, by the USB socket, faces the back). Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.
 6. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
    (or `0`: the setup script asks which), slide the front panel in, and fix

@@ -223,6 +223,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         }
         return back(msg, ok, created ? `routine-${created.id}` : id ? `routine-${id}` : 'routine-new');
       }
+      case 'feedback': {
+        const msg = r.feedback(routine!.id, get('url'), get('vote') === 'up');
+        return back(msg, msg.startsWith('Noted'));
+      }
       case 'suggest': {
         void r.suggest(routine!.id);
         return back('Finding websites for your interests: about a minute.');

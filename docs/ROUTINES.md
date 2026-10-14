@@ -23,7 +23,8 @@ Control panel → **Routines** → *New news briefing*:
 websites** on an existing briefing). Max proposes sources for your interests, plus a web search for each
 one when Firecrawl is set up, and **checks every one**: does it load, does it have a news feed, are there
 fresh headlines. You see each site with the interest it covers, how Max can read it (*news feed* is the
-most reliable, and those are ticked already) and its latest headline. Tick the ones you want and press **Add selected**.
+most reliable, and those are ticked already) and its recent headlines that match your interests. Sites that
+aren't news sources (shops, coupon sites, companies, investors) or whose headlines don't match are left out. Tick the ones you want and press **Add selected**.
 For sites with a feed, the feed address itself is added. You can always add your own as well.
 Which AI model makes the suggestions is up to you: see [MODELS.md](MODELS.md).
 
@@ -50,9 +51,24 @@ For each website, cheapest way first:
 2. **The headlines on the page itself**, downloaded directly.
 3. **Firecrawl**, for sites that only show their content to a real browser (if `FIRECRAWL_API_KEY` is set).
 
-Stories older than three days are skipped. The text AI model (`LLM_*` settings) then picks the articles
-that match your interests (one per story, mixing sources) and writes the summaries; the articles are
-read through Firecrawl when it's set up, otherwise downloaded directly.
+Then, like an editor would:
+
+1. **Noise out**: coupons, deals, sponsored posts, newsletters, company and investor pages (portfolios,
+   careers, "about us") and navigation links are removed; so are stories older than three days and
+   anything you've already been given.
+2. **Research** (with *Research* ticked and Firecrawl set up): a news search for each of your interests
+   adds what your websites don't cover.
+3. **Ranking**: the AI model (Settings → AI models → News briefings) scores each headline 1–10 against
+   your interests, your *Leave out* list and your 👍 / 👎; only clear matches (6 or more) are kept.
+   Fewer good articles beat a full list of filler.
+4. **Checking**: each chosen article is read. Pages that turn out to be adverts, paywalls or off-topic are
+   dropped and the next best article takes their place; the rest get a two-sentence spoken summary.
+
+If the AI model can't answer (wrong model name, out of credit, a "thinking" model that ran out of room),
+Max matches the headlines on your interests' key words instead, never just "the first few", and the
+briefing says so on the control panel.
+
+**👍 / 👎** on each article in the control panel teaches Max your taste: they're used every time he chooses.
 
 **Firecrawl credits:** with feeds, a daily briefing costs about 6 credits (reading the chosen articles),
 plus a few per day for each site without a feed and for the optional news search: roughly 200 a month

@@ -158,8 +158,10 @@ export class BuiltinActionsService implements OnModuleInit {
               'my_day',
               'Brief the user on their day: call it when they ask "what\'s going on today", "what\'s my day like", "brief me", ' +
                 '"what have I got on". Returns today\'s reminders and to-dos (overdue, due today, critical). In the SAME step, ' +
-                'also fetch today\'s calendar events with the connected calendar app, if you have one (e.g. the Outlook or ' +
-                'Google Calendar action that lists events for a date range: today from 00:00 to 23:59). Then brief in this ' +
+                'also fetch today\'s calendar events with the connected calendar app, if you have one: use the CALENDAR VIEW ' +
+                'action for a date range (e.g. Outlook\'s calendar view, not "list events": only the view includes each ' +
+                'occurrence of recurring meetings), from today 00:00 to 23:59 in the household time zone, and read every ' +
+                'event it returns. Then brief in this ' +
                 'order: events in time order; what is overdue (say clearly it should already have been done) and what is ' +
                 'critical; the rest of today\'s to-dos. Keep it short and natural; offer details rather than reading everything.',
               {},

@@ -214,6 +214,9 @@ export function loadConfig(): AppConfig {
           'Use the Home Assistant tools to control or query devices, and your own tools for the time, ' +
           'timers and reminders, and the email, calendar and messaging tools when available. ' +
           'Summarise emails and events briefly; never read out long text unless asked. Never invent device names; ' +
+          'For what is on a day or a period, use the calendar VIEW action for the whole period (it includes every ' +
+          'occurrence of recurring meetings, which "list events" misses) and go through every event it returns; event ' +
+          'times may come in UTC, so convert them to the household time zone. ' +
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis. ' +
           'Before an action that may take a moment (email, calendar, messages, the web), say a few words first ' +
           '("Let me check your email") so the user knows you are on it. ' +

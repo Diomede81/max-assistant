@@ -12,6 +12,7 @@ import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
 import { localToday, ProjectsService, taskText } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
+import { daysText, RoutinesService } from '../routines/routines.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -27,6 +28,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
+  @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -97,6 +99,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/routines/') && this.routines) return this.routineAction(req, res, url.pathname.slice('/routines/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
@@ -160,6 +163,49 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         const r = await this.memory.remember({ text: get('fact'), vault: p.vault, projectId: p.id, source: 'panel' });
         return back(r.ok ? 'Saved to the project memory.' : r.message, p.id, r.ok);
       }
+      default:
+        res.writeHead(404).end();
+    }
+  }
+
+  private async routineAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const r = this.routines!;
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const id = get('id');
+    const back = (msg: string, ok = true, anchor = id ? `routine-${id}` : 'routines') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    const routine = r.routines.find((x) => x.id === id);
+    if (action !== 'save' && !routine) return back('That routine no longer exists.', false, 'routines');
+    switch (action) {
+      case 'save': {
+        const msg = r.save(
+          {
+            name: get('name'),
+            sourcesText: f.get('sources') ?? '',
+            interests: get('interests'),
+            avoid: get('avoid'),
+            time: get('time'),
+            days: f.getAll('days').map(Number),
+            count: Number(get('count')),
+            vault: get('vault') as VaultName,
+            search: f.get('search') === 'yes',
+            ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
+          },
+          id || undefined,
+        );
+        const ok = /^(Created|Saved)/.test(msg);
+        const created = !id && ok ? r.routines[r.routines.length - 1] : undefined;
+        return back(msg, ok, created ? `routine-${created.id}` : id ? `routine-${id}` : 'routine-new');
+      }
+      case 'run':
+        void r.run(routine!.id, true);
+        return back(`Gathering ${routine!.name}: it takes a minute or two. Refresh this page to see it.`);
+      case 'toggle':
+        return back(r.save({ enabled: !routine!.enabled }, routine!.id).replace(/^Saved/, routine!.enabled ? 'Resumed' : 'Paused'));
+      case 'delete':
+        if (get('confirm') !== 'yes') return back('Tick the box to confirm deleting the routine.', false);
+        r.remove(routine!.id);
+        return back(`Deleted ${routine!.name}.`, true, 'routines');
       default:
         res.writeHead(404).end();
     }
@@ -264,6 +310,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       web: this.web?.status,
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
+      routines: this.routines && this.memory.enabled
+        ? {
+            firecrawl: this.routines.firecrawl,
+            list: this.routines.routines.map((x) => ({
+              ...x,
+              daysText: daysText(x.days),
+              running: this.routines!.isRunning(x.id),
+              briefing: this.routines!.briefings[x.id],
+            })),
+          }
+        : undefined,
       composio: {
         configured: this.composio.enabled,
         error: this.composio.lastError,

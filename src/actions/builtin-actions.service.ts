@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { describeNow, parseLocal, spokenDuration, spokenWhen } from './clock';
 import { TimerService, describe } from './timer.service';
@@ -7,6 +7,7 @@ import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
+import { RoutinesService } from '../routines/routines.service';
 import { timeZone } from './clock';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
@@ -19,8 +20,10 @@ export const EXTERNAL_FLAG = '__afterExternalContent';
  * timers and reminders, and remember things between conversations. Offered to the AI model next to the Home Assistant tools.
  */
 @Injectable()
-export class BuiltinActionsService {
+export class BuiltinActionsService implements OnModuleInit {
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
+  /** News briefings and other scheduled routines (optional). */
+  @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   private readonly handlers: Record<string, Handler>;
   readonly tools: ChatCompletionTool[];
 
@@ -334,8 +337,18 @@ export class BuiltinActionsService {
       `Today is ${describeNow()}.`,
       reminders.length ? `Reminders still to come today:\n${reminders.join('\n')}` : 'No more reminders today.',
       `To-dos:\n${this.todos.dayBriefing()}`,
+      this.routines?.pendingLine() ?? '',
       "Calendar: not included here. Get today's events from the calendar app if one is connected; if none is, don't mention the calendar.",
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  onModuleInit(): void {
+    // A briefing someone asked for ("get me fresh news") is announced when it's ready.
+    this.routines?.on('ready', (r: { name: string }, b: { articles: unknown[] }, manual: boolean) => {
+      if (manual) this.timers.announce(b.articles.length ? `Your ${r.name} is ready, with ${b.articles.length} articles. Ask me "what's the news?"` : `I couldn't find anything new for your ${r.name}.`);
+    });
   }
 
   has(name: string): boolean {

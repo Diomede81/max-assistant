@@ -105,6 +105,10 @@ See [`deploy/max.service`](deploy/max.service).
   calendar app is connected), reminders and to-dos, and calls out what's critical or overdue. Also on the
   control panel's My Day tab.
 
+- **Routines: your news briefing**: give Max a list of websites and your interests; every morning he
+  gathers the news, picks the 5–6 articles that suit you and prepares a short summary of each, ready when
+  you ask "What's the news?". See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
+
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
 ## Real-time voice (demo mode)

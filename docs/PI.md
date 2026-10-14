@@ -84,6 +84,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   "Max-Setup" network and opens a page where you choose your WiFi and type its password. Max tells you
   when he's connected. If nobody uses the setup network for 10 minutes, it switches itself off and the
   box tries your known networks again.
+  To leave setup mode (e.g. you opened it by mistake), tap **Back to Max** under the QR code: the box goes
+  back to your usual WiFi straight away. Every screen in the menu has a **Back to Max** button.
 - **The face:**
 
   ![Max's face: idle with a timer, listening, thinking (work mode), speaking happily, curious, speaking with concern, asleep, WiFi setup](img/face-states.jpg)

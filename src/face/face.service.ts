@@ -196,6 +196,17 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     }
   }
 
+  /** "Back to Max" on the WiFi setup screen: ask the box's WiFi service to leave setup mode. */
+  cancelWifiSetup(): boolean {
+    try {
+      writeFileSync(join(this.cfg.face.runDir, 'wifi-cancel'), String(Date.now()));
+      this.log.log('WiFi setup cancelled from the screen');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** The screen's menu: turn the box off or restart it. */
   requestPower(action: PowerAction): boolean {
     const ok = requestPower(this.cfg, action);

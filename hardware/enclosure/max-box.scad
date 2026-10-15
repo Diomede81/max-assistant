@@ -43,7 +43,7 @@ grille_pitch  = 4.4;
 ch_wall = 2.4;
 tab_w   = 9;            // side tabs that hold the front panel (chamber must clear them)
 ch_w    = W - 2*wall - 2*tab_w - 3;
-ch_z0   = wall + 5;     // bottom of chamber (clear of the body's rounded bottom-front edge)
+ch_z0   = wall + 6;     // bottom of chamber (clears the body's rounded bottom-front edge as it slides in)
 ch_z1   = screen_cz - screen_glass_d/2 - 3; // top of chamber (below the screen glass and ring)
 ch_d    = 58;           // outer depth behind the front panel
 
@@ -74,7 +74,7 @@ mic_area_d  = 92;
 /* ---------------- Buttons (12 mm panel-mount momentary push buttons) ---------------- */
 btn_d     = 12.2;           // hole for a 12 mm button (use 16.2 for 16 mm buttons)
 btn_body  = [16, 30];       // nut size and depth behind the wall (buttons with a light are longer)
-mute_btn  = [W - 22, 23];   // mute: on top, front right corner (X, Y), on the flat and clear of the mic board
+mute_btn  = [W - 26, 23];   // mute: on top, front right corner (X, Y), on the flat and clear of the mic board
 power_btn = [W/2, 130];     // power: on the back (X, Z), above the Pi and its cables
 
 /* ---------------- Fasteners ---------------- */
@@ -98,6 +98,9 @@ module inner() { translate([wall, wall, wall]) rounded_box(W - 2*wall, D - 2*wal
 // Side tabs on the front panel: Z positions; screws go through the body's side walls.
 tab_z = [ch_z0 + 14, H - 24];
 tab_y = front_t + 8;     // screw axis (Y)
+// The body's mouth is narrowed by its rounded edges: everything on the front unit stays inside it,
+// so the unit slides straight in. Bosses on the body's side walls bridge the gap to the tabs.
+tab_in = R - sqrt(pow(R - wall, 2) - pow(R - front_t, 2)) + 0.4;
 
 /* ================= BODY ================= */
 module body() {
@@ -107,6 +110,9 @@ module body() {
       // Pi standoffs on the back wall
       for (h = pi_holes) translate([pi_x0 + h[0], D - wall - pi_standoff, pi_z0 + h[1]])
         rotate([-90, 0, 0]) cylinder(d = 6.5, h = pi_standoff + 0.5);
+      // side screw bosses: the screws pass through these into the front panel's tabs
+      for (s = [0, 1], z = tab_z) translate([s ? W - tab_in + 0.3 : wall - 0.5, tab_y, z]) rotate([0, 90, 0])
+        cylinder(d = 9, h = tab_in - 0.3 - wall + 0.5);
       // Mic posts hanging from the top
       for (a = mic_post_angles) translate([cx + mic_post_r*cos(a), mic_cy + mic_post_r*sin(a), H - wall - mic_gap])
         cylinder(d = 6, h = mic_gap + 0.5);
@@ -127,7 +133,7 @@ module body() {
     }
     // side screws into the front panel tabs (countersunk outside)
     for (s = [0, 1], z = tab_z) translate([s ? W + 1 : -1, tab_y, z]) rotate([0, s ? -90 : 90, 0]) {
-      cylinder(d = m3, h = wall + 2);
+      cylinder(d = m3, h = tab_in + 1);
       cylinder(d1 = 6.4, d2 = m3, h = 1.6);
     }
     // rear vents (exhaust, behind the Pi cooler)
@@ -163,8 +169,8 @@ module front_panel() {
         translate([wall + 0.3, wall + 0.3, wall + 0.3]) rounded_box(W - 2*wall - 0.6, D - 2*wall - 0.6, H - 2*wall - 0.6, max(R - wall - 0.3, 1));
         union() {
           // side tabs with heat-set insert bosses (screws come in through the body sides)
-          for (s = [0, 1], z = tab_z) translate([s ? W - wall - tab_w - 0.3 : wall + 0.3, front_t - 0.5, z - 7])
-            cube([tab_w, 15, 14]);
+          for (s = [0, 1], z = tab_z) translate([s ? W - tab_in - tab_w : tab_in, front_t - 0.5, z - 7])
+            cube([tab_w, 13, 14]);
           // screen ring bosses
           for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t - 0.5, screen_cz + screen_boss_r*sin(a)])
             rotate([-90, 0, 0]) cylinder(d = 8, h = screen_boss_h);
@@ -187,8 +193,8 @@ module front_panel() {
         rotate([-90, 0, 0]) cylinder(d = grille_hole, h = 4, $fn = 6);
     }
     // insert holes
-    for (s = [0, 1], z = tab_z) translate([s ? W - wall - tab_w - 1 : wall - 1, tab_y, z]) rotate([0, 90, 0])
-      cylinder(d = insert_d, h = tab_w + 2.6);
+    for (s = [0, 1], z = tab_z) translate([s ? W - tab_in - tab_w - 1 : tab_in - 1, tab_y, z]) rotate([0, 90, 0])
+      cylinder(d = insert_d, h = tab_w + 2);
     for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t, screen_cz + screen_boss_r*sin(a)])
       rotate([-90, 0, 0]) cylinder(d = insert_d, h = insert_l + 2);
     for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 1, spk_cz + dz*spk_hole_sq/2])
@@ -233,7 +239,7 @@ module screen_ring() {
     union() {
       cylinder(d = screen_glass_d - 1, h = ring_collar + 0.01, $fn = 180);
       translate([0, 0, ring_collar]) {
-        cylinder(d = screen_glass_d + 4, h = ring_t, $fn = 180);
+        cylinder(d = screen_glass_d, h = ring_t, $fn = 180); // no wider than the glass: slides past the body's mouth
         for (a = screen_boss_a) hull() {
           cylinder(d = screen_glass_d - 2, h = ring_t, $fn = 180);
           translate([screen_boss_r*cos(a), screen_boss_r*sin(a), 0]) cylinder(d = 10, h = ring_t);

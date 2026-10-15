@@ -38,8 +38,8 @@ print the front panel in a contrasting colour if you like a two-tone look.
 
 - 12 × M3 heat-set inserts: 4 in the front-panel side tabs, 4 for the screen ring, 4 for the speaker
   chamber
-- 8 × M3 × 8 mm screws (4 side screws for the front panel, 4 for the chamber) and 4 × M3 × 6 mm for the
-  screen ring
+- 4 × M3 × 12 mm countersunk screws (side screws for the front panel), 4 × M3 × 8 mm (speaker chamber)
+  and 4 × M3 × 6 mm (screen ring)
 - 11 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 3 for the mic board, 4 for the speaker (its
   bosses are pilot holes)
 - Closed-cell EVA foam strip, single-sided adhesive, about 10 mm wide: **5 mm thick** for the ring

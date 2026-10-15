@@ -25,6 +25,10 @@ screen_body_d  = norm(screen_pcb); // board's diagonal: clears it whichever way 
 screen_glass_t = 6;     // DATASHEET (measured 5.9): glass thickness (sits in a recess in the front panel)
 screen_depth   = 16.8;  // MEASURED: module depth behind the glass (datasheet 11; clearance only)
 screen_cz      = H - 77; // centre height of the screen
+// 4 threaded M4 posts on the back of the glass, just outside the board's corners (from the Waveshare
+// drawing: ~75.6 mm square centre to centre, ~8.5 mm across, ~5 mm tall). The ring has holes for them.
+screen_post    = [75.6, 8.5, 5];   // spacing, diameter, height
+screen_post_hole = 13;             // ring holes: ~2 mm all round to allow for the estimate
 screen_boss_a  = [35, 145, 215, 325]; // screen ring screw angles (clear of the side tabs and mic board)
 screen_boss_r  = screen_glass_d/2 + 6;
 screen_boss_h  = 7;     // from the back of the front panel; the ring sits on top of these
@@ -261,6 +265,9 @@ module screen_ring() {
       }
     }
     translate([0, 0, -1]) cylinder(d = screen_body_d + 1, h = ring_collar + ring_t + 2, $fn = 180);
+    // clear the screen's 4 posts (they also centre the screen in the ring)
+    for (sx = [-1, 1], sy = [-1, 1]) translate([sx*screen_post[0]/2, sy*screen_post[0]/2, -1])
+      cylinder(d = screen_post_hole, h = ring_collar + ring_t + 2);
     for (a = screen_boss_a) translate([screen_boss_r*cos(a), screen_boss_r*sin(a), -1]) cylinder(d = m3, h = ring_collar + ring_t + 2);
   }
 }
@@ -270,6 +277,8 @@ module stand_ins() {
   // screen
   color("#111") translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d, h = screen_glass_t, $fn = 180);
   color("#2a6") translate([cx - screen_pcb[0]/2, lip + screen_glass_t, screen_cz - screen_pcb[1]/2]) cube([screen_pcb[0], screen_depth, screen_pcb[1]]);
+  color("#222") for (sx = [-1, 1], sz = [-1, 1]) translate([cx + sx*screen_post[0]/2, lip + screen_glass_t, screen_cz + sz*screen_post[0]/2])
+    rotate([-90, 0, 0]) cylinder(d = screen_post[1], h = screen_post[2]);
   // speaker
   color("#555") translate([cx - spk_frame/2, front_t + 4.5, spk_cz - spk_frame/2]) cube([spk_frame, 4, spk_frame]);
   color("#444") translate([cx, front_t + 8.5, spk_cz]) rotate([-90, 0, 0]) cylinder(d1 = 50, d2 = 30, h = spk_depth - 4);

@@ -98,7 +98,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   - **Important email** (marked important in Gmail, or high importance in Outlook), checked every 10 minutes
     from 07:00 to 22:00 in the current mode's email. **Read it** reads out who it's from, the subject and the
     first lines.
-  - **Overdue to-do**, once a day each (from 08:00), with **Done** and **Tomorrow** buttons.
+  - **Overdue to-do**, once a day each (from 08:00), with **Done** and **Tomorrow** buttons (several at once: a
+    list with **Done** on each).
 
   They wait for a good moment: never while you're talking to Max, never over a card you're using (a recipe, a
   timer), never during his sleep hours, and never in guest mode. Each can be switched off in
@@ -109,7 +110,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     heard you say and what he's saying, under the face.
 - **Glance (while Max is idle):** the weather at the top (for the home location set on the control panel,
   from Open-Meteo: free, no key), and under the clock your next meeting and a line like "2 critical ·
-  1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather). The next
+  1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather); each to-do
+  has a **Done** button (a ticked one stays struck through, with **Undo**). The next
   meeting comes from the current mode's calendar app, checked quietly every 20 minutes between 06:00 and
   23:00. In **guest mode** only the time and weather show, and a tap shows the weather for the next hours.
 - **Evening photo frame:** upload pictures on the control panel (**Settings → Screen**; JPEG, PNG or WebP,

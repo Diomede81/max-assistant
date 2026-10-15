@@ -6,7 +6,8 @@ import { ConversationControl } from './conversation-control';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
-import { TodoService } from '../memory/todo.service';
+import { TodoItem, TodoService } from '../memory/todo.service';
+import { TodoTicks } from '../face/todo-ticks';
 import { RoutinesService } from '../routines/routines.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { requestPower } from '../face/power';
@@ -414,7 +415,10 @@ export class BuiltinActionsService implements OnModuleInit {
    * "Your day" on the screen: reminders and to-dos now; calendar events join it when Max reads the
    * calendar. Tapping the face shows it too, with the events and weather the screen already knows.
    */
-  dayCard(extra: { events?: CardLine[]; weather?: string } = {}): void {
+  dayCard(extra: { events?: CardLine[]; weather?: string } = {}, redraw = false): void {
+    // Done buttons on the to-dos: ticking one redraws the card (kept struck through, with Undo).
+    if (!redraw) this.dayTicks.reset();
+    this.dayExtra = extra;
     const tz = timeZone();
     const day = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms));
     const hm = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
@@ -429,23 +433,34 @@ export class BuiltinActionsService implements OnModuleInit {
       const d = task.due?.slice(0, 10);
       const overdue = !!d && d < today;
       if (!overdue && d !== today && task.criticality !== 'critical') continue;
-      lines.push({
+      lines.push(this.dayTicks.line({ task, project } as TodoItem, {
         time: overdue ? 'late' : d === today ? (task.due!.includes('T') ? task.due!.slice(11, 16) : 'today') : 'todo',
         text: task.title,
         sub: [overdue ? `was due ${dueText(task.due!)}` : '', project?.name ?? ''].filter(Boolean).join(' · ') || undefined,
         tag: overdue ? 'overdue' : task.criticality === 'critical' ? 'critical' : task.criticality === 'important' ? 'important' : undefined,
-      });
+      }));
     }
+    lines.push(...this.dayTicks.doneLines());
     const date = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+    const shown = lines.length ? lines : [{ text: 'Nothing due today', sub: 'Calendar events appear here as Max reads them' }];
     showCard({
       id: 'my-day',
       kind: 'list',
       icon: '☀',
       title: 'Your day',
       subtitle: extra.weather ? `${date} · ${extra.weather}` : date,
-      lines: lines.length ? lines : [{ text: 'Nothing due today', sub: 'Calendar events appear here as Max reads them' }],
+      lines: shown,
       ttlMs: 60_000,
-    });
+    }, this.dayTicks.handlers(shown));
+  }
+  private dayExtra: { events?: CardLine[]; weather?: string } = {};
+  /** What "Your day" was last drawn with (calendar events, weather). */
+  get dayInfo(): { events?: CardLine[]; weather?: string } {
+    return this.dayExtra;
+  }
+  private ticks?: TodoTicks;
+  private get dayTicks(): TodoTicks {
+    return (this.ticks ??= new TodoTicks(this.todos, () => this.dayCard(this.dayExtra, true)));
   }
 
   onModuleInit(): void {

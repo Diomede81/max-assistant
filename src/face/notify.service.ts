@@ -12,7 +12,8 @@ import { Briefing, Routine, RoutinesService } from '../routines/routines.service
 import { AmbientService } from './ambient.service';
 import { extractEmails, MailItem } from './emails';
 import { FaceService } from './face.service';
-import { Card, CardHandlers } from './screen';
+import { Card, CardHandlers, CardLine } from './screen';
+import { TodoTicks } from './todo-ticks';
 import { LockService } from '../lock/lock.service';
 
 const TICK_MS = 15_000;
@@ -153,16 +154,29 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     for (const { task } of overdue) this.seen.todos[task.id] = today;
     this.save();
     if (overdue.length === 1) return this.todoCard(overdue[0]);
-    this.notify({
-      id: 'notify-todos',
-      kind: 'list',
-      icon: '⏰',
-      title: 'Overdue',
-      subtitle: `${overdue.length} to-dos`,
-      lines: overdue.slice(0, 12).map(({ task, project }) => ({ text: task.title, sub: [`was due ${task.due!.slice(0, 10) === today ? task.due!.slice(11, 16) : task.due!.slice(0, 10)}`, project?.name ?? ''].filter(Boolean).join(' · '), tag: 'overdue' as const })),
-      actions: [{ id: 'ok', label: 'OK', style: 'primary' }],
-    }, { ok: () => this.face.dismissCard('notify-todos') });
+    this.overdue = overdue.slice(0, 12);
+    this.ticks?.reset();
+    this.overdueCard(false);
   }
+
+  /** Several overdue to-dos: one list, each with Done (ticked ones stay, struck through, with Undo). */
+  private overdueCard(redraw: boolean): void {
+    const today = localToday();
+    this.ticks ??= new TodoTicks(this.todos!, () => this.overdueCard(true));
+    const lines: CardLine[] = [
+      ...this.overdue
+        .filter(({ task }) => this.todos?.byId(task.id)?.task.status === 'open')
+        .map((item) => this.ticks!.line(item, { text: item.task.title, sub: [`was due ${item.task.due!.slice(0, 10) === today ? item.task.due!.slice(11, 16) : item.task.due!.slice(0, 10)}`, item.project?.name ?? ''].filter(Boolean).join(' · '), tag: 'overdue' as const })),
+      ...this.ticks.doneLines(),
+    ];
+    const left = lines.filter((l) => l.tag !== 'done').length;
+    const card: Card = { id: 'notify-todos', kind: 'list', icon: '⏰', title: 'Overdue', subtitle: left ? `${left} to-do${left === 1 ? '' : 's'}` : 'All done 🎉', lines, actions: [{ id: 'ok', label: 'OK', style: 'primary' }], ttlMs: NOTE_MS };
+    const handlers = { ...this.ticks.handlers(lines), ok: () => this.face.dismissCard('notify-todos') };
+    if (redraw) this.face.showCard(card, handlers);
+    else this.notify(card, handlers);
+  }
+  private overdue: TodoItem[] = [];
+  private ticks?: TodoTicks;
 
   private todoCard(item: TodoItem): void {
     const id = 'notify-todo';

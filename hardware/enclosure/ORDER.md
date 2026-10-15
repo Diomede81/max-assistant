@@ -10,9 +10,9 @@ for printing: tell the service to keep that orientation, which needs **no suppor
 
 | File | Part | Size (mm) | Print orientation |
 | --- | --- | --- | --- |
-| `body.stl` | Main shell: back, sides, top (mic grille), bottom | 142 × 226 × 120 | On its back, open front facing up |
-| `front.stl` | Front panel: screen window, speaker grille, screw tabs | 142 × 226 × 16.5 | Face down |
-| `chamber.stl` | Sealed speaker box, with 4 screw ears | ~126 × 74 × 70 | Back wall down, open side up |
+| `body.stl` | Main shell: back, sides, top (mic grille), bottom | 142 × 226 × 116 | On its back, open front facing up |
+| `front.stl` | Front panel: screen window, speaker grille, screw tabs | 136 × 220 × 16.5 | Face down |
+| `chamber.stl` | Sealed speaker box, with 4 screw ears | 126 × 74 × 70 | Back wall down, open side up |
 | `screen_ring.stl` | Clamp ring that holds the screen | 126 × 126 × 6.1 | Flat side down, raised collar up |
 
 ## Print settings

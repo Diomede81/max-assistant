@@ -18,6 +18,8 @@ export interface PanelData {
     auto: { auto: boolean; time: string };
   };
   models?: PanelModels;
+  /** The start-up code (6 digits typed on Max's screen each time he starts). */
+  lock?: { enabled: boolean; locked: boolean; canReset: boolean };
   /** The round screen's glance and photo frame (when the face is on). */
   screen?: PanelScreen;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
@@ -124,6 +126,24 @@ function soulSection(s: NonNullable<PanelData['soul']>): string {
 ${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you, kept separately for personal and work mode (each mode only sees its own). Encrypted like his memory.</p><ul>${journal}</ul>
 <form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><select name="mode" aria-label="Mode"><option value="personal">Personal</option><option value="work">Work</option></select><button class="btn secondary" type="submit">Add</button></form>` : ''}
 </section>`;
+}
+
+function lockRow(l: NonNullable<PanelData['lock']>): string {
+  const code = (name: string, label: string) =>
+    `<input name="${name}" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" required autocomplete="off" placeholder="${label}" style="width:9em">`;
+  const status = l.enabled ? (l.locked ? ' <span class="badge warn">Locked now</span>' : '') : '';
+  return `<li class="row"><div style="width:100%"><div class="name">Start-up code ${badge(l.enabled, 'On', 'Off')}${status}</div>
+<div class="meta">${l.enabled
+    ? 'Every time Max starts, he stays locked until this 6-digit code is typed on his screen: he won\'t answer, act or show anything personal. You can also lock him from his screen menu (hold a finger on the screen for 2 seconds).'
+    : 'Set a 6-digit code and Max will ask for it on his screen every time he starts. Until it is entered he won\'t answer, act or show anything personal.'}</div>
+${l.enabled
+    ? `<form class="addfact" method="post" action="/lock/set">${code('current', 'Current code')}${code('code', 'New code')}${code('repeat', 'Repeat new code')}<button class="btn" type="submit">Change</button></form>
+<form class="addfact" method="post" action="/lock/off">${code('current', 'Current code')}<button class="btn secondary" type="submit">Turn off</button></form>
+${l.canReset
+    ? `<form class="addfact danger" method="post" action="/lock/reset"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Forgot the code? Remove it (you signed in to this page with its password)</label><button class="btn secondary" type="submit">Remove code</button></form>`
+    : '<p class="meta">Forgot the code? Set <code>PANEL_PASSWORD</code> to be able to remove it from this page, or delete <code>data/startup-code.json</code> on the box.</p>'}`
+    : `<form class="addfact" method="post" action="/lock/set">${code('code', 'New 6-digit code')}${code('repeat', 'Repeat it')}<button class="btn" type="submit">Turn on</button></form>`}
+</div></li>`;
 }
 
 function locationSection(l: NonNullable<PanelData['location']>): string {
@@ -582,6 +602,7 @@ ${d.onBox
 ${d.updates ? updatesSection(d.updates) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
+${d.lock ? lockRow(d.lock) : ''}
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
 </main>
 <script>

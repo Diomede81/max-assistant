@@ -18,6 +18,7 @@ import { Emotion, emotionFor } from './emotion';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
 import { BuiltinActionsService } from '../actions/builtin-actions.service';
 import { ScreenToolsService } from '../actions/screen-tools.service';
+import { LockService } from '../lock/lock.service';
 import { AmbientService, Glance } from './ambient.service';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
@@ -55,6 +56,10 @@ export interface FaceInfo {
   caption?: { who: 'you' | 'max'; text: string };
   /** Around the face when idle: weather, next meeting, to-dos; and the evening photo frame. */
   glance?: Glance;
+  /** The start-up code hasn't been entered: the keypad shows, and nothing personal. */
+  locked?: { pausedUntil?: number; triesLeft: number };
+  /** A start-up code is set (the menu offers Lock). */
+  canLock?: boolean;
 }
 
 const FRAME_MS = 50;
@@ -102,6 +107,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly actions?: BuiltinActionsService,
     @Optional() private readonly screenTools?: ScreenToolsService,
+    @Optional() private readonly lock?: LockService,
   ) {
     super();
     this.setMaxListeners(50);
@@ -111,6 +117,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     if (!this.cfg.face.enabled) return;
     this.timers.push(setInterval(() => this.tickLevel(), FRAME_MS));
     this.timers.push(setInterval(() => void this.tickInfo(), INFO_MS));
+    this.lock?.on('change', () => void this.tickInfo());
     this.timers.push(setInterval(() => void this.pollMusic(), MUSIC_MS));
     // Cards from anywhere in Max (showCard in ./screen), and the ones the face makes itself.
     screen.on('card', (card: Card, handlers: CardHandlers) => this.showCard(card, handlers));
@@ -271,6 +278,14 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   info(): FaceInfo {
+    const info = this.fullInfo();
+    const locked = this.lock?.status();
+    if (!locked) return info;
+    // Locked (start-up code): the clock, timers and the keypad only; nothing personal.
+    return { ...info, locked, reminder: undefined, music: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
+  }
+
+  private fullInfo(): FaceInfo {
     const offline = this.wifi?.state === 'setup' || this.wifi?.state === 'connecting';
     let state: FaceState = this.wifi && this.wifi.state !== 'connected' ? 'setup' : this.speaking ? 'speaking' : this.base;
     if (state === 'idle' && this.inSleepHours()) state = 'sleeping';
@@ -289,6 +304,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
       caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),
+      canLock: this.lock?.enabled || undefined,
     };
   }
 
@@ -359,6 +375,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   /** A button on the card was tapped ("dismiss" = Back to Max). */
   async cardAction(id: string, action: string): Promise<boolean> {
+    if (this.lock?.locked) return false;
     if (!this.card || this.card.id !== id) return false;
     if (action === 'dismiss') {
       this.dismissCard(id);
@@ -376,6 +393,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   /** A short tap on the face: show what's useful right now (the music if it's playing, otherwise your day). */
   async tapped(): Promise<void> {
+    if (this.lock?.locked) return;
     if (this.music || (await this.musicService?.player().catch(() => undefined))) {
       await this.musicCard(TAP_CARD_MS);
       return;

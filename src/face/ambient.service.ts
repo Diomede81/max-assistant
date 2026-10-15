@@ -12,6 +12,7 @@ import { SealedStore } from '../memory/sealed-store';
 import { TodoService } from '../memory/todo.service';
 import { Weather, WeatherService } from '../weather/weather.service';
 import { CalEvent, extractEvents } from './events';
+import { LockService } from '../lock/lock.service';
 
 export interface Glance {
   weather?: { icon: string; temp: number; text: string; hi?: number; lo?: number; rain?: number };
@@ -63,6 +64,7 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly todos?: TodoService,
     @Optional() private readonly modes?: ModesService,
     @Optional() private readonly mcp?: McpServersService,
+    @Optional() private readonly lock?: LockService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'screen');
     this.photoDir = join(cfg.memory.dir, 'photos');
@@ -171,7 +173,7 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
    * time range filled in from its own description. Skipped in guest mode and at night.
    */
   async refreshCalendar(): Promise<void> {
-    if (!this.settings.glance || !this.mcp || this.modes?.mode === 'guest') return;
+    if (!this.settings.glance || !this.mcp || this.modes?.mode === 'guest' || this.lock?.locked) return;
     const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     if (hour < 6 || hour >= 23) return;
     const pick = this.calendarAction();

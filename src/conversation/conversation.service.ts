@@ -15,6 +15,7 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
+import { LockService } from '../lock/lock.service';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
@@ -68,6 +69,8 @@ export class ConversationService implements OnApplicationBootstrap {
 
   /** Personal / work / guest: the conversation context never carries over a mode switch. */
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
+  /** The start-up code: while locked, Max doesn't answer or announce anything. */
+  @Optional() @Inject(LockService) private readonly lock?: LockService;
   private historyMode?: Mode;
   private lastIgnoredWakeAt = 0;
   /** end_conversation: the AI decided the conversation is over. */
@@ -94,11 +97,15 @@ export class ConversationService implements OnApplicationBootstrap {
       this.pendingAnnouncements.push({ text: announcement(t), timer: !t.say });
       if (this.state === 'wake') void this.flushAnnouncements();
     });
+    // Reminders that came due while he was locked are said once he's unlocked.
+    this.lock?.on('change', (locked: boolean) => {
+      if (!locked && this.state === 'wake') void this.flushAnnouncements();
+    });
     void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
   }
 
   private async flushAnnouncements(): Promise<void> {
-    if (this.announcing) return;
+    if (this.announcing || this.lock?.locked) return; // reminders can be personal: not until unlocked
     this.announcing = true;
     await this.music?.duckStart();
     try {
@@ -182,6 +189,14 @@ export class ConversationService implements OnApplicationBootstrap {
     if (this.cfg.wakeWord.verify && !(await this.confirmWake(Buffer.concat(recent), fmt))) {
       void this.waitForWakeWord();
       return;
+    }
+
+    if (this.lock?.locked) {
+      this.log.log(`Wake word "${name}" detected, but Max is locked (start-up code)`);
+      const speech = this.tts.session();
+      speech.say("I'm locked. Please enter my code on the screen.");
+      await speech.done().catch(() => undefined);
+      return this.waitForWakeWord();
     }
 
     this.log.log(`Wake word "${name}" detected - listening for your request`);

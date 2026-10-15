@@ -16,7 +16,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | Part | Product |
 | --- | --- |
 | Computer | Raspberry Pi 5 (8 GB) + Active Cooler, running from an official Raspberry Pi A2 microSD card (64 GB). The Raspberry Pi SSD Kit (M.2 HAT+) can be added later: there is room for it. |
-| Screen | Waveshare 4inch DSI LCD (C), round 720×720 |
+| Screen | Waveshare 4inch DSI LCD (C), round 720×720. Its 12 cm ribbon is too short to reach the Pi: use the official Raspberry Pi 5 display cable, **200 mm** (22-pin narrow end to 15-pin wide end) |
 | Microphones / sound | ReSpeaker XVF3800 USB 4-mic array (its built-in 5 W amplifier drives the speaker) |
 | Speaker | Visaton FRS 7, 4 Ω (2.5″ full-range) |
 | Power | Raspberry Pi 27 W USB-C power supply |
@@ -40,8 +40,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
   chamber
 - 4 × M3 × 12 mm countersunk screws (side screws for the front panel), 4 × M3 × 10 mm (speaker chamber, through its ears)
   and 4 × M3 × 6 mm (screen ring)
-- 11 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 3 for the mic board, 4 for the speaker (its
-  bosses are pilot holes)
+- 7 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 3 for the mic board (their posts are pilot holes)
+- 4 × M3 × 8 mm self-tapping pan-head screws for the speaker (M2.5 heads can pull through its 4.5 mm
+  slots)
 - Closed-cell EVA foam strip, single-sided adhesive, about 10 mm wide: **5 mm thick** for the ring
   between the mic board and the top (the gap is 4 mm, so it squashes and seals; keep the 4 mic holes
   clear), and **3 mm thick** for the speaker chamber gasket
@@ -102,8 +103,8 @@ front panel take a few minutes each to compute because of the grille holes.
 1. **Inserts:** press the heat-set inserts into the front panel's side tabs, the four screen-ring
    bosses and the four chamber bosses.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
-   it (4 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
-   one with one narrow and one wide end (wide end into the screen).
+   it (4 × M3). Connect the 200 mm display cable to the screen first (wide end into the screen,
+   narrow end for the Pi).
 3. **Speaker:** screw the speaker onto its flat square seat on the back of the front panel (the
    whole frame sits flat on it, so no air leaks round the speaker) and connect the wire. Stick the 3 mm foam gasket around the chamber's open edge, pass the wire out through the
    small hole in the chamber's back, and press the chamber over the speaker. Fix it from behind with
@@ -131,7 +132,7 @@ front panel take a few minutes each to compute because of the grille holes.
    - **Mute:** each press turns the microphone off or back on. While it is off, the button's light
      is on and the face shows "Microphone off".
 6. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
-   under the top grille (the hole at the point of the triangle, by the USB socket, faces the back). Connect it to the Pi with the right-angle USB cable, and connect the speaker
+   under the top grille (the hole at the point of the triangle, by the USB socket, faces the right-hand side seen from the front, where there is room for the plug). Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.
 7. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
    (or `0`: the setup script asks which), slide the front panel in, and fix

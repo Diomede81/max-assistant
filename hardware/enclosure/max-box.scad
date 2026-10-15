@@ -18,12 +18,12 @@ wall = 2.6;       // shell wall thickness
 front_t = 4;      // front panel thickness
 
 /* ---------------- Round screen (Waveshare 4inch DSI LCD (C), 720x720) ---------------- */
-screen_glass_d = 125.9; // MEASURED: outer diameter of the glass/cover
+screen_glass_d = 126;   // DATASHEET (measured 125.9): outer diameter of the glass/cover
 screen_view_d  = 102.3; // MEASURED: visible (active) diameter
 screen_pcb     = [85.3, 68.6]; // MEASURED: rectangular board behind the glass, incl. its connector
 screen_body_d  = norm(screen_pcb); // board's diagonal: clears it whichever way round it sits
-screen_glass_t = 5.9;   // MEASURED: glass thickness (sits in a recess in the front panel)
-screen_depth   = 16.8;  // MEASURED: module depth behind the glass (for clearance only)
+screen_glass_t = 6;     // DATASHEET (measured 5.9): glass thickness (sits in a recess in the front panel)
+screen_depth   = 16.8;  // MEASURED: module depth behind the glass (datasheet 11; clearance only)
 screen_cz      = H - 77; // centre height of the screen
 screen_boss_a  = [35, 145, 215, 325]; // screen ring screw angles (clear of the side tabs and mic board)
 screen_boss_r  = screen_glass_d/2 + 6;
@@ -32,8 +32,9 @@ lip            = 1.4;   // front lip that holds the glass
 
 /* ---------------- Speaker (Visaton FRS 7, 4 ohm) ---------------- */
 spk_frame     = 66.5;   // CONFIRMED: square frame size fits
-spk_cutout_d  = 61;     // baffle cutout (datasheet)
-spk_hole_sq   = 52.5;   // MEASURED: square spacing of the 4 mounting holes, centre to centre
+spk_cutout_d  = 61;     // baffle cutout (datasheet: 60)
+spk_pilot     = 2.6;    // M3 self-tapping screws: their heads can't pull through the frame's 4.5 mm slots
+spk_hole_sq   = 53;     // DATASHEET (measured 52.5; the holes are 4.5 x 6 slots): square spacing of the 4 mounting holes
 spk_depth     = 32;     // mounting depth
 spk_seat      = spk_frame + 1; // flat seat on the front panel's back for the whole frame
 spk_cz        = 46;     // centre height of the speaker
@@ -70,11 +71,11 @@ mic_board_d = 100.2;    // MEASURED: board diameter
 mic_stack   = 15.5;     // MEASURED: board plus parts and speaker cable underneath (7.8 mm board alone)
 mic_cy      = D/2 + 5;  // board moved back so the parts underneath clear the screen and its ring
 // 3 mounting holes in a triangle, measured 60.1, 60.1 and 40.7 mm apart, all on one circle round the
-// board's centre. The hole between the two long sides faces the USB socket, which points back
-// towards the Pi (90 degrees = towards the back wall).
+// board's centre. The hole between the two long sides faces the USB socket on the board's edge, which
+// points to the right-hand side (0 degrees): the only side with room for the plug (~18 mm).
 mic_tri     = [60.1, 40.7]; // MEASURED: long sides, short side
 mic_post_r  = mic_tri[0]^2 / sqrt(4*mic_tri[0]^2 - mic_tri[1]^2); // circle through the 3 holes (~31.9)
-mic_post_angles = [90, 90 + 2*asin(mic_tri[0]/2/mic_post_r), 90 - 2*asin(mic_tri[0]/2/mic_post_r)];
+mic_post_angles = [0, 2*asin(mic_tri[0]/2/mic_post_r), -2*asin(mic_tri[0]/2/mic_post_r)];
 mic_gap     = 4;        // board-to-top gap (fill with a foam ring to seal the mics)
 mic_hole_d  = 1.6;      // top perforation
 mic_area_d  = 92;
@@ -190,7 +191,7 @@ module front_panel() {
     }
     // screen: visible window + recess for the glass from behind
     translate([cx, -1, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_view_d, h = front_t + 2, $fn = 180);
-    translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d + 0.8, h = front_t, $fn = 180);
+    translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d + 1.2, h = front_t, $fn = 180);
     // speaker opening through the seat, and the grille (hex holes in a thinned area)
     translate([cx, front_t - 1, spk_cz]) rotate([-90, 0, 0]) cylinder(d = spk_cutout_d + 1, h = 7, $fn = 120);
     translate([cx, 1.6, spk_cz]) rotate([-90, 0, 0]) cylinder(d = spk_cutout_d + 3, h = front_t, $fn = 120);
@@ -205,7 +206,7 @@ module front_panel() {
     for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t, screen_cz + screen_boss_r*sin(a)])
       rotate([-90, 0, 0]) cylinder(d = insert_d, h = insert_l + 2);
     for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 1, spk_cz + dz*spk_hole_sq/2])
-      rotate([-90, 0, 0]) cylinder(d = m25_pilot, h = 6);
+      rotate([-90, 0, 0]) cylinder(d = spk_pilot, h = 6);
     for (p = chamber_bosses()) translate([p[0], front_t, p[1]]) rotate([-90, 0, 0]) cylinder(d = insert_d, h = insert_l + 2);
   }
 }

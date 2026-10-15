@@ -20,7 +20,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | Microphones / sound | ReSpeaker XVF3800 USB 4-mic array (its built-in 5 W amplifier drives the speaker) |
 | Speaker | Visaton FRS 7, 4 Ω (2.5″ full-range) |
 | Power | Raspberry Pi 27 W USB-C power supply |
-| Buttons | 2 × 12 mm panel-mount momentary push buttons (normally open): power on the back, mute on top |
+| Buttons | 2 × 12 mm panel-mount momentary push buttons (normally open) with a 3-6 V light, e.g. sourcing map "Momentary Metal Push Button Switch Flat Head 12mm 1NO 3-6V Red LED": power on the back, mute on top. Not 12 V lights: the Pi can't light them |
 
 ## Printed parts
 
@@ -47,9 +47,9 @@ print the front panel in a contrasting colour if you like a two-tone look.
   clear), and **3 mm thick** for the speaker chamber gasket
 - 4 × 10 mm rubber feet
 - About 30 cm of speaker wire, a short right-angle USB-A to USB-C cable (mic board to Pi)
-- For the buttons: 4 female-to-female jumper wires (20 cm) and a 2-pin header (2.54 mm) soldered to the Pi's
-  power button pads (J2). Buttons with solder tabs: solder the jumper wires to them, or use crimp
-  connectors
+- For the buttons: 8 female-to-female jumper wires (15-20 cm; cut one end off each and solder it to a
+  button tab, with heat-shrink), and a 2-pin header (2.54 mm) soldered to the Pi's power button
+  pads (J2)
 
 ## Measure before printing
 
@@ -102,11 +102,22 @@ front panel take a few minutes each to compute because of the grille holes.
    be swapped through the slot in the left side, using a fingernail or tweezers, without opening the box.
 5. **Buttons:** fit the mute button through the hole in the top (front right) and the power button
    through the hole in the back, and tighten their nuts from inside.
-   - **Power:** solder a 2-pin header to the Pi 5's J2 pads (its power button connection; see "Adding
-     your own power button" in the Raspberry Pi 5 documentation) and connect the button to it. It
-     works like the Pi's own button: press to turn on, press to turn off safely, hold to force off.
-   - **Mute:** connect the button to GPIO 17 (pin 11) and ground (pin 9). Each press turns the
-     microphone off or back on; the face shows "Microphone off" while it is off.
+   Each button has 4 tabs: two for the switch (often marked C and NO) and two for the light (+ and -).
+
+   | Button | Tab | Goes to |
+   | --- | --- | --- |
+   | Power | switch (both) | the 2-pin header on the Pi 5's J2 pads (either way round) |
+   | Power | light + | pin 1 (3.3 V) |
+   | Power | light - | pin 6 (ground) |
+   | Mute | switch | pin 11 (GPIO 17) and pin 9 (ground), either way round |
+   | Mute | light + | pin 13 (GPIO 27) |
+   | Mute | light - | pin 14 (ground) |
+
+   - **Power** works like the Pi's own button (see "Adding your own power button" in the Raspberry
+     Pi 5 documentation): press to turn on, press to turn off safely, hold to force off. Its light is
+     on while the box is on.
+   - **Mute:** each press turns the microphone off or back on. While it is off, the button's light
+     is on and the face shows "Microphone off".
 6. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
    under the top grille (the hole at the point of the triangle, by the USB socket, faces the back). Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.

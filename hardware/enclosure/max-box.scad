@@ -73,8 +73,8 @@ mic_area_d  = 92;
 
 /* ---------------- Buttons (12 mm panel-mount momentary push buttons) ---------------- */
 btn_d     = 12.2;           // hole for a 12 mm button (use 16.2 for 16 mm buttons)
-btn_body  = [16, 22];       // nut size and depth behind the wall, for clearance
-mute_btn  = [W - 22, 21];   // mute: on top, front right corner (X, Y), on the flat and clear of the mic board
+btn_body  = [16, 30];       // nut size and depth behind the wall (buttons with a light are longer)
+mute_btn  = [W - 22, 23];   // mute: on top, front right corner (X, Y), on the flat and clear of the mic board
 power_btn = [W/2, 130];     // power: on the back (X, Z), above the Pi and its cables
 
 /* ---------------- Fasteners ---------------- */

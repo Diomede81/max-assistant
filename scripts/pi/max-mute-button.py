@@ -8,21 +8,24 @@ so nothing wakes him and no sound leaves the box, and his face shows "Microphone
 The choice survives a restart (kept in /var/lib/max/muted).
 
 Wiring: one leg of a momentary push button to GPIO 17 (pin 11), the other to ground (pin 9).
-No resistor needed: the Pi's own pull-up is used.
+No resistor needed: the Pi's own pull-up is used. A button with a built-in light (3-6 V) can show
+when the microphone is off: light + to GPIO 27 (pin 13), light - to ground (pin 14).
 
 Runs as root under systemd (max-mute-button.service). Uses gpiozero (python3-gpiozero).
-Settings (environment): MAX_RUN_DIR (/run/max), MAX_MUTE_GPIO (17).
+Settings (environment): MAX_RUN_DIR (/run/max), MAX_MUTE_GPIO (17), MAX_MUTE_LED_GPIO (27, "off" for none).
 """
 import os
 import signal
 import sys
 
-from gpiozero import Button
+from gpiozero import LED, Button
 
 RUN_DIR = os.environ.get('MAX_RUN_DIR', '/run/max')
 PIN = int(os.environ.get('MAX_MUTE_GPIO', '17'))
+LED_PIN = os.environ.get('MAX_MUTE_LED_GPIO', '27')
 NOTE = os.path.join(RUN_DIR, 'muted')
 SAVED = '/var/lib/max/muted'
+light = None
 
 
 def log(msg):
@@ -40,6 +43,8 @@ def set_muted(muted):
                 os.remove(path)
         except OSError as err:
             log(f'Could not update {path}: {err}')
+    if light:
+        light.value = muted
 
 
 def toggle():
@@ -49,6 +54,9 @@ def toggle():
 
 
 def main():
+    global light
+    if LED_PIN != 'off':
+        light = LED(int(LED_PIN))  # the button's light: on while the microphone is off
     set_muted(os.path.exists(SAVED))  # /run is emptied at every start: restore the last choice
     button = Button(PIN, pull_up=True, bounce_time=0.05)
     button.when_pressed = toggle

@@ -39,13 +39,20 @@ spk_cz        = 46;     // centre height of the speaker
 grille_hole   = 3.0;    // grille hole size
 grille_pitch  = 4.4;
 
-/* ---------------- Speaker chamber (sealed, ~0.45 L) ---------------- */
+/* ---------------- Speaker chamber (sealed, ~0.48 L) ---------------- */
 ch_wall = 2.4;
 tab_w   = 9;            // side tabs that hold the front panel (chamber must clear them)
-ch_w    = W - 2*wall - 2*tab_w - 3;
+// The body's mouth is narrowed by its rounded edges: everything on the front unit stays inside it,
+// so the unit slides straight in. Bosses on the body's side walls bridge the gap to the tabs.
+tab_in  = R - sqrt(pow(R - wall, 2) - pow(R - front_t, 2)) + 0.4;
+ch_w    = W - 2*(tab_in + tab_w) - 2; // clear of the front panel's side tabs
+ch_gasket = 1.5;        // compressed foam between the chamber's open edge and the front panel
+ch_y0   = front_t + ch_gasket;
+ch_ear  = 9;            // screw ears on the chamber's sides (screwed from behind)
+ch_ear_z = [40, 72];
 ch_z0   = wall + 6;     // bottom of chamber (clears the body's rounded bottom-front edge as it slides in)
 ch_z1   = screen_cz - screen_glass_d/2 - 3; // top of chamber (below the screen glass and ring)
-ch_d    = 58;           // outer depth behind the front panel
+ch_d    = 70;           // outer depth (clear of the Pi behind it)
 
 /* ---------------- Raspberry Pi 5 (+ SSD HAT+ and Active Cooler) ---------------- */
 pi_l = 85; pi_w = 56;
@@ -98,9 +105,6 @@ module inner() { translate([wall, wall, wall]) rounded_box(W - 2*wall, D - 2*wal
 // Side tabs on the front panel: Z positions; screws go through the body's side walls.
 tab_z = [ch_z0 + 14, H - 24];
 tab_y = front_t + 8;     // screw axis (Y)
-// The body's mouth is narrowed by its rounded edges: everything on the front unit stays inside it,
-// so the unit slides straight in. Bosses on the body's side walls bridge the gap to the tabs.
-tab_in = R - sqrt(pow(R - wall, 2) - pow(R - front_t, 2)) + 0.4;
 
 /* ================= BODY ================= */
 module body() {
@@ -178,7 +182,7 @@ module front_panel() {
           for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 0.5, spk_cz + dz*spk_hole_sq/2])
             rotate([-90, 0, 0]) cylinder(d = 7, h = 5);
           // chamber flange bosses
-          for (p = chamber_bosses()) translate([p[0], front_t - 0.5, p[1]]) rotate([-90, 0, 0]) cylinder(d = 8, h = 6);
+          for (p = chamber_bosses()) translate([p[0], front_t - 0.5, p[1]]) rotate([-90, 0, 0]) cylinder(d = 8, h = ch_boss_top - front_t + 0.5);
         }
       }
     }
@@ -204,27 +208,33 @@ module front_panel() {
 }
 
 /* ================= SPEAKER CHAMBER (sealed box behind the grille) ================= */
-function chamber_bosses() = [[cx - ch_w/2 + 6, ch_z0 + 6], [cx + ch_w/2 - 6, ch_z0 + 6], [cx - ch_w/2 + 6, ch_z1 - 6], [cx + ch_w/2 - 6, ch_z1 - 6]];
+// Ear screw positions (X, Z): outside the chamber's side walls, reached from behind with a screwdriver.
+function chamber_bosses() = [for (sx = [-1, 1], z = ch_ear_z) [cx + sx*(ch_w/2 + ch_ear/2), z]];
+ch_boss_top = ch_y0 + 4; // Y of the front panel's chamber boss tops: the ears sit on them
 
 module chamber() {
-  // Built in place: open face towards the front panel (Y = front_t), back wall at Y = front_t + ch_d.
+  // Built in place: open face towards the front panel (foam gasket between), back wall at Y = ch_y0 + ch_d.
   difference() {
-    translate([cx - ch_w/2, front_t, ch_z0]) cube([ch_w, ch_d, ch_z1 - ch_z0]);
-    translate([cx - ch_w/2 + ch_wall, front_t - 1, ch_z0 + ch_wall]) cube([ch_w - 2*ch_wall, ch_d - ch_wall + 1, ch_z1 - ch_z0 - 2*ch_wall]);
+    union() {
+      translate([cx - ch_w/2, ch_y0, ch_z0]) cube([ch_w, ch_d, ch_z1 - ch_z0]);
+      // ears, with a 45 degree brace behind each so they print without supports (back wall down)
+      for (p = chamber_bosses()) hull() {
+        translate([p[0], ch_boss_top, p[1]]) rotate([-90, 0, 0]) cylinder(d = 10, h = 5);
+        translate([p[0] < cx ? cx - ch_w/2 : cx + ch_w/2 - 1, ch_boss_top, p[1] - 5]) cube([1, 5 + ch_ear, 10]);
+      }
+    }
+    translate([cx - ch_w/2 + ch_wall, ch_y0 - 1, ch_z0 + ch_wall]) cube([ch_w - 2*ch_wall, ch_d - ch_wall + 1, ch_z1 - ch_z0 - 2*ch_wall]);
     // speaker wire hole (seal with hot glue after wiring)
-    translate([cx + ch_w/2 - 12, front_t + ch_d - ch_wall - 1, ch_z1 - 12]) rotate([-90, 0, 0]) cylinder(d = 3.5, h = ch_wall + 2);
-  }
-  // corner blocks with screw holes into the front panel's inserts
-  difference() {
-    for (p = chamber_bosses()) translate([p[0] - 6, front_t, p[1] - 6]) cube([12, 8, 12]);
-    for (p = chamber_bosses()) translate([p[0], front_t - 1, p[1]]) rotate([-90, 0, 0]) {
-      cylinder(d = m3, h = 10);
-      translate([0, 0, 6]) cylinder(d = 6.2, h = 4);
+    translate([cx + ch_w/2 - 12, ch_y0 + ch_d - ch_wall - 1, ch_z1 - 12]) rotate([-90, 0, 0]) cylinder(d = 3.5, h = ch_wall + 2);
+    // ear screws (M3 x 10 from behind) and room for the screw head and screwdriver
+    for (p = chamber_bosses()) translate([p[0], ch_boss_top - 1, p[1]]) rotate([-90, 0, 0]) {
+      cylinder(d = m3, h = 7);
+      translate([0, 0, 6]) cylinder(d = 6.5, h = 30);
     }
   }
 }
 
-function chamber_volume_l() = ((ch_w - 2*ch_wall) * (ch_d - ch_wall) * (ch_z1 - ch_z0 - 2*ch_wall)) / 1e6;
+function chamber_volume_l() = ((ch_w - 2*ch_wall) * (ch_d - ch_wall + ch_gasket) * (ch_z1 - ch_z0 - 2*ch_wall)) / 1e6;
 
 /* ================= SCREEN RETAINING RING ================= */
 // The ring sits on the boss tops; a collar underneath reaches forward to the back of the glass.
@@ -271,7 +281,7 @@ module stand_ins() {
 
 if (part == "body") rotate([-90, 0, 0]) translate([0, -D, 0]) body();               // print on its back, open front up
 else if (part == "front") rotate([90, 0, 0]) front_panel();                           // print face down
-else if (part == "chamber") rotate([-90, 0, 0]) translate([0, -(front_t + ch_d), 0]) chamber(); // back wall on the bed
+else if (part == "chamber") rotate([-90, 0, 0]) translate([0, -(ch_y0 + ch_d), 0]) chamber(); // back wall on the bed
 else if (part == "screen_ring") translate([0, 0, ring_collar + ring_t]) rotate([180, 0, 0]) screen_ring(); // flat side down
 else if (part == "assembly") {
   echo(str("Speaker chamber volume: ", chamber_volume_l(), " L"));

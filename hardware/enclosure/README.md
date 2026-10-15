@@ -28,7 +28,7 @@ An interactive 3D view is in `viewer/index.html` (serve the `viewer` folder and 
 | --- | --- | --- |
 | `stl/body.stl` | Back, sides, top (mic grille) and bottom, open at the front | On its back, open side up |
 | `stl/front.stl` | Front panel: screen window, speaker grille, mounting tabs | Face down |
-| `stl/chamber.stl` | Sealed speaker box (≈0.44 L) that screws to the back of the front panel | Back wall down |
+| `stl/chamber.stl` | Sealed speaker box (≈0.49 L) that screws to the back of the front panel by four ears on its sides | Back wall down |
 | `stl/screen_ring.stl` | Clamp ring that holds the screen in its recess | Flat |
 
 PLA or PETG, 0.2 mm layers, 3 walls, 20% infill. No supports needed. A matte filament looks best;
@@ -38,7 +38,7 @@ print the front panel in a contrasting colour if you like a two-tone look.
 
 - 12 × M3 heat-set inserts: 4 in the front-panel side tabs, 4 for the screen ring, 4 for the speaker
   chamber
-- 4 × M3 × 12 mm countersunk screws (side screws for the front panel), 4 × M3 × 8 mm (speaker chamber)
+- 4 × M3 × 12 mm countersunk screws (side screws for the front panel), 4 × M3 × 10 mm (speaker chamber, through its ears)
   and 4 × M3 × 6 mm (screen ring)
 - 11 × M2.5 × 6 mm self-tapping screws: 4 for the Pi, 3 for the mic board, 4 for the speaker (its
   bosses are pilot holes)
@@ -93,10 +93,11 @@ front panel take a few minutes each to compute because of the grille holes.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
    it (4 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
    one with one narrow and one wide end (wide end into the screen).
-3. **Speaker:** screw the speaker to the back of the front panel behind the grille, connect the wire,
-   then fix the chamber over it (4 × M3) with the foam gasket around its edge. Pass the wire through
-   the hole in the chamber's back and seal the hole with hot glue: the box must be airtight to sound
-   full.
+3. **Speaker:** screw the speaker to the back of the front panel behind the grille and connect the
+   wire. Stick the 3 mm foam gasket around the chamber's open edge, pass the wire out through the
+   small hole in the chamber's back, and press the chamber over the speaker. Fix it from behind with
+   4 × M3 × 10 mm screws through the ears on its sides (the screwdriver goes in alongside the
+   chamber). Seal the wire hole with hot glue: the box must be airtight to sound full.
 4. **Pi:** fit the Active Cooler (and the SSD kit, if you have one) and insert the microSD card, then
    screw the Pi to the four posts on the back wall (USB-C power socket facing down). The card can later
    be swapped through the slot in the left side, using a fingernail or tweezers, without opening the box.
@@ -127,7 +128,7 @@ front panel take a few minutes each to compute because of the grille holes.
 
 ## Design notes
 
-- **Sound:** the speaker sits in its own sealed 0.44 L chamber. Sealed is what gives a small driver
+- **Sound:** the speaker sits in its own sealed 0.49 L chamber. Sealed is what gives a small driver
   fuller, tighter sound; a driver loose inside a case sounds thin and boxy.
 - **Microphones:** the mic board is foam-sealed to the perforated top and kept away from the speaker
   chamber, so the speaker's vibration and sound reach the mics as little as possible. The XVF3800's

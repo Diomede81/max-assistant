@@ -496,6 +496,11 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.ambient?.noteEvents(events);
     const lines = eventLines(events);
     const day = this.card?.id === 'my-day' && Date.now() < this.card.until ? this.card : undefined;
+    if (day && this.actions) {
+      // Redrawn by its owner, so the to-dos' Done buttons keep working (and what was ticked stays).
+      this.actions.dayCard({ ...this.actions.dayInfo, events: lines }, true);
+      return;
+    }
     if (day) {
       const rest = (day.lines ?? []).filter((l) => l.tag !== 'event' && l.tag !== 'done');
       this.showCard({ ...day, lines: [...lines, ...rest], ttlMs: Math.max(DAY_CARD_MS, day.until - Date.now()) }, this.handlers);

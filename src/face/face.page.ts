@@ -50,6 +50,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #cardEl .clines { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; text-align: left; display: grid; align-content: start; gap: 1.1vmin; margin: .6vmin 1vmin 0; }
 #cardEl .clines::-webkit-scrollbar { display: none; }
 #cardEl .cl { display: grid; grid-template-columns: 11vmin 1fr; gap: 1.6vmin; align-items: baseline; }
+#cardEl .cl.act { grid-template-columns: 11vmin 1fr auto; align-items: center; }
+#cardEl .cl .lact { font: inherit; font-size: 2.8vmin; font-weight: 700; padding: 1.2vmin 2.6vmin; border-radius: 99vmin; border: .4vmin solid #2f8a7a; background: #1d5d52; color: #e9fff8; }
+#cardEl .cl.done .lact { background: transparent; border-color: #2b4a45; color: #a9cfc6; }
+#cardEl .cl.done .x { text-decoration: line-through; }
+#cardEl .cl .lact:active { transform: scale(.95); }
 #cardEl .cl .t { font-size: 2.8vmin; color: #8fb8ae; font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; }
 #cardEl .cl .x { font-size: 3.3vmin; line-height: 1.25; }
 #cardEl .cl .x small { display: block; font-size: 2.6vmin; color: var(--dim); margin-top: .2vmin; }
@@ -185,8 +190,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       { time: '10:00', text: 'Q4 planning', sub: 'until 11:00 · Room 2', tag: 'event' },
       { time: '12:30', text: 'Lunch with Marco', tag: 'event' },
       { time: '15:00', text: 'Call Mum', tag: 'reminder' },
-      { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue' },
-      { time: 'todo', text: 'Send the Q3 report', tag: 'critical' }] },
+      { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue', action: { id: 'done-1', label: 'Done' } },
+      { time: 'todo', text: 'Send the Q3 report', tag: 'critical', action: { id: 'done-2', label: 'Done' } },
+      { time: '✓', text: 'Book the dentist', sub: 'Done', tag: 'done', action: { id: 'undo-3', label: 'Undo' } }] },
   };
   SCENES.push(['speaking', 'happy', 'Card steps'], ['speaking', 'neutral', 'Card answer'], ['speaking', 'neutral', 'Card news']);
   SCENES.push(['idle', 'neutral', 'Notify email'], ['idle', 'concerned', 'Notify todo']);
@@ -326,9 +332,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       if (c.body) h += '<div class="cbody">' + escC(c.body) + '</div>';
       if (c.image) h += '<img class="cimg" src="' + escC(c.image) + '" alt="">';
       if (c.lines && c.lines.length) {
-        h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +
+        h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + (l.action ? ' act' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +
           (l.tag && l.tag !== 'event' && l.tag !== 'done' && l.tag !== 'reminder' ? '<span class="tag ' + l.tag + '">' + l.tag.toUpperCase() + '</span>' : '') +
-          (l.tag === 'reminder' ? ' 🔔' : '') + (l.sub ? '<small>' + escC(l.sub) + '</small>' : '') + '</div></div>').join('') + '</div>';
+          (l.tag === 'reminder' ? ' 🔔' : '') + (l.sub ? '<small>' + escC(l.sub) + '</small>' : '') + '</div>' +
+          (l.action ? '<button class="lact" data-a="' + escC(l.action.id) + '">' + escC(l.action.label) + '</button>' : '') + '</div>').join('') + '</div>';
       }
     }
     if (c.actions && c.actions.length) h += '<div class="cacts">' + c.actions.map((a) => '<button class="' + (a.style || '') + '" data-a="' + escC(a.id) + '">' + escC(a.label) + '</button>').join('') + '</div>';

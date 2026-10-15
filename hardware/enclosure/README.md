@@ -74,6 +74,17 @@ marked `MEASURED` at the top of `max-box.scad`.
 Then re-export the parts (below). Printing just the front panel's screen area as a test ring first is
 a cheap way to check the screen fit.
 
+## Test prints first
+
+Two small pieces prove the critical fits for a few grams of filament before the big parts:
+
+| Part | What it proves | Print |
+| --- | --- | --- |
+| `screen_test` | The screen fits its recess and window, and the ring clamps it with its 4 screws | Face down |
+| `fit_test` | The front 24 mm of the body: the front panel slides in and the side screws line up | Cut face down |
+
+Export them like the other parts (`-D 'part="screen_test"'`, `-D 'part="fit_test"'`).
+
 ## Re-exporting the parts
 
 Install [OpenSCAD](https://openscad.org), then from this folder:

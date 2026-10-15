@@ -156,8 +156,9 @@ module body() {
     // buttons: mute on top, power on the back
     translate([mute_btn[0], mute_btn[1], H - wall - 1]) cylinder(d = btn_d, h = wall + 2);
     translate([power_btn[0], D - wall - 1, power_btn[1]]) rotate([-90, 0, 0]) cylinder(d = btn_d, h = wall + 2);
-    // power cable notch at the bottom of the back wall (USB-C from the Pi goes down and out)
-    translate([pi_x0 + 20, D - wall - 10, -1]) cube([14, wall + 12, 9]);
+    // power cable notch at the bottom of the back wall (USB-C from the Pi goes down and out). Wide enough
+    // to sit under the Pi's USB-C socket wherever it is along that edge; starts behind the rear feet.
+    translate([pi_x0 + 4, D - wall - 6, -1]) cube([36, wall + 8, 9]);
     // rubber feet recesses
     for (x = [16, W - 16], y = [16, D - 16]) translate([x, y, -0.01]) cylinder(d = 10.5, h = 1);
   }
@@ -282,6 +283,17 @@ module stand_ins() {
 if (part == "body") rotate([-90, 0, 0]) translate([0, -D, 0]) body();               // print on its back, open front up
 else if (part == "front") rotate([90, 0, 0]) front_panel();                           // print face down
 else if (part == "chamber") rotate([-90, 0, 0]) translate([0, -(ch_y0 + ch_d), 0]) chamber(); // back wall on the bed
+// Test prints: cheap pieces that prove the critical fits before the big parts.
+// "screen_test": the front panel's screen area, for the screen, its ring and screws (print face down).
+// "fit_test": the front 24 mm of the body, for sliding the front panel in and the side screws.
+else if (part == "screen_test") rotate([90, 0, 0]) intersection() {
+  front_panel();
+  translate([cx, -1, screen_cz]) rotate([-90, 0, 0]) cylinder(r = screen_boss_r + 6, h = 30, $fn = 180);
+}
+else if (part == "fit_test") rotate([-90, 0, 0]) translate([0, -24, 0]) intersection() {
+  body();
+  translate([-1, -1, -1]) cube([W + 2, 25, H + 2]);
+}
 else if (part == "screen_ring") translate([0, 0, ring_collar + ring_t]) rotate([180, 0, 0]) screen_ring(); // flat side down
 else if (part == "assembly") {
   echo(str("Speaker chamber volume: ", chamber_volume_l(), " L"));

@@ -61,7 +61,7 @@ ch_z1   = screen_cz - screen_glass_d/2 - 3; // top of chamber (below the screen 
 ch_d    = 70;           // outer depth (clear of the Pi behind it)
 
 /* ---------------- Raspberry Pi 5 (+ SSD HAT+ and Active Cooler) ---------------- */
-pi_l = 85; pi_w = 56;
+pi_l = 85; pi_w = 56;   // Raspberry Pi 5 mechanical drawing (RP-008347-DS-1): holes 58 x 49, 3.5 from the edges
 pi_holes = [[3.5,3.5],[61.5,3.5],[3.5,52.5],[61.5,52.5]]; // board coords (mm)
 pi_standoff = 8;        // gap between back wall and board
 pi_x0 = wall + 3;       // board left edge (microSD end): close to the wall so the card is reachable
@@ -162,9 +162,9 @@ module body() {
     // buttons: mute on top, power on the back
     translate([mute_btn[0], mute_btn[1], H - wall - 1]) cylinder(d = btn_d, h = wall + 2);
     translate([power_btn[0], D - wall - 1, power_btn[1]]) rotate([-90, 0, 0]) cylinder(d = btn_d, h = wall + 2);
-    // power cable notch at the bottom of the back wall (USB-C from the Pi goes down and out). Wide enough
-    // to sit under the Pi's USB-C socket wherever it is along that edge; starts behind the rear feet.
-    translate([pi_x0 + 4, D - wall - 6, -1]) cube([36, wall + 8, 9]);
+    // power cable notch at the bottom of the back wall: centred under the Pi's USB-C socket (11.2 mm from
+    // the board's microSD end, Raspberry Pi 5 drawing), with room either side; starts behind the rear feet
+    translate([pi_x0 + 11.2 - 12, D - wall - 6, -1]) cube([24, wall + 8, 9]);
     // rubber feet recesses
     for (x = [16, W - 16], y = [16, D - 16]) translate([x, y, -0.01]) cylinder(d = 10.5, h = 1);
   }

@@ -104,8 +104,8 @@ front panel take a few minutes each to compute because of the grille holes.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
    it (4 × M3). Connect the ribbon cable to the screen first: on a Pi 5 use the
    one with one narrow and one wide end (wide end into the screen).
-3. **Speaker:** screw the speaker to the back of the front panel behind the grille and connect the
-   wire. Stick the 3 mm foam gasket around the chamber's open edge, pass the wire out through the
+3. **Speaker:** screw the speaker onto its flat square seat on the back of the front panel (the
+   whole frame sits flat on it, so no air leaks round the speaker) and connect the wire. Stick the 3 mm foam gasket around the chamber's open edge, pass the wire out through the
    small hole in the chamber's back, and press the chamber over the speaker. Fix it from behind with
    4 × M3 × 10 mm screws through the ears on its sides (the screwdriver goes in alongside the
    chamber). Seal the wire hole with hot glue: the box must be airtight to sound full.

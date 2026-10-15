@@ -35,6 +35,7 @@ spk_frame     = 66.5;   // CONFIRMED: square frame size fits
 spk_cutout_d  = 61;     // baffle cutout (datasheet)
 spk_hole_sq   = 52.5;   // MEASURED: square spacing of the 4 mounting holes, centre to centre
 spk_depth     = 32;     // mounting depth
+spk_seat      = spk_frame + 1; // flat seat on the front panel's back for the whole frame
 spk_cz        = 46;     // centre height of the speaker
 grille_hole   = 3.0;    // grille hole size
 grille_pitch  = 4.4;
@@ -179,9 +180,9 @@ module front_panel() {
           // screen ring bosses
           for (a = screen_boss_a) translate([cx + screen_boss_r*cos(a), front_t - 0.5, screen_cz + screen_boss_r*sin(a)])
             rotate([-90, 0, 0]) cylinder(d = 8, h = screen_boss_h);
-          // speaker screw bosses
-          for (dx = [-1, 1], dz = [-1, 1]) translate([cx + dx*spk_hole_sq/2, front_t - 0.5, spk_cz + dz*spk_hole_sq/2])
-            rotate([-90, 0, 0]) cylinder(d = 7, h = 5);
+          // speaker seat: a flat square the whole frame sits on, so no air leaks round the speaker
+          // from its front into the chamber (that would cancel the bass); its screws go into it
+          translate([cx - spk_seat/2, front_t - 0.5, spk_cz - spk_seat/2]) cube([spk_seat, 5, spk_seat]);
           // chamber flange bosses
           for (p = chamber_bosses()) translate([p[0], front_t - 0.5, p[1]]) rotate([-90, 0, 0]) cylinder(d = 8, h = ch_boss_top - front_t + 0.5);
         }
@@ -190,7 +191,8 @@ module front_panel() {
     // screen: visible window + recess for the glass from behind
     translate([cx, -1, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_view_d, h = front_t + 2, $fn = 180);
     translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d + 0.8, h = front_t, $fn = 180);
-    // speaker grille (hex holes in a thinned area)
+    // speaker opening through the seat, and the grille (hex holes in a thinned area)
+    translate([cx, front_t - 1, spk_cz]) rotate([-90, 0, 0]) cylinder(d = spk_cutout_d + 1, h = 7, $fn = 120);
     translate([cx, 1.6, spk_cz]) rotate([-90, 0, 0]) cylinder(d = spk_cutout_d + 3, h = front_t, $fn = 120);
     intersection() {
       translate([cx, -1, spk_cz]) rotate([-90, 0, 0]) cylinder(d = spk_cutout_d - 1, h = 4, $fn = 120);
@@ -268,8 +270,8 @@ module stand_ins() {
   color("#111") translate([cx, lip, screen_cz]) rotate([-90, 0, 0]) cylinder(d = screen_glass_d, h = screen_glass_t, $fn = 180);
   color("#2a6") translate([cx - screen_pcb[0]/2, lip + screen_glass_t, screen_cz - screen_pcb[1]/2]) cube([screen_pcb[0], screen_depth, screen_pcb[1]]);
   // speaker
-  color("#555") translate([cx - spk_frame/2, front_t, spk_cz - spk_frame/2]) cube([spk_frame, 4, spk_frame]);
-  color("#444") translate([cx, front_t + 4, spk_cz]) rotate([-90, 0, 0]) cylinder(d1 = 50, d2 = 30, h = spk_depth - 4);
+  color("#555") translate([cx - spk_frame/2, front_t + 4.5, spk_cz - spk_frame/2]) cube([spk_frame, 4, spk_frame]);
+  color("#444") translate([cx, front_t + 8.5, spk_cz]) rotate([-90, 0, 0]) cylinder(d1 = 50, d2 = 30, h = spk_depth - 4);
   // Pi stack
   color("#0a5") translate([pi_x0, D - wall - pi_standoff - 1.6, pi_z0]) cube([pi_l, 1.6, pi_w]);
   color("#999") translate([pi_x0 + 5, D - wall - pi_standoff - pi_stack, pi_z0 + 3]) cube([pi_l - 10, pi_stack - 1.6, pi_w - 6]);

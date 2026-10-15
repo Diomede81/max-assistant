@@ -13,6 +13,7 @@ import { AmbientService } from './ambient.service';
 import { extractEmails, MailItem } from './emails';
 import { FaceService } from './face.service';
 import { Card, CardHandlers } from './screen';
+import { LockService } from '../lock/lock.service';
 
 const TICK_MS = 15_000;
 const TODO_MS = 60_000;
@@ -58,6 +59,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly mcp?: McpServersService,
     @Optional() private readonly routines?: RoutinesService,
     @Optional() private readonly timerService?: TimerService,
+    @Optional() private readonly lock?: LockService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'notifications');
   }
@@ -98,6 +100,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
 
   /** Shows the next waiting notification if now is a good moment. */
   deliver(): void {
+    if (this.lock?.locked) return; // kept until the start-up code is entered
     if (this.guest) {
       const shown = this.face.info().card?.id;
       if (shown?.startsWith('notify-')) this.face.dismissCard(shown); // switched to guest mode while one showed
@@ -138,7 +141,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
 
   /** Once a day per to-do: when its due date has passed (or, with a time, as soon as it passes). */
   checkTodos(now = Date.now()): void {
-    if (!this.settings.notifyTodos || !this.todos || this.guest) return;
+    if (!this.settings.notifyTodos || !this.todos || this.guest || this.lock?.locked) return;
     const today = localToday();
     const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', hourCycle: 'h23' }).format(now));
     const overdue = this.todos.items().filter(({ task }) => {
@@ -195,7 +198,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
    * a start only notes what's already there (except mail from the last few minutes).
    */
   async checkEmail(now = Date.now()): Promise<void> {
-    if (!this.settings.notifyEmail || !this.mcp || this.guest) return;
+    if (!this.settings.notifyEmail || !this.mcp || this.guest || this.lock?.locked) return;
     const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', hourCycle: 'h23' }).format(now));
     if (hour < 7 || hour >= 22) return;
     const pick = this.emailAction();

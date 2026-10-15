@@ -9,6 +9,7 @@ import { ModesService } from '../memory/modes.service';
 import { APP_CONFIG, AppConfig } from '../config';
 import { BuiltinActionsService } from './builtin-actions.service';
 import { ScreenToolsService } from './screen-tools.service';
+import { LockService } from '../lock/lock.service';
 import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
 import { RoutinesService } from '../routines/routines.service';
@@ -59,6 +60,7 @@ export class ToolRouterService {
     @Optional() private readonly routines?: RoutinesService,
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly screenTools?: ScreenToolsService,
+    @Optional() private readonly lock?: LockService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -113,6 +115,8 @@ export class ToolRouterService {
   private activityId = 0;
 
   async call(name: string, args: Record<string, unknown>): Promise<string> {
+    // Belt and braces: nothing runs while the start-up code hasn't been entered.
+    if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
     const what = describeActivity(name);
     if (!what) return this.run(name, args);
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };

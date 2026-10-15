@@ -18,6 +18,7 @@ import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService } from '../face/ambient.service';
+import { LockService } from '../lock/lock.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -38,6 +39,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
   @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
+  @Optional() @Inject(LockService) private readonly lock?: LockService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -164,6 +166,21 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/activity/clear') {
       this.memory.clearActivity();
       return this.redirect(res, '/?ok=Activity%20log%20cleared.#activity');
+    }
+    if (req.method === 'POST' && url.pathname.startsWith('/lock/') && this.lock) {
+      const f = await readForm(req);
+      const action = url.pathname.slice('/lock/'.length);
+      let out: { ok: boolean; message: string };
+      if (action === 'set') {
+        out = f.get('code') !== f.get('repeat') ? { ok: false, message: 'The two new codes are different.' } : this.lock.setCode(f.get('code') ?? '', f.get('current') ?? '');
+      } else if (action === 'off') {
+        out = this.lock.setCode(undefined, f.get('current') ?? '');
+      } else if (action === 'reset' && this.auth.enabled && f.get('confirm') === 'yes') {
+        out = this.lock.setCode(undefined, undefined, true);
+      } else {
+        out = { ok: false, message: this.auth.enabled ? 'Tick the box to confirm.' : 'Removing a forgotten code needs a password on this page (PANEL_PASSWORD).' };
+      }
+      return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
     if (req.method === 'POST' && url.pathname === '/location' && this.location) {
@@ -447,6 +464,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: await this.device?.status(),
+      lock: this.lock && this.cfg.face.enabled ? { enabled: this.lock.enabled, locked: this.lock.locked, canReset: this.auth.enabled } : undefined,
       screen: this.ambient && this.cfg.face.enabled
         ? { ...this.ambient.settings, photos: this.ambient.photos(), place: this.location?.home?.place || undefined }
         : undefined,

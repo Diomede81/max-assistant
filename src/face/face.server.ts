@@ -7,6 +7,7 @@ import { FaceInfo, FaceService } from './face.service';
 import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
 import { AmbientService } from './ambient.service';
+import { LockService } from '../lock/lock.service';
 
 /** Changes every time Max starts: an open face page from before an update reloads itself. */
 const BOOT_ID = `${Date.now().toString(36)}-${process.pid}`;
@@ -29,6 +30,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly device?: DeviceService,
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly ambient?: AmbientService,
+    @Optional() private readonly lock?: LockService,
   ) {}
 
   onModuleInit(): void {
@@ -124,6 +126,26 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       void (async () => {
         const ok = url.pathname === '/tap' ? (await this.face.tapped(), true) : await this.face.cardAction(url.searchParams.get('id') ?? '', url.searchParams.get('action') ?? '');
         res.writeHead(ok ? 200 : 404, { 'Content-Type': 'text/plain' }).end(ok ? 'ok' : 'gone');
+      })();
+      return;
+    }
+    if (req.method === 'POST' && (url.pathname === '/unlock' || url.pathname === '/lock') && this.lock) {
+      // The start-up code keypad, and the menu's Lock. Only the screen itself (same origin).
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      const lock = this.lock;
+      void (async () => {
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 200) break;
+        }
+        const out = url.pathname === '/lock' ? { ok: lock.lock(), message: '' } : lock.unlock(new URLSearchParams(body).get('code') ?? '');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(out));
+        this.broadcast('info', this.face.info());
       })();
       return;
     }

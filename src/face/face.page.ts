@@ -80,6 +80,23 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   font-size: 10vmin; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 #frame .fclock small { display: block; font-size: 3.4vmin; font-weight: 600; margin-top: 1.2vmin; opacity: .9; }
 #frame .fshade { position: absolute; left: 0; right: 0; bottom: 0; height: 40vh; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+/* Start-up code keypad. */
+#lock { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .94); color: #e9fff8; text-align: center; }
+#lock[hidden] { display: none; }
+#lock .lk { display: grid; gap: 2vmin; justify-items: center; }
+#lock .lt { font-size: 4.4vmin; font-weight: 700; }
+#lock .dots { display: flex; gap: 2.4vmin; height: 4vmin; align-items: center; }
+#lock .dots i { width: 2.8vmin; height: 2.8vmin; border-radius: 50%; border: .45vmin solid #5f8f86; box-sizing: border-box; }
+#lock .dots i.on { background: var(--ink); border-color: var(--ink); }
+#lock .dots.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-2vmin); } 75% { transform: translateX(2vmin); } }
+#lock .lmsg { font-size: 3vmin; color: #ffb36b; min-height: 3.6vmin; }
+#lock .pad { display: grid; grid-template-columns: repeat(3, 13vmin); gap: 2vmin 3vmin; }
+#lock .pad button { font: inherit; font-size: 5.6vmin; font-weight: 600; width: 13vmin; height: 13vmin; border-radius: 50%; border: .4vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; }
+#lock .pad button:active { background: #1d5d52; transform: scale(.95); }
+#lock .pad button.blank { visibility: hidden; }
+#lock .pad button.del { border-color: transparent; background: transparent; font-size: 4.6vmin; }
+#lock.paused .pad button { opacity: .35; }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -108,6 +125,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <div id="setup" hidden><div class="card" id="card"></div></div>
 <div id="cardEl" hidden></div>
 <div id="caption" hidden></div>
+<div id="lock" hidden><div class="lk"><div class="lt">🔒 Enter your code</div><div class="dots" id="lkDots"></div><div class="lmsg" id="lkMsg"></div><div class="pad" id="lkPad"></div></div></div>
 <div id="frame" hidden><img id="fa" alt=""><img id="fb" alt=""><div class="fshade"></div><div class="fclock" id="fclock"></div></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
@@ -139,7 +157,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -180,7 +198,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   DEMO_CARDS['Card ingredients'] = { id: 'd9', kind: 'list', icon: '🧀', title: 'Macaroni cheese', subtitle: 'Ingredients · then 6 steps', until: FOREVER,
     lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
     actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
-  SCENES.push(['speaking', 'neutral', 'Card email']);
+  SCENES.push(['speaking', 'neutral', 'Card email'], ['idle', 'neutral', 'Locked']);
   DEMO_CARDS['Card email'] = { id: 'd10', kind: 'list', icon: '✉️', title: 'Email', subtitle: 'From Anna Rossi · 09:42', big: 'Milan launch: venue confirmed', until: FOREVER,
     body: 'Anna confirms the venue for the Milan launch on 12 November and has signed the contract. She needs your final guest list by Friday, and asks whether you want the evening or the afternoon slot.' };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
@@ -223,7 +241,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
           frame: label === 'Photo frame' ? { photos: ['demo-1.jpg', 'demo-2.jpg', 'demo-3.jpg'], everySec: 6 } : undefined,
         } : undefined,
       };
-      setTimeout(() => { renderCard(); renderCaption(); renderFrame(); }, 0); // after the card code below is set up
+      if (label === 'Locked') info.locked = { triesLeft: 5 };
+      setTimeout(() => { renderCard(); renderCaption(); renderFrame(); renderLock(); }, 0); // after the card code below is set up
       renderSetup();
     };
     if (fixed) show(fixed);
@@ -386,6 +405,55 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   }
   setInterval(renderFrame, 1000);
 
+  // ---------- start-up code keypad (until the code is entered, Max shows nothing personal) ----------
+  const lockEl = document.getElementById('lock');
+  const lkDots = document.getElementById('lkDots'), lkMsg = document.getElementById('lkMsg'), lkPad = document.getElementById('lkPad');
+  let lkCode = '', lkNote = '', lkBusy = false;
+  lkPad.innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k) =>
+    '<button data-k="' + k + '" class="' + (k === '' ? 'blank' : k === 'del' ? 'del' : '') + '" aria-label="' + (k === 'del' ? 'Delete' : k) + '">' + (k === 'del' ? '⌫' : k) + '</button>').join('');
+  for (const b of lkPad.querySelectorAll('button')) {
+    b.onpointerdown = (e) => e.stopPropagation();
+    b.onclick = (e) => { e.stopPropagation(); lkKey(b.getAttribute('data-k')); };
+  }
+  function lkPaused() { return info.locked && info.locked.pausedUntil && info.locked.pausedUntil > Date.now(); }
+  function lkKey(k) {
+    if (lkBusy || lkPaused() || !k) return;
+    if (k === 'del') lkCode = lkCode.slice(0, -1);
+    else if (lkCode.length < 6) lkCode += k;
+    lkNote = '';
+    renderLock();
+    if (lkCode.length === 6) lkSubmit();
+  }
+  function lkWrong(message) {
+    lkCode = ''; lkNote = message || 'Wrong code.';
+    lkDots.classList.remove('shake'); void lkDots.offsetWidth; lkDots.classList.add('shake');
+    renderLock();
+  }
+  function lkSubmit() {
+    lkBusy = true;
+    const code = lkCode;
+    if (demo) {
+      lkBusy = false;
+      if (code === '246810') { info.locked = undefined; lkCode = ''; renderLock(); } else lkWrong('Wrong code.');
+      return;
+    }
+    fetch('/unlock', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'code=' + encodeURIComponent(code) })
+      .then((r) => r.json())
+      .then((j) => { lkBusy = false; if (j.ok) { lkCode = ''; lkNote = ''; } else lkWrong(j.message); })
+      .catch(() => { lkBusy = false; lkWrong('Could not check the code. Try again.'); });
+  }
+  function renderLock() {
+    const show = Boolean(info.locked) && info.state !== 'setup';
+    lockEl.hidden = !show;
+    if (!show) { lkCode = ''; lkNote = ''; return; }
+    lkDots.innerHTML = [0, 1, 2, 3, 4, 5].map((i) => '<i class="' + (i < lkCode.length ? 'on' : '') + '"></i>').join('');
+    const paused = lkPaused();
+    lockEl.classList.toggle('paused', Boolean(paused));
+    lkMsg.textContent = paused ? 'Too many tries. Wait ' + Math.ceil((info.locked.pausedUntil - Date.now()) / 1000) + ' s.'
+      : lkNote || (info.locked.triesLeft < 5 ? info.locked.triesLeft + ' tries left' : '');
+  }
+  setInterval(() => { if (!lockEl.hidden) renderLock(); }, 1000); // the pause countdown
+
   // ---------- hold for 2 s: the options menu (turn off, restart, WiFi setup) ----------
   const HOLD_MS = 2000;
   const menuEl = document.getElementById('menu');
@@ -452,10 +520,19 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     }
   }
   function showMenu() {
+    if (info.locked) {
+      // Locked: only turning off or restarting (whoever holds the box can pull the plug anyway).
+      menu('<button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button><button class="quiet" id="mCancel">Back</button>', {
+        mOff: () => confirmPower('poweroff'), mRestart: () => confirmPower('reboot'), mCancel: closeMenu,
+      });
+      return;
+    }
     fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
     menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
-      '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div><button class="quiet" id="mCancel">Back to Max</button>', {
+      '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div>' +
+      (info.canLock ? '<button id="mLock">🔒 Lock</button>' : '') + '<button class="quiet" id="mCancel">Back to Max</button>', {
       mUpdate: showUpdate,
+      mLock: () => { closeMenu(); fetch('/lock', { method: 'POST' }).catch(() => undefined); if (demo) { info.locked = { triesLeft: 5 }; renderLock(); } },
       mOff: () => confirmPower('poweroff'),
       mRestart: () => confirmPower('reboot'),
       mWifi: () => {

@@ -119,6 +119,18 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.
+- **Start-up code:** in **Settings → Security** on the control panel, set a 6-digit code. From then on, every
+  time the box starts, Max shows a keypad and stays locked until the code is typed: he won't answer
+  ("I'm locked, please enter my code on the screen"), won't run any action, and his screen shows nothing
+  personal (no meetings, to-dos, emails, notifications or reminders; reminders that come due are said once
+  he's unlocked). Max restarting on his own (an update) doesn't lock him again; turning the box off and on
+  does. To lock him yourself, hold a finger on the screen for 2 seconds and tap **Lock**.
+  - After 5 wrong tries the keypad pauses for 30 seconds, then 1, 2, 4... up to 15 minutes. Turning the box
+    off and on doesn't reset this, and the control panel's "current code" boxes count towards the same tries.
+  - Changing or turning off the code needs the current code. **Forgot it?** If the control panel has a
+    password (`PANEL_PASSWORD`), sign in and use **Remove code**; otherwise delete `data/startup-code.json`
+    in the `max-assistant` folder on the box and restart Max.
+  - Only a scrambled fingerprint of the code is stored, never the code itself.
 - **Turning off and on:** never just pull the plug (it can damage the SD card). Instead:
   - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**
     (and volume and brightness).

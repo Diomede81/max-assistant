@@ -136,8 +136,8 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
 (() => {
   // Dimensions from max-box.scad (mm, OpenSCAD axes: X width, Y depth with the front at 0, Z up).
   const W = 142, D = 120, H = 226, frontT = 4, lip = 1.4;
-  const screen = { glass: 125.9, pcb: [85.3, 68.6], glassT: 5.9, depth: 16.8, cz: H - 77 };
-  const ring = { collar: (frontT - 0.5 + 7) - (lip + 5.9), t: 3 };
+  const screen = { glass: 126, pcb: [85.3, 68.6], glassT: 6, depth: 16.8, cz: H - 77 };
+  const ring = { collar: (frontT - 0.5 + 7) - (lip + 6), t: 3 };
   const spk = { frame: 66.5, cz: 46, depth: 32 };
   const ch = { d: 70, y0: frontT + 1.5 };
   const pi = { x0: 2.6 + 3, z0: 40, l: 85, w: 56, standoff: 8, stack: 30 };

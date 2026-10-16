@@ -9,6 +9,7 @@ export interface PanelScreen {
   notifyBriefing: boolean;
   notifyEmail: boolean;
   notifyTodos: boolean;
+  faceStyle: 'robot' | 'classic';
   photos: { name: string; size: number }[];
   /** The home location's name (the weather is for it), if set. */
   place?: string;
@@ -35,6 +36,9 @@ export function screenSection(s: PanelScreen, esc: Esc): string {
   return `<section id="screen"><h2>Screen</h2>
 <p class="meta">What Max's round screen shows. Tap his face to see your day. In guest mode visitors only see the time and the weather.</p>
 <form class="stack" method="post" action="/screen/save">
+<div class="addfact"><span class="meta"><b>Face</b></span>
+<label class="meta"><input type="radio" name="faceStyle" value="robot" ${s.faceStyle !== 'classic' ? 'checked' : ''}> 3D robot</label>
+<label class="meta"><input type="radio" name="faceStyle" value="classic" ${s.faceStyle === 'classic' ? 'checked' : ''}> Classic</label></div>
 <label class="meta tick"><input type="checkbox" name="captions" value="on" ${s.captions ? 'checked' : ''}> <b>Captions</b>: show the words on screen, what Max heard you say and what he's answering</label>
 <label class="meta tick"><input type="checkbox" name="glance" value="on" ${s.glance ? 'checked' : ''}> <b>Glance</b>: the weather${s.place ? ` in ${esc(s.place)}` : ' (set your home location above)'}, your next meeting and the to-dos that matter, around his face</label>
 <label class="meta tick"><input type="checkbox" name="frame" value="on" ${s.frame ? 'checked' : ''}> <b>Evening photo frame</b>: your pictures, one fading into the next, with the clock (after 2 minutes of quiet; "Hey Max" or a touch brings him back)</label>

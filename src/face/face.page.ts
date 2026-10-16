@@ -10,10 +10,13 @@
  * that spring towards targets, so any expression blends smoothly into any other. A designed
  * character (e.g. a Rive animation) could replace this later and use the same signals.
  */
+import { ROBOT3D_JS } from './robot3d';
+
 export function renderFace(bootId = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
 <title>Max</title>
 <style>
 :root { --bg: #06090d; --ink: #8ff0d6; --dim: #5d7d76; --paper: #ffffff; --warn: #ffb36b; color-scheme: dark; }
@@ -21,6 +24,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; c
   font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-user-select: none; user-select: none; touch-action: none; }
 canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+#c3 { background: radial-gradient(circle at 50% 38%, #16222e 0%, #0a1119 55%, #04070b 100%); }
 #setup { position: fixed; inset: 0; display: grid; place-items: center; color: var(--ink); text-align: center; }
 #setup[hidden] { display: none; }
 .card { width: min(76vmin, 560px); display: grid; gap: 2.2vmin; justify-items: center; }
@@ -136,7 +140,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <script>
 (() => {
   const cv = document.getElementById('c');
-  const g = cv.getContext('2d');
+  let g = cv.getContext('2d'); // the 3D face swaps this for its visor while drawing the eyes and mouth
   const setupEl = document.getElementById('setup');
   const card = document.getElementById('card');
   const params = new URLSearchParams(location.search);
@@ -162,7 +166,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); if (info.faceStyle && wantRobot() !== R3.wanted) location.reload(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -714,16 +718,29 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 
     // Head: gentle breathing, a nod with emphasis, tilt, and a slight turn towards where he looks.
     const breathe = Math.sin(now / 1300);
-    g.save();
-    g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s * fk);
-    g.rotate((P.tilt * Math.PI) / 180);
-    g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
-    g.globalAlpha = P.bright;
-    drawCheeks(P);
-    for (const side of [-1, 1]) drawEye(side, P, rgb);
-    for (const side of [-1, 1]) drawBrow(side, P, rgb);
-    drawMouth(P, rgb);
-    g.restore();
+    if (R3.on) {
+      // 3D robot: the same eyes and mouth on his glass visor (repainted 30 times a second, which
+      // halves the work for the Pi); the head itself turns, tilts and nods every frame.
+      R3.paint = !R3.paint;
+      if (R3.paint) paintVisor(() => {
+        drawCheeks(P);
+        for (const side of [-1, 1]) drawEye(side, P, rgb);
+        for (const side of [-1, 1]) drawBrow(side, P, rgb);
+        drawMouth(P, rgb);
+      });
+      renderRobot(P, now, cmp, state, col);
+    } else {
+      g.save();
+      g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s * fk);
+      g.rotate((P.tilt * Math.PI) / 180);
+      g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
+      g.globalAlpha = P.bright;
+      drawCheeks(P);
+      for (const side of [-1, 1]) drawEye(side, P, rgb);
+      for (const side of [-1, 1]) drawBrow(side, P, rgb);
+      drawMouth(P, rgb);
+      g.restore();
+    }
 
     if (state === 'thinking') {
       for (let i = 0; i < 3; i++) {
@@ -745,9 +762,18 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     requestAnimationFrame(frame);
   }
 
+${ROBOT3D_JS}
   // ---------- drawing ----------
   function drawBackground(P, rgb, s) {
     g.clearRect(0, 0, W, H);
+    if (R3.on) {
+      // 3D face: the scene is drawn underneath; here only the coloured glow at the edge.
+      const ringA = Math.max(0, Math.min(1, P.ring));
+      const grad = g.createRadialGradient(cx, cy, R * 0.8, cx, cy, R);
+      grad.addColorStop(0, rgb(0)); grad.addColorStop(1, rgb(ringA * 0.5));
+      g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+      return;
+    }
     g.fillStyle = '#04070b'; g.fillRect(0, 0, W, H);
     // the face plate: a softly lit dark glass dome
     const bg = g.createRadialGradient(cx, cy - R * 0.25, R * 0.05, cx, cy, R);
@@ -927,7 +953,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     if (gl.weather && state === 'idle' && cmp < 0.3) {
       const w = gl.weather;
       g.font = '600 ' + Math.round(30 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.8);
-      const top = info.mode && info.mode !== 'personal' ? cy - 218 * s : cy - 262 * s;
+      // (a little higher above the 3D robot, clear of his antenna)
+      const top = info.mode && info.mode !== 'personal' ? cy - 218 * s : cy - (R3.on ? 282 : 262) * s;
       g.fillText(fit(w.icon + '  ' + w.temp + '°  ·  ' + w.text, 330 * s), cx, top);
       if (w.hi !== undefined) {
         g.font = '500 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.45);
@@ -1018,6 +1045,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     return t + '…';
   }
 
+  if (wantRobot()) startRobot();
   requestAnimationFrame(frame);
 })();
 </script>

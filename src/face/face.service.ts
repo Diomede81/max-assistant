@@ -60,6 +60,8 @@ export interface FaceInfo {
   locked?: { pausedUntil?: number; triesLeft: number };
   /** A start-up code is set (the menu offers Lock). */
   canLock?: boolean;
+  /** Which face to draw: the 3D robot or the classic flat face. */
+  faceStyle?: 'robot' | 'classic';
 }
 
 const FRAME_MS = 50;
@@ -305,6 +307,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),
       canLock: this.lock?.enabled || undefined,
+      faceStyle: this.ambient?.settings.faceStyle ?? 'robot',
     };
   }
 

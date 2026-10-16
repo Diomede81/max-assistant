@@ -11,6 +11,23 @@ if [ ! -f "$SETTINGS" ]; then
   exit 0
 fi
 umask 077
+# Play into the desktop sound system (PipeWire), the same one Max's voice uses, so the music comes
+# out of the mic board's speaker. Use the most direct connection this shairport-sync build has
+# (its version line lists them): PulseAudio protocol (served by PipeWire), then PipeWire itself,
+# then ALSA through PipeWire's or PulseAudio's ALSA plug-in.
+BUILD="$(/usr/bin/shairport-sync -V 2>&1 | head -1)"
+case "-$BUILD-" in
+  *-PA-*) BACKEND=pa ;;
+  *-PW-*|*-pw-*) BACKEND=pw ;;
+  *) BACKEND=alsa ;;
+esac
+ALSA_DEVICE=default
+if [ "$BACKEND" = alsa ]; then
+  if aplay -L 2>/dev/null | grep -qx pipewire; then ALSA_DEVICE=pipewire
+  elif aplay -L 2>/dev/null | grep -qx pulse; then ALSA_DEVICE=pulse; fi
+fi
+if [ "$BACKEND" = alsa ]; then echo "AirPlay: shairport-sync $BUILD; sound via ALSA ($ALSA_DEVICE)"; else echo "AirPlay: shairport-sync $BUILD; sound via $BACKEND"; fi
+export BACKEND ALSA_DEVICE
 python3 - "$SETTINGS" "$CONF" <<'PY' || exit 0
 import json, sys
 s = json.load(open(sys.argv[1]))
@@ -22,14 +39,20 @@ if len(code) < 4:
     print('AirPlay stays off: no code set')
     sys.exit(1)
 name = ''.join(c for c in str(s.get('name') or 'Max') if c.isalnum() or c in ' -_') or 'Max'
+import os
+backend = os.environ.get('BACKEND', 'alsa')
+device = os.environ.get('ALSA_DEVICE', 'default')
+outputs = {
+    'pa': 'pa = {\n  application_name = "Max AirPlay (shairport)";\n};',
+    'pw': 'pw = {\n  application_name = "Max AirPlay (shairport)";\n};',
+    'alsa': f'alsa = {{\n  output_device = "{device}";\n}};',
+}
 open(sys.argv[2], 'w').write(f'''general = {{
   name = "{name}";
   password = "{code}";
-  output_backend = "alsa";
+  output_backend = "{backend}";
 }};
-alsa = {{
-  output_device = "default";
-}};
+{outputs[backend]}
 metadata = {{
   enabled = "yes";
   include_cover_art = "no";

@@ -134,8 +134,15 @@ export class ConversationService implements OnApplicationBootstrap {
         if (timer) this.face?.setEmotion('surprised', 5000);
         else this.face?.said(text);
         this.log.log(`Announcing: "${text}"`);
+        // In real-time mode it's said in Max's live voice: recorded while the chimes play.
+        const live = this.liveVoice?.active ? this.liveVoice.line(text) : undefined;
         await this.tts.chime().catch(() => undefined);
         await this.tts.chime().catch(() => undefined);
+        const pcm = await live;
+        if (pcm) {
+          await this.liveVoice!.play(pcm).catch((err) => this.log.warn(`Announcement: ${(err as Error).message}`));
+          continue;
+        }
         const speech = this.tts.session();
         speech.say(text);
         await speech.done();

@@ -78,7 +78,9 @@ and it copes well with "umm"s and rephrasing.
 **Easiest:** on the control panel, **Settings → Device → Max's voice**: pick a voice, optionally describe how he
 speaks, press **▶ Try it on Max** to hear a sample on the box, then **Save**. That overrides `REALTIME_VOICE` /
 `REALTIME_STYLE`. The "Hey Max" greeting is recorded once in the chosen voice (a few seconds after starting or
-saving) and replayed instantly from then on; until then the standard voice says it.
+saving) and replayed instantly from then on; until then the standard voice says it. Reminders, timers and
+other announcements are also said in the chosen voice (recorded while the two chimes play); if that can't be
+done within 10 seconds, the standard voice says them, so none is ever missed.
 
 
 | Setting | What it does |

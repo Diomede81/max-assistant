@@ -75,6 +75,9 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
 - **Date and time**: "What's the date?", "What time is it?"
+- **Trains (UK)**: "When's the next train to Waterloo?" (live times, delays, platforms) and "get me to Manchester
+  by 10 tomorrow" (journeys with changes, plus a QR code on the screen to book on Trainline). See
+  **[docs/TRAINS.md](docs/TRAINS.md)**.
 - **Recipes and how-tos on the screen**: "Show me a recipe for macaroni cheese" puts the ingredients and
   then each step on the screen; say "next step" or tap **Next**.
 - **Timers and reminders**: "Set a pasta timer for 10 minutes", "Remind me in 20 minutes to call Mum",

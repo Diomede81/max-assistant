@@ -37,6 +37,9 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
   }
   // Built-in web search (Firecrawl, no Composio).
   if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
+  if (names.includes('train_departures') || names.includes('plan_train_journey')) {
+    apps.set('TRAINS', `UK trains: ${[names.includes('train_departures') && 'live departures, delays and platforms', names.includes('plan_train_journey') && 'journey planning with a QR code to book on Trainline'].filter(Boolean).join('; ')}`);
+  }
   const screen = names.includes('show_on_screen') ? SCREEN_RULE : '';
   if (!apps.size) return screen;
   return (

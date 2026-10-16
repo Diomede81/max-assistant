@@ -378,7 +378,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
    * notifications stay until you close them.
    */
   conversationEnded(): void {
-    if (this.card && !/^(timer-|say-|notify-|steps$)/.test(this.card.id)) this.dismissCard();
+    // Kept: timers, notifications, recipe steps, and a journey's Trainline QR code (time to scan it).
+    if (this.card && !/^(timer-|say-|notify-|steps$|journey$)/.test(this.card.id)) this.dismissCard();
   }
 
   dismissCard(id?: string): void {

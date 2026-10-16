@@ -78,6 +78,12 @@ export interface AppConfig {
   /** Web search and page reading (Firecrawl), built in. selfHosted: FIRECRAWL_API_URL set without a key. */
   firecrawl: { apiKey: string; apiUrl: string; selfHosted: boolean; country: string };
   /**
+   * Trains (docs/TRAINS.md): live departures from National Rail (Rail Data Marketplace key, free)
+   * and journey planning with Google Maps (Routes API key). The home station is the default "from"
+   * (the control panel's setting wins).
+   */
+  trains: { railDataKey: string; railDataUrl: string; googleMapsKey: string; homeStation: string };
+  /**
    * Extra AI providers for background jobs (news briefings, memory filing...): one key per
    * provider in .env; which model does which job is chosen on the control panel.
    */
@@ -257,6 +263,12 @@ export function loadConfig(): AppConfig {
       apiUrl: env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev',
       selfHosted: Boolean(env.FIRECRAWL_API_URL && !env.FIRECRAWL_API_KEY),
       country: env.FIRECRAWL_COUNTRY ?? 'GB',
+    },
+    trains: {
+      railDataKey: env.RAIL_DATA_KEY ?? '',
+      railDataUrl: env.RAIL_DATA_URL ?? '',
+      googleMapsKey: env.GOOGLE_MAPS_API_KEY ?? '',
+      homeStation: env.HOME_STATION ?? '',
     },
     controlPanel: {
       port: num(env.CONTROL_PANEL_PORT, 8099),

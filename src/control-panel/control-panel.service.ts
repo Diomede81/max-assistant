@@ -18,6 +18,7 @@ import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
+import { TrainsService } from '../trains/trains.service';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
@@ -35,6 +36,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
+  @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
@@ -221,6 +223,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const f = await readForm(req);
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
       return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#location`);
+    }
+    if (req.method === 'POST' && url.pathname === '/trains/home' && this.trains) {
+      const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
+      return this.redirect(res, `/?${/^Home station/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#trains`);
     }
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
@@ -487,6 +493,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       web: this.web?.status,
+      trains: this.trains?.status,
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       routines: this.routines && this.memory.enabled
         ? {

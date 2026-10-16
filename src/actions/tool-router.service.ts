@@ -12,6 +12,7 @@ import { ScreenToolsService } from './screen-tools.service';
 import { LockService } from '../lock/lock.service';
 import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
+import { TrainsService } from '../trains/trains.service';
 import { RoutinesService } from '../routines/routines.service';
 import { UpdatesService } from '../updates/updates.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
@@ -61,6 +62,7 @@ export class ToolRouterService {
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
+    @Optional() private readonly trains?: TrainsService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -97,7 +99,7 @@ export class ToolRouterService {
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
     const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
-    return [...this.builtin.tools, ...(this.web?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
+    return [...this.builtin.tools, ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.ha.openAiTools, ...external];
   }
 
   get homeAssistantConnected(): boolean {
@@ -138,6 +140,7 @@ export class ToolRouterService {
         this.externalContentAt = Date.now(); // facts from web pages are marked unverified
         return await this.web.call(name, args);
       }
+      if (this.trains?.has(name)) return await this.trains.call(name, args);
       if (this.routines?.has(name)) {
         if (name === 'news_briefing') this.externalContentAt = Date.now(); // summaries of web pages
         return await this.routines.call(name, args);

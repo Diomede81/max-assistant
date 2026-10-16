@@ -124,7 +124,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   quiet minutes, your pictures fade one into the next with the clock on top. "Hey Max" or a touch brings
   his face back. The glance can be switched off there too.
 - **Talking to Max:** say "Hey Max" and he answers **"Hello, how can I help?"**, then listens. To end the
-  conversation, say "stop", "that's all" or simply **"thank you"** ("great, thanks", "thank you very much"...).
+  conversation, say "stop", "that's all" or **"thank you"**, on its own or in a sentence ("that was
+  really helpful, thank you"); a request after it still goes through ("thanks, can you also set a timer").
   When the box starts or Max restarts (an update), a short **jingle** tells you he's ready. The greeting
   (empty = a short beep) and the jingle are set in **Settings → Device** on the control panel.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and

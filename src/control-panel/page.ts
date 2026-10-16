@@ -4,7 +4,14 @@ import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 
 export interface PanelData {
-  music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
+  music?: {
+    state: string;
+    account?: string;
+    pairing?: { url: string; code: string };
+    error?: string;
+    radio?: { available: boolean; playing?: string };
+    airplay?: { onBox: boolean; enabled: boolean; code: string; locked: boolean; playing: boolean };
+  };
   voice: string;
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
@@ -657,7 +664,9 @@ ${d.lock ? lockRow(d.lock) : ''}
 }
 
 function musicSection(m: PanelData['music']): string {
-  if (!m || m.state === 'off') return '';
+  if (!m) return '';
+  const extra = radioRow(m.radio) + airplayRow(m.airplay);
+  if (m.state === 'off') return extra ? `<section id="music"><h2>Music</h2><ul>${extra}</ul></section>` : '';
   const check = '<form method="post" action="/music/check"><button class="btn secondary" type="submit">Check again</button></form>';
   let body: string;
   if (m.state === 'ready') {
@@ -674,5 +683,25 @@ function musicSection(m: PanelData['music']): string {
     body = `<li class="row"><div><div class="name">Spotify ${badge(false, '', 'Not running')}</div>
       <div class="meta">Start the Spotify speaker: <code>docker compose --profile music up -d</code> (needs Spotify Premium). ${esc(m.error ?? '')}</div></div>${check}</li>`;
   }
-  return `<section id="music"><h2>Music</h2><ul>${body}</ul></section>`;
+  return `<section id="music"><h2>Music</h2><ul>${body}${extra}</ul></section>`;
+}
+
+function radioRow(r: NonNullable<PanelData['music']>['radio']): string {
+  if (!r) return '';
+  return `<li class="row"><div><div class="name">Internet radio ${r.available ? badge(true, r.playing ? 'Playing' : 'Ready') : badge(false, '', 'Update needed')}</div>
+<div class="meta">${r.available
+    ? `${r.playing ? `Now: <b>${esc(r.playing)}</b>. ` : ''}Free, no account. Say "Hey Max, play BBC Radio 2", "play some jazz radio" or "play the radio" (the last station).`
+    : 'Update Max (Settings → Updates) to get the radio player.'}</div></div></li>`;
+}
+
+function airplayRow(a: NonNullable<PanelData['music']>['airplay']): string {
+  if (!a) return '';
+  if (!a.onBox) return '<li class="row"><div><div class="name">AirPlay</div><div class="meta">Available on the Max box: it appears as a speaker on iPhones, iPads and Macs.</div></div></li>';
+  const state = !a.enabled ? badge(false, '', 'Off') : a.locked ? badge(false, '', 'Off while Max is locked') : badge(true, a.playing ? 'Playing' : 'On');
+  return `<li class="row"><div style="width:100%"><div class="name">AirPlay ${state}</div>
+<div class="meta">Max appears as the speaker <b>Max</b> on your iPhone, iPad or Mac, so any app (Apple Music, YouTube Music, podcasts…) can play through him. The first time, the device asks for this code and remembers it:</div>
+<div class="name" style="font-size:28px;letter-spacing:.3em;margin:8px 0">${esc(a.code)}</div>
+<div class="addfact"><form method="post" action="/music/airplay"><input type="hidden" name="enabled" value="${a.enabled ? 'off' : 'on'}"><button class="btn ${a.enabled ? 'secondary' : ''}" type="submit">${a.enabled ? 'Turn AirPlay off' : 'Turn AirPlay on'}</button></form>
+<form method="post" action="/music/airplay-code" onsubmit="return confirm('Every phone and computer will have to enter the new code. Continue?')"><button class="btn secondary" type="submit">New code</button></form></div>
+<p class="meta">A new code makes every device ask again (use it if someone you don't want has the code). AirPlay is switched off while Max is locked.</p></div></li>`;
 }

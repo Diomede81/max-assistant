@@ -452,16 +452,22 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       {
         id: 'music',
         kind: 'music',
-        icon: '♪',
         title: p.title,
         subtitle: p.artist,
         image: p.art,
         progress: p.duration ? { position: p.position ?? 0, duration: p.duration, at: Date.now(), paused: p.paused } : undefined,
-        actions: [
-          { id: 'previous', label: '⏮', style: 'icon' },
-          { id: p.paused ? 'resume' : 'pause', label: p.paused ? '▶' : '⏸', style: 'icon' },
-          { id: 'next', label: '⏭', style: 'icon' },
-        ],
+        // Radio: just stop. AirPlay: controlled from the phone. Spotify: the full set.
+        actions:
+          p.source === 'radio'
+            ? [{ id: 'pause', label: '⏹', style: 'icon' }]
+            : p.source === 'airplay'
+              ? []
+              : [
+                  { id: 'previous', label: '⏮', style: 'icon' },
+                  { id: p.paused ? 'resume' : 'pause', label: p.paused ? '▶' : '⏸', style: 'icon' },
+                  { id: 'next', label: '⏭', style: 'icon' },
+                ],
+        icon: p.source === 'radio' ? '📻' : p.source === 'airplay' ? '📱' : '♪',
         ttlMs,
       },
       { previous: press('previous'), pause: press('pause'), resume: press('resume'), next: press('next') },

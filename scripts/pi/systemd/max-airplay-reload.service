@@ -1,0 +1,6 @@
+[Unit]
+Description=Max: restart the AirPlay speaker with new settings
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart max-airplay.service

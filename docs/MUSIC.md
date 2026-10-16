@@ -1,4 +1,4 @@
-# Music: the Max box as a Spotify speaker
+# Music: Spotify, internet radio and AirPlay
 
 Max can play music and podcasts through his own speakers. A small, free Spotify Connect receiver
 ([go-librespot](https://github.com/devgianlu/go-librespot)) runs next to Max, so the Max box
@@ -66,3 +66,29 @@ Restart after changing `spotify/config.yml`: `docker compose restart spotify`.
 - **"Search failed (429)"**: Spotify is limiting searches; wait a minute. Your own playlists and Liked
   Songs keep working, since they don't use search.
 - **Sign-in link expired**: restart the speaker (`docker compose restart spotify`) for a new one.
+
+## Internet radio (free, no account)
+
+Thousands of stations from the free [radio-browser.info](https://www.radio-browser.info) directory:
+
+- **"Hey Max, play BBC Radio 2"**, "play Radio Deejay", "play some jazz radio", "play Italian news radio".
+- **"Play the radio"** plays the last station again.
+- "What's playing?" says the station and, when the station sends it, the song. "Stop", "louder", "volume 30".
+- The music card on the screen shows the station's logo and the song, with a stop button.
+
+Nothing to set up: it's part of Max (after updating). One source plays at a time: starting the radio
+pauses Spotify, and asking Spotify for something stops the radio.
+
+## AirPlay (from an iPhone, iPad or Mac)
+
+On the Max box, Max appears as an AirPlay speaker called **Max**, so any app (Apple Music, YouTube Music,
+Amazon Music, podcasts, Safari...) can play through him: in the app's speaker / AirPlay menu, pick **Max**.
+
+- **Protected by a 4-digit code.** The first time a device picks Max, it asks for the code, then
+  remembers it. The code is on the control panel (**Connections → Music**), never said out loud.
+  **New code** there makes every device ask again (use it if someone you don't want has it).
+- **Turn AirPlay off / on** on the control panel. It's also off while Max is locked (start-up code).
+- While Max talks, the AirPlay music turns down like any other music. Pause and skip from the phone;
+  "what's playing?" works by voice.
+- It plays through the same speaker as Max. The setup installs it (`shairport-sync`, run as Max's user);
+  the package's own open speaker is switched off so only the protected one exists.

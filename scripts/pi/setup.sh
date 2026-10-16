@@ -82,6 +82,22 @@ sleep 2
 "${USER_SYSTEMCTL[@]}" enable --now pipewire pipewire-pulse wireplumber || warn "Could not start PipeWire yet; it starts after a reboot."
 "${USER_SYSTEMCTL[@]}" enable max-audio-defaults.service || true
 
+# AirPlay: "Max" as a speaker on iPhones, iPads and Macs, protected by a 4-digit code (control panel).
+# The package's own system-wide receiver has no code and would be a second, open speaker: masked.
+say "Setting up AirPlay (code required)"
+if apt-get install -y -q shairport-sync >/dev/null; then
+  systemctl mask --now shairport-sync.service >/dev/null 2>&1 || true
+  install -m 755 "$REPO/scripts/pi/max-airplay.sh" /usr/local/bin/max-airplay
+  for u in max-airplay.service max-airplay-config.path max-airplay-reload.service; do
+    install -D -m 644 "$REPO/scripts/pi/systemd/$u" "/etc/systemd/user/$u"
+  done
+  "${USER_SYSTEMCTL[@]}" daemon-reload || true
+  "${USER_SYSTEMCTL[@]}" enable max-airplay.service max-airplay-config.path || true
+  "${USER_SYSTEMCTL[@]}" restart max-airplay-config.path max-airplay.service || true
+else
+  warn "Could not install AirPlay (shairport-sync); everything else works. Run the setup again later."
+fi
+
 # ---------------------------------------------------------------- 4. screen + face
 say "Setting up the screen ($SCREEN)"
 sed -i '/# max-box screen/,+1d' "$CONFIG_TXT"

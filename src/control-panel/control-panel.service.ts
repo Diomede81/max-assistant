@@ -19,6 +19,8 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService } from '../face/ambient.service';
 import { LockService } from '../lock/lock.service';
+import { RadioService } from '../music/radio.service';
+import { AirPlayService } from '../music/airplay.service';
 import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
@@ -41,6 +43,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
   @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
   @Optional() @Inject(LockService) private readonly lock?: LockService;
+  @Optional() @Inject(RadioService) private readonly radio?: RadioService;
+  @Optional() @Inject(AirPlayService) private readonly airplay?: AirPlayService;
   @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
 
   constructor(
@@ -87,6 +91,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
+      const f = await readForm(req);
+      const msg = url.pathname === '/music/airplay-code' ? this.airplay.renewCode() : this.airplay.setEnabled(f.get('enabled') === 'on');
+      return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#music`);
+    }
     if (req.method === 'POST' && url.pathname === '/music/check') {
       await this.music?.poll();
       return this.redirect(res, '/#music');
@@ -464,6 +473,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         account: this.music.account,
         pairing: this.music.pairing,
         error: this.music.lastError,
+        radio: this.radio && { available: this.radio.available, playing: this.radio.playing ? this.radio.current?.station.name : undefined },
+        airplay: this.airplay && { onBox: this.airplay.onBox, enabled: this.airplay.enabled, code: this.airplay.code, locked: Boolean(this.lock?.locked), playing: this.airplay.active },
       },
       voice:
         this.cfg.voiceMode === 'realtime'

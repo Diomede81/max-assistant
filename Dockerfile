@@ -22,7 +22,7 @@ RUN node -e "const m=process.argv[1],fs=require('fs');(async()=>{for(const f of 
 
 FROM node:22-bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends alsa-utils libasound2-plugins pulseaudio-utils \
+ && apt-get install -y --no-install-recommends alsa-utils libasound2-plugins pulseaudio-utils ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 # Route ALSA's "default" device (used by arecord/aplay) to the PulseAudio server in $PULSE_SERVER.
 RUN printf 'pcm.!default { type pulse }\nctl.!default { type pulse }\n' > /etc/asound.conf

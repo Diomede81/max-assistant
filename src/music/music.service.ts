@@ -59,12 +59,16 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   ) {}
   /** Radio and AirPlay streams turned down while Max talks: their volume to go back to. */
   private ducked: { index: number; volume: number }[] = [];
+  /** Between duckStart and duckEnd (Max is talking): new radio streams start turned down too. */
+  private ducking = false;
 
   private get base(): string {
     return this.cfg.music.spotifyUrl.replace(/\/$/, '');
   }
 
   onModuleInit(): void {
+    // Each new radio station starts at the radio's volume (turned down if Max is talking).
+    if (this.radio) this.radio.onStream = (index) => void this.newStream(index, this.radio!.level);
     // AirPlay from a phone takes over: the radio and Spotify stop.
     this.airplay?.on('start', () => {
       if (this.radio?.playing) this.radio.stop();
@@ -215,6 +219,7 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
 
   /** Turns playing music down for a conversation. Quick and never throws. */
   async duckStart(): Promise<void> {
+    this.ducking = true;
     await this.duckStreams();
     if (this.state !== 'ready') return;
     this.duck = {};
@@ -233,6 +238,7 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
 
   /** Puts the volume back after the conversation (including any change asked for meanwhile). */
   async duckEnd(): Promise<void> {
+    this.ducking = false;
     const streams = this.ducked;
     this.ducked = [];
     for (const s of streams) await setSinkInputVolume(s.index, s.volume).catch(() => undefined);
@@ -344,12 +350,25 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     if (!this.radio?.playing && !this.airplay?.active) return;
     try {
       for (const s of await sinkInputs()) {
-        if (!MUSIC_STREAM.test(s.names) || s.volume <= this.cfg.music.duckVolume) continue;
+        // Skip streams already turned down (so their own volume, not the lowered one, comes back).
+        if (!MUSIC_STREAM.test(s.names) || s.volume <= this.cfg.music.duckVolume || this.ducked.some((d) => d.index === s.index)) continue;
         this.ducked.push({ index: s.index, volume: s.volume });
         await setSinkInputVolume(s.index, this.cfg.music.duckVolume);
       }
     } catch {
       // keeps playing at its volume
+    }
+  }
+
+  /** A new radio stream: its volume, or turned down until Max has finished talking. */
+  private async newStream(index: number, volume: number): Promise<void> {
+    try {
+      if (this.ducking && volume > this.cfg.music.duckVolume) {
+        this.ducked.push({ index, volume });
+        await setSinkInputVolume(index, this.cfg.music.duckVolume);
+      } else await setSinkInputVolume(index, volume);
+    } catch {
+      // plays at whatever volume it started with
     }
   }
 
@@ -371,7 +390,7 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
         return `Playing ${c.station.name}${c.song ? `: ${c.song}` : ''}.`;
       }
       default:
-        return this.streamVolume(action, level, (pct) => r.setVolume(pct), () => r.volume());
+        return this.streamVolume(action, level, (pct) => r.setVolume(pct), () => r.volume(), (pct) => r.remember(pct));
     }
   }
 
@@ -397,7 +416,13 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Volume of a radio or AirPlay stream; while Max talks (ducked), the level it returns to. */
-  private async streamVolume(action: string, level: number | undefined, set: (pct: number) => Promise<boolean>, get: () => Promise<number | undefined>): Promise<string> {
+  private async streamVolume(
+    action: string,
+    level: number | undefined,
+    set: (pct: number) => Promise<boolean>,
+    get: () => Promise<number | undefined>,
+    remember?: (pct: number) => void,
+  ): Promise<string> {
     if (!['set_volume', 'volume_up', 'volume_down'].includes(action)) return `Unknown music action "${action}".`;
     const ducked = this.ducked.find(() => true);
     const current = ducked?.volume ?? (await get()) ?? 100;
@@ -405,6 +430,7 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     const target = Math.max(0, Math.min(100, action === 'set_volume' ? (level ?? 50) : current + (action === 'volume_up' ? step : -step)));
     if (ducked) {
       for (const d of this.ducked) d.volume = target;
+      remember?.(target);
       return `Volume ${target}%.`;
     }
     return (await set(target)) ? `Volume ${target}%.` : "Couldn't change the volume.";

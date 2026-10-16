@@ -39,13 +39,21 @@ interface DirStation {
 @Injectable()
 export class RadioService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Radio');
-  private readonly store: SealedStore<{ last?: Station }>;
+  private readonly store: SealedStore<{ last?: Station; level?: number }>;
   /** ffmpeg is installed (in the Docker image). */
   available = false;
   current?: { station: Station; song?: string; since: number };
   private last?: Station;
   private proc?: ChildProcess;
   private stopping = false;
+  /** The radio's own volume (%), kept across stations and restarts ("radio volume 40"). */
+  level = 100;
+  /**
+   * Called when a station's sound stream has appeared in the sound system, to set its volume.
+   * Without it the stream gets the radio's level. (A new stream would otherwise start at whatever
+   * volume the sound system last remembered for the radio, e.g. turned down while Max talked.)
+   */
+  onStream?: (index: number) => void;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -57,7 +65,9 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.available = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
     try {
-      this.last = this.store.load()?.last;
+      const saved = this.store.load();
+      this.last = saved?.last;
+      if (typeof saved?.level === 'number') this.level = Math.max(0, Math.min(100, saved.level));
     } catch {
       // none yet
     }
@@ -79,7 +89,7 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
     if (!station) return q ? `I couldn't find a radio station for "${q}".` : 'Which station? For example "BBC Radio 2" or "jazz radio".';
     this.start(station);
     this.last = station;
-    this.store.save({ last: station }).catch(() => undefined);
+    this.persist();
     return `Playing ${station.name}${station.country ? ` (${station.country})` : ''}.`;
   }
 
@@ -99,10 +109,34 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
   }
 
   async setVolume(pct: number): Promise<boolean> {
+    this.remember(pct);
     const s = await this.stream();
     if (!s) return false;
     await setSinkInputVolume(s.index, pct);
     return true;
+  }
+
+  /** The radio volume to use from now on (also for the next stations). */
+  remember(pct: number): void {
+    this.level = Math.max(0, Math.min(100, Math.round(pct)));
+    this.persist();
+  }
+
+  private persist(): void {
+    this.store.save({ last: this.last, level: this.level }).catch(() => undefined);
+  }
+
+  /** Waits for the new station's stream to show up in the sound system, then sets its volume. */
+  private async watchStream(proc: ChildProcess): Promise<void> {
+    for (let i = 0; i < 30 && this.proc === proc; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      // The newest radio stream (the previous station's can linger for a moment).
+      const mine = (await sinkInputs()).filter((x) => x.names.includes(STREAM_NAME.toLowerCase())).sort((a, b) => b.index - a.index)[0];
+      if (!mine || this.proc !== proc) continue;
+      if (this.onStream) this.onStream(mine.index);
+      else await setSinkInputVolume(mine.index, this.level).catch(() => undefined);
+      return;
+    }
   }
 
   private async stream() {
@@ -122,6 +156,7 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
     this.proc = proc;
     this.current = { station, since: Date.now() };
     this.log.log(`Playing ${station.name} (${station.url})`);
+    void this.watchStream(proc);
     let err = '';
     proc.stderr?.setEncoding('utf8');
     proc.stderr?.on('data', (d: string) => {

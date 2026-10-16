@@ -79,6 +79,11 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   To go back to Max's face, delete `boot-logo.png` from the folder on the Mac **and** on the box
   (`rm ~/max-assistant/boot-logo.png`), then run the setup again. `MAX_BOOT_LOGO=off sudo ./scripts/pi/setup.sh`
   leaves the boot screen alone.
+- **Max's face:** a 3D robot (a glossy white head with a glass visor, glowing ear pods and an antenna) whose eyes
+  and mouth show his expressions and move as he talks; the head turns, tilts, nods and dozes. **Settings → Screen
+  → Face** switches to the classic flat face. If the box can't draw the 3D face smoothly (or at all), it lowers
+  the detail and then falls back to the classic face on its own. Preview on a computer: `/?demo` (add
+  `&face=classic` for the classic face).
 - **Cards on the screen:** when there's something worth seeing, Max shrinks to a small face at the top and
   a card fills the screen; tap **Back to Max** (or wait) to return.
   - **Timer done / reminder:** with **OK** / **Again**, or **Done** / **Snooze 10 min**.

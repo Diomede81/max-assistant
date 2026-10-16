@@ -7,6 +7,8 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
+# The 3D face only needs two files of three.js (the package is ~30 MB).
+RUN cd node_modules/three && find . -type f ! -path ./package.json ! -path ./LICENSE ! -path ./build/three.module.min.js ! -path ./build/three.cjs ! -path ./examples/jsm/environments/RoomEnvironment.js -delete
 # Memory search engine: keep only this machine's runtime (the package ships every platform + GPU builds).
 RUN ARCH=$(node -p process.arch) \
  && cd node_modules/onnxruntime-node/bin/napi-v6 && rm -rf darwin win32 \

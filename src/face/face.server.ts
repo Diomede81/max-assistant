@@ -2,12 +2,33 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import { DeviceService, STEP } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { APP_CONFIG, AppConfig } from '../config';
 import { FaceInfo, FaceService } from './face.service';
 import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
 import { AmbientService } from './ambient.service';
 import { LockService } from '../lock/lock.service';
+
+/** The 3D face's library (three.js), served from Max's own files: the screen needs no internet for it. */
+const VENDOR: Record<string, string> = {
+  '/vendor/three.module.min.js': 'build/three.module.min.js',
+  '/vendor/RoomEnvironment.js': 'examples/jsm/environments/RoomEnvironment.js',
+};
+const vendorCache = new Map<string, Buffer>();
+function vendorFile(path: string): Buffer | undefined {
+  const rel = VENDOR[path];
+  if (!rel) return undefined;
+  if (!vendorCache.has(path)) {
+    try {
+      vendorCache.set(path, readFileSync(join(dirname(require.resolve('three')), '..', rel)));
+    } catch {
+      return undefined;
+    }
+  }
+  return vendorCache.get(path);
+}
 
 /** Changes every time Max starts: an open face page from before an update reloads itself. */
 const BOOT_ID = `${Date.now().toString(36)}-${process.pid}`;
@@ -64,6 +85,12 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       this.clients.add(res);
       this.send(res, 'info', this.face.info());
       req.on('close', () => this.clients.delete(res));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/vendor/')) {
+      const f = vendorFile(url.pathname);
+      if (!f) res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+      else res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'max-age=86400' }).end(f);
       return;
     }
     if (req.method === 'GET' && url.pathname.startsWith('/photos/')) {

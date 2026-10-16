@@ -118,6 +118,10 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   kept on the box only) and switch it on. During the hours you choose (19:00–23:00 by default), after two
   quiet minutes, your pictures fade one into the next with the clock on top. "Hey Max" or a touch brings
   his face back. The glance can be switched off there too.
+- **Talking to Max:** say "Hey Max" and he answers **"Hello, how can I help?"**, then listens. To end the
+  conversation, say "stop", "that's all" or simply **"thank you"** ("great, thanks", "thank you very much"...).
+  When the box starts or Max restarts (an update), a short **jingle** tells you he's ready. The greeting
+  (empty = a short beep) and the jingle are set in **Settings → Device** on the control panel.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.

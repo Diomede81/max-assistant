@@ -213,12 +213,12 @@ export class ConversationService implements OnApplicationBootstrap {
       return;
     }
 
-    if (this.cfg.wakeWord.verify && !(await this.confirmWake(Buffer.concat(recent), fmt))) {
-      void this.waitForWakeWord();
-      return;
-    }
-
+    // The double-check runs while Max already answers, so it adds no delay; a false wake-up cuts
+    // the greeting short and he goes back to sleep.
+    const heardAt = Date.now();
+    const verified = this.cfg.wakeWord.verify ? this.confirmWake(Buffer.concat(recent), fmt) : Promise.resolve(true);
     if (this.lock?.locked) {
+      if (!(await verified)) return this.waitForWakeWord();
       this.log.log(`Wake word "${name}" detected, but Max is locked (start-up code)`);
       const speech = this.tts.session();
       speech.say("I'm locked. Please enter my code on the screen.");
@@ -226,22 +226,36 @@ export class ConversationService implements OnApplicationBootstrap {
       return this.waitForWakeWord();
     }
 
-    this.log.log(`Wake word "${name}" detected - listening for your request`);
-    // Turn any music down while we talk (in parallel with the chime, so no added delay).
+    this.log.log(`Wake word "${name}" detected - answering`);
+    // Turn any music down while we talk (in parallel with the greeting, so no added delay).
     const ducked = this.music?.duckStart();
     // "Hello, how can I help?" (set on the control panel), or the short beep if there's no greeting.
     const greeting = this.device?.greeting;
     this.greeted = Boolean(greeting);
+    let answering: Promise<unknown> = Promise.resolve();
+    let falseAlarm = false;
     if (greeting) {
-      await ducked;
       const live = this.liveVoice?.active ? this.liveVoice.recorded(greeting) : undefined;
-      if (live) await this.liveVoice!.play(live).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+      if (live) answering = this.liveVoice!.play(live).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
       else {
-        await this.tts.sayReady(greeting).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+        answering = (async () => {
+          await this.tts.prepare(greeting); // normally ready since start-up
+          if (!falseAlarm) await this.tts.sayReady(greeting);
+        })().catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
         void this.liveVoice?.ensure(greeting); // in the live voice from next time
       }
-      await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
     } else if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    if (!(await verified)) {
+      falseAlarm = true;
+      this.tts.stopPlayback();
+      await answering;
+      await ducked;
+      await this.music?.duckEnd();
+      return this.waitForWakeWord();
+    }
+    await answering;
+    if (greeting) await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
+    this.log.log(`Ready for your request ${Date.now() - heardAt} ms after the wake word`);
     this.face?.setState('listening');
     try {
       await this.talk();

@@ -29,6 +29,9 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
   private saved: Saved = { enabled: true, code: newCode() };
   /** What's playing over AirPlay, from the receiver's metadata. */
   now?: { title?: string; artist?: string; album?: string; since: number };
+  /** The album art of what's playing, when the app sends it (Apple Music does). */
+  cover?: { data: Buffer; type: string; id: number; at: number };
+  private coverIds = 0;
   private reader?: ReadStream;
   private retry?: NodeJS.Timeout;
   private closed = false;
@@ -149,11 +152,13 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
     while ((m = re.exec(buf))) {
       used = re.lastIndex;
       const code = Buffer.from(m[2], 'hex').toString('latin1');
-      const text = m[4] ? Buffer.from(m[4].trim(), 'base64').toString('utf8').trim() : '';
-      this.item(code, text);
+      const raw = m[4] ? Buffer.from(m[4].trim(), 'base64') : Buffer.alloc(0);
+      if (code === 'PICT') this.picture(raw);
+      else this.item(code, raw.toString('utf8').trim());
     }
     const rest = buf.slice(used);
-    return rest.length > 100_000 ? '' : rest;
+    // Album art can be a few hundred KB; anything far bigger is a broken stream.
+    return rest.length > 8_000_000 ? '' : rest;
   }
 
   private item(code: string, text: string): void {
@@ -169,9 +174,13 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
       case 'pend': // playback ended
         if (this.now) this.log.log('AirPlay stopped');
         this.now = undefined;
+        this.cover = undefined;
         break;
       case 'minm':
-        if (this.now) this.now.title = text || undefined;
+        if (!this.now) break;
+        // A new song: its picture usually follows; drop the last song's (unless it just came in).
+        if ((text || undefined) !== this.now.title && this.cover && Date.now() - this.cover.at > 5000) this.cover = undefined;
+        this.now.title = text || undefined;
         break;
       case 'asar':
         if (this.now) this.now.artist = text || undefined;
@@ -180,6 +189,12 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
         if (this.now) this.now.album = text || undefined;
         break;
     }
+  }
+
+  /** Album art (JPEG or PNG). An empty picture means the song has none. */
+  private picture(data: Buffer): void {
+    const type = data[0] === 0xff && data[1] === 0xd8 ? 'image/jpeg' : data.subarray(0, 4).toString('latin1') === '\x89PNG' ? 'image/png' : undefined;
+    this.cover = type ? { data, type, id: ++this.coverIds, at: Date.now() } : undefined;
   }
 }
 

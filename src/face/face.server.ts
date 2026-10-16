@@ -10,6 +10,7 @@ import type { Mouth } from './visemes';
 import { renderFace } from './face.page';
 import { AmbientService } from './ambient.service';
 import { LockService } from '../lock/lock.service';
+import { AirPlayService } from '../music/airplay.service';
 
 /** The 3D face's library (three.js), served from Max's own files: the screen needs no internet for it. */
 const VENDOR: Record<string, string> = {
@@ -52,6 +53,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly lock?: LockService,
+    @Optional() private readonly airplay?: AirPlayService,
   ) {}
 
   onModuleInit(): void {
@@ -98,6 +100,13 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       const p = this.ambient?.photo(url.pathname.slice('/photos/'.length));
       if (!p) res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
       else res.writeHead(200, { 'Content-Type': p.type, 'Cache-Control': 'max-age=86400' }).end(p.data);
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/airplay-cover') {
+      // The album art of what's playing over AirPlay (the music card). Nothing while Max is locked.
+      const c = this.lock?.locked ? undefined : this.airplay?.cover;
+      if (!c) res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+      else res.writeHead(200, { 'Content-Type': c.type, 'Cache-Control': 'max-age=3600' }).end(c.data);
       return;
     }
     if (req.method === 'GET' && url.pathname === '/health') {

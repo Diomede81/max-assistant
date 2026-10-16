@@ -56,7 +56,8 @@ open(sys.argv[2], 'w').write(f'''general = {{
 {outputs[backend]}
 metadata = {{
   enabled = "yes";
-  include_cover_art = "no";
+  include_cover_art = "yes";
+  cover_art_cache_directory = "";
   pipe_name = "/run/max/airplay-metadata";
 }};
 ''')

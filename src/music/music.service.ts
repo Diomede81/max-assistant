@@ -471,7 +471,10 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
       return { title: r.song ?? r.station.name, artist: r.song ? r.station.name : 'Internet radio', album: '', art: r.station.favicon, paused: false, source: 'radio' };
     }
     const a = this.airplay?.now;
-    if (a) return { title: a.title ?? 'AirPlay', artist: a.artist ?? 'From a phone or computer', album: a.album ?? '', paused: false, source: 'airplay' };
+    if (a) {
+      const c = this.airplay?.cover;
+      return { title: a.title ?? 'AirPlay', artist: a.artist ?? 'From a phone or computer', album: a.album ?? '', art: c && `/airplay-cover?v=${c.id}`, paused: false, source: 'airplay' };
+    }
     if (this.state !== 'ready') return undefined;
     const s = await this.status().catch(() => undefined);
     if (!s || s.stopped || !s.track) return undefined;

@@ -71,6 +71,7 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     if (this.radio) this.radio.onStream = (index) => void this.newStream(index, this.radio!.level);
     // AirPlay from a phone takes over: the radio and Spotify stop.
     this.airplay?.on('start', () => {
+      void this.airplayStream();
       if (this.radio?.playing) this.radio.stop();
       if (this.state === 'ready') void this.api('POST', '/player/pause').catch(() => undefined);
     });
@@ -369,6 +370,21 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
       } else await setSinkInputVolume(index, volume);
     } catch {
       // plays at whatever volume it started with
+    }
+  }
+
+  /**
+   * AirPlay opens a new sound stream each time a phone starts playing, and the sound system can give
+   * it the last volume it remembered (e.g. turned down while Max talked): set it to full (the phone
+   * sets the loudness), or turned down until Max has finished talking.
+   */
+  private async airplayStream(): Promise<void> {
+    for (let i = 0; i < 30 && this.airplay?.active; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      const s = (await sinkInputs()).filter((x) => /shairport/.test(x.names)).sort((a, b) => b.index - a.index)[0];
+      if (!s) continue;
+      if (this.ducking ? !this.ducked.some((d) => d.index === s.index) : s.volume < 100) await this.newStream(s.index, 100);
+      return;
     }
   }
 

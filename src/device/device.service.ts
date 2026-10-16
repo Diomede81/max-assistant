@@ -22,7 +22,17 @@ export interface DeviceStatus {
   /** What Max says when he hears "Hey Max" (empty: a short beep), and the start-up jingle. */
   greeting?: string;
   startSound?: boolean;
+  /** How the speaker is tuned (see SPEAKER_TONES). */
+  tone?: SpeakerTone;
 }
+
+/** Speaker tuning, applied on the box by max-sound.sh (an equaliser before the mic board). */
+export const SPEAKER_TONES = {
+  flat: 'Flat: the sound as it is',
+  warm: 'Warm: fuller, more bass, softer highs (best for music)',
+  voice: 'Voice: clearer speech, less boom',
+} as const;
+export type SpeakerTone = keyof typeof SPEAKER_TONES;
 
 /**
  * The box's speaker volume and screen brightness, from the screen's menu, by voice or from the
@@ -36,9 +46,10 @@ export const DEFAULT_GREETING = 'Hello, how can I help?';
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; startSound?: boolean }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; startSound?: boolean; tone?: SpeakerTone }>;
   private level = 100;
   private voice: { greeting: string; startSound: boolean } = { greeting: DEFAULT_GREETING, startSound: true };
+  private speakerTone: SpeakerTone = 'flat';
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
     this.store = new SealedStore(cfg.memory.dir, 'device');
@@ -49,15 +60,18 @@ export class DeviceService implements OnModuleInit {
       const saved = this.store.load();
       this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
       this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, startSound: saved?.startSound ?? true };
+      if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
     } catch {
       // keep full brightness
     }
+    // /run/max is emptied when the box restarts: tell it the speaker tuning again.
+    if (this.cfg.face.onBox) this.applyTone();
     // After a restart, the box's screen starts at full brightness: set it back to the chosen level.
     if (this.cfg.face.onBox && this.level !== 100) this.applyBrightness();
   }
 
   async status(): Promise<DeviceStatus> {
-    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice };
+    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone };
   }
 
   // ---------- Greeting and start-up sound ----------
@@ -81,8 +95,33 @@ export class DeviceService implements OnModuleInit {
 
   private persist(): void {
     this.store
-      .save({ brightness: this.level, ...this.voice })
+      .save({ brightness: this.level, ...this.voice, tone: this.speakerTone })
       .catch((err) => this.log.warn(`Could not save the device settings: ${(err as Error).message}`));
+  }
+
+  // ---------- Speaker tuning ----------
+
+  get tone(): SpeakerTone {
+    return this.speakerTone;
+  }
+
+  setTone(tone: string): string {
+    if (!(tone in SPEAKER_TONES)) return 'Unknown speaker sound.';
+    if (!this.cfg.face.onBox) return 'The speaker sound can only be changed on the Max box.';
+    this.speakerTone = tone as SpeakerTone;
+    this.persist();
+    if (!this.applyTone()) return "Couldn't reach the box's sound settings.";
+    this.log.log(`Speaker sound: ${tone}`);
+    return `Speaker sound: ${tone}. It changes in a couple of seconds.`;
+  }
+
+  private applyTone(): boolean {
+    try {
+      writeFileSync(join(this.cfg.face.runDir, 'sound.json'), JSON.stringify({ tone: this.speakerTone }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ---------- Volume ----------

@@ -1,0 +1,6 @@
+[Unit]
+Description=Max: restart the speaker sound with the new choice
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart max-sound.service

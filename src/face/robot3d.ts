@@ -16,7 +16,7 @@ export const ROBOT3D_JS = String.raw`
   const visorCv = document.createElement('canvas'); visorCv.width = VW; visorCv.height = VH;
   const vg = visorCv.getContext('2d');
   /** Half the screen height in 3D units: the head (radius 1) fills about half the screen, leaving room above and below for the clock and glance. */
-  const VIEW_HALF = 1.72;
+  const VIEW_HALF = 1.82;
 
   function wantRobot() {
     const p = params.get('face');

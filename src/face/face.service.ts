@@ -62,6 +62,8 @@ export interface FaceInfo {
   canLock?: boolean;
   /** Which face to draw: the 3D robot or the classic flat face. */
   faceStyle?: 'robot' | 'classic';
+  /** Dim the screen after this many quiet seconds (0 = never). */
+  dimAfterSec?: number;
 }
 
 const FRAME_MS = 50;
@@ -308,6 +310,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       glance: this.ambient?.glance(),
       canLock: this.lock?.enabled || undefined,
       faceStyle: this.ambient?.settings.faceStyle ?? 'robot',
+      dimAfterSec: this.ambient?.settings.dimAfterSec ?? 10,
     };
   }
 

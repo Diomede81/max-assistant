@@ -126,6 +126,7 @@ export class DeviceService implements OnModuleInit {
   setBrightness(pct: number): number | string {
     if (!this.cfg.face.onBox) return 'Screen brightness can only be changed on the Max box';
     this.level = clamp(pct, MIN_BRIGHTNESS);
+    this.dimmed = false;
     this.persist();
     if (!this.applyBrightness()) return "Couldn't reach the box's screen settings";
     this.log.log(`Brightness ${this.level}%`);
@@ -136,9 +137,24 @@ export class DeviceService implements OnModuleInit {
     return this.setBrightness(this.level + by);
   }
 
+  /**
+   * The screen dims itself after a quiet spell (and lights up again for anything): a temporary
+   * level, never saved, never above the chosen brightness. Returns whether the backlight can do it.
+   */
+  dim(on: boolean, level: number): boolean {
+    if (!this.cfg.face.onBox) return false;
+    this.dimmed = on;
+    this.dimLevel = clamp(level, MIN_BRIGHTNESS);
+    const ok = this.applyBrightness();
+    return ok && this.backlight()?.supported !== false;
+  }
+  private dimmed = false;
+  private dimLevel = 20;
+
   private applyBrightness(): boolean {
     try {
-      writeFileSync(join(this.cfg.face.runDir, 'brightness-request'), String(this.level));
+      const level = this.dimmed ? Math.min(this.level, this.dimLevel) : this.level;
+      writeFileSync(join(this.cfg.face.runDir, 'brightness-request'), String(level));
       return true;
     } catch {
       return false;

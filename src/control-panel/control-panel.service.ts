@@ -19,6 +19,7 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService } from '../face/ambient.service';
 import { LockService } from '../lock/lock.service';
+import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -40,6 +41,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
   @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
   @Optional() @Inject(LockService) private readonly lock?: LockService;
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -137,7 +139,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/device/voice' && this.device) {
       const f = await readForm(req);
       const msg = this.device.setVoice({ greeting: f.get('greeting') ?? '', startSound: f.get('startSound') === 'on' });
+      void this.liveVoice?.ensure(this.device.greeting); // recorded in the live voice, ready for the next "Hey Max"
       return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#device`);
+    }
+    if (req.method === 'POST' && (url.pathname === '/voice/save' || url.pathname === '/voice/try') && this.liveVoice) {
+      const f = await readForm(req);
+      const voice = f.get('voice') ?? '';
+      const style = f.get('style') ?? '';
+      if (url.pathname === '/voice/try') {
+        const msg = await this.liveVoice.preview(voice, style);
+        return this.redirect(res, `/?${msg.startsWith('That was') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
+      }
+      const msg = this.liveVoice.save({ voice, style });
+      if (msg.startsWith('Saved') && this.device?.greeting) void this.liveVoice.ensure(this.device.greeting);
+      return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
     }
     if (req.method === 'POST' && url.pathname === '/device/power') {
       const f = await readForm(req);
@@ -469,6 +484,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: await this.device?.status(),
+      liveVoice: this.liveVoice
+        ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
+        : undefined,
       lock: this.lock && this.cfg.face.enabled ? { enabled: this.lock.enabled, locked: this.lock.locked, canReset: this.auth.enabled } : undefined,
       screen: this.ambient && this.cfg.face.enabled
         ? { ...this.ambient.settings, photos: this.ambient.photos(), place: this.location?.home?.place || undefined }

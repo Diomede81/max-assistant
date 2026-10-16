@@ -35,5 +35,7 @@ export interface VoiceClient extends EventEmitter {
   requestResponse(): void;
   cancelResponse(): void;
   clearInput(): void;
+  /** Asks the voice to say a line of text (used to record the greeting and voice samples). */
+  speak(text: string): void;
   close(): void;
 }

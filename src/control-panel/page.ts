@@ -10,6 +10,8 @@ export interface PanelData {
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
   device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean };
+  /** Real-time mode: Max's voice and speaking style. */
+  liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
     onBox: boolean;
     version?: { sha: string; date: string; subject: string; repo: string };
@@ -126,6 +128,20 @@ function soulSection(s: NonNullable<PanelData['soul']>): string {
 ${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you, kept separately for personal and work mode (each mode only sees its own). Encrypted like his memory.</p><ul>${journal}</ul>
 <form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><select name="mode" aria-label="Mode"><option value="personal">Personal</option><option value="work">Work</option></select><button class="btn secondary" type="submit">Add</button></form>` : ''}
 </section>`;
+}
+
+function liveVoiceForm(v: NonNullable<PanelData['liveVoice']>): string {
+  if (!v.active) {
+    return '<p class="meta"><b>Voice:</b> Max uses his standard voice (see docs/VOICES.md). In real-time mode (<code>VOICE_MODE=realtime</code>) you can choose his live voice here.</p>';
+  }
+  const list = v.voices.some((x) => x.id === v.voice) ? v.voices : [{ id: v.voice, label: v.voice }, ...v.voices];
+  const opts = list.map((x) => `<option value="${esc(x.id)}" ${x.id === v.voice ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
+  return `<form class="stack" method="post" action="/voice/save">
+<div class="addfact"><label class="meta" for="lv">Max's voice (${v.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'})</label><select id="lv" name="voice">${opts}</select></div>
+<div class="addfact"><input name="style" maxlength="400" value="${esc(v.style)}" placeholder="How he speaks, e.g. a warm, calm British accent, like a witty butler"></div>
+<div class="addfact"><button class="btn secondary" type="submit" formaction="/voice/try">▶ Try it on Max</button><button class="btn" type="submit">Save</button></div>
+<p class="meta">"Try it" plays a short sample on the box (takes a few seconds). Saving also re-records the greeting in the new voice.</p>
+</form>`;
 }
 
 function lockRow(l: NonNullable<PanelData['lock']>): string {
@@ -595,6 +611,7 @@ ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
 <p class="meta">To end a conversation, say "stop", "that's all" or simply "thank you" (also "great, thanks", "thank you very much"...).</p>
 </form>` : ''}
+${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
 ${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}

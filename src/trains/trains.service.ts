@@ -96,7 +96,8 @@ export class TrainsService implements OnModuleInit {
           description:
             'Live train departures from a UK station (National Rail): times, delays, cancellations, platforms, and the ' +
             'arrival time at a destination. Use for "when is the next train to...", "is the 8:15 on time?", "trains to ' +
-            'London". Shows the board on the screen. Say the next two or three trains briefly.',
+            'London". Shows the board on the screen. Say the next two or three trains briefly. Call it every time the user ' +
+            'wants to see the trains: never say they are on the screen without calling it.',
           parameters: {
             type: 'object',
             properties: {
@@ -117,7 +118,8 @@ export class TrainsService implements OnModuleInit {
             'Plan a UK train journey, with changes, for a time: "trains to Manchester tomorrow morning", "get me to Bath by ' +
             '10am on Saturday". Shows the options on the screen with a QR code to book on Trainline. Say the best one or ' +
             'two options briefly (leave, arrive, changes) and that the QR code on the screen opens Trainline to book. ' +
-            'Ticket prices are only known by Trainline: never guess them.',
+            'Ticket prices are only known by Trainline: never guess them. Call it again every time the user asks to see the ' +
+            'journey or the QR code again: never say it is on the screen without calling it.',
           parameters: {
             type: 'object',
             properties: {
@@ -282,19 +284,19 @@ export class TrainsService implements OnModuleInit {
     const b = to.station?.name ?? trips[0].toStop;
     const link = `https://www.thetrainline.com/en/train-times/${slug(a)}-to-${slug(b)}`;
     const qr = await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0f14', light: '#ffffff' } });
+    // Short, so the QR code has room: the route, the options on one line each, where to change.
     showCard({
       id: 'journey',
       kind: 'list',
       icon: '🚆',
       title: `${shortName(a)} → ${shortName(b)}`,
-      subtitle: when ? `${timeIs === 'arrive' ? 'Arrive by' : 'Leave after'} ${dayTime(when)}` : 'Leaving now',
-      lines: trips.map((t) => ({
+      subtitle: `${when ? `${timeIs === 'arrive' ? 'Arrive by' : 'From'} ${dayTime(when)}` : 'Leaving now'} · scan to book`,
+      image: `data:image/svg+xml;base64,${Buffer.from(qr).toString('base64')}`,
+      lines: trips.slice(0, 2).map((t) => ({
         time: hm(t.depart),
         text: `→ ${hm(t.arrive)} · ${t.duration} · ${t.changes ? `${t.changes} change${t.changes > 1 ? 's' : ''}` : 'direct'}`,
-        sub: t.legs.map((l) => `${hm(l.depart)} ${l.from} → ${l.to}${l.line ? ` (${l.line})` : ''}`).join(' · ').slice(0, 200),
+        sub: t.changes ? `via ${t.legs.slice(1).map((l) => l.from).join(', ')}` : undefined,
       })),
-      image: `data:image/svg+xml;base64,${Buffer.from(qr).toString('base64')}`,
-      body: 'Scan to book on Trainline',
       ttlMs: JOURNEY_CARD_MS,
     });
     const rows = trips.map(
@@ -303,7 +305,7 @@ export class TrainsService implements OnModuleInit {
         t.legs.map((l) => `${hm(l.depart)} ${l.line || 'train'} ${l.from} to ${l.to}`).join('; ') +
         (t.fare ? ` (fare from Google: ${t.fare})` : ''),
     );
-    return `Train journeys from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text}:\n${rows.join('\n')}\nThe options and a QR code to book on Trainline are on the screen.`;
+    return `Train journeys from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text}:\n${rows.join('\n')}\nThe options and a QR code to book on Trainline are on the screen now. If the user asks to see them again later, call plan_train_journey again (the card is only on the screen when you call it).`;
   }
 
   /** A station by name (sent to Google as "<name> station"), or any other place as said. */

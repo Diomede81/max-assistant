@@ -29,6 +29,11 @@ export class TtsService {
   ) {}
 
   /** Returns a speech session: say() each sentence, then await done(). */
+  /** Cuts off whatever is playing right now (the greeting after a false wake-up). */
+  stopPlayback(): void {
+    this.speaker.stop();
+  }
+
   session() {
     const order = new AsyncQueue<Synthesis>();
     let stopped = false;

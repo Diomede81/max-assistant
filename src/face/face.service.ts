@@ -372,6 +372,15 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     void this.tickInfo();
   }
 
+  /**
+   * You ended the conversation ("thank you", "stop", "that's all"...): the card Max showed for it
+   * goes and his face comes back. A recipe you're following, a timer or reminder going off and
+   * notifications stay until you close them.
+   */
+  conversationEnded(): void {
+    if (this.card && !/^(timer-|say-|notify-|steps$)/.test(this.card.id)) this.dismissCard();
+  }
+
   dismissCard(id?: string): void {
     if (!this.card || (id && this.card.id !== id)) return;
     this.card = undefined;

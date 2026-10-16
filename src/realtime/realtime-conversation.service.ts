@@ -238,6 +238,7 @@ export class RealtimeConversationService {
     let stopReason: string | undefined;
     const hush = (why: string) => {
       stopReason ??= why;
+      this.face?.conversationEnded(); // the card shown for this conversation goes; his face comes back
       generation++;
       this.speaker.stop();
       player?.close();

@@ -79,7 +79,7 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   To go back to Max's face, delete `boot-logo.png` from the folder on the Mac **and** on the box
   (`rm ~/max-assistant/boot-logo.png`), then run the setup again. `MAX_BOOT_LOGO=off sudo ./scripts/pi/setup.sh`
   leaves the boot screen alone.
-- **Dimming:** after 10 seconds of quiet the screen fades down (on the box, the backlight dims to 10%). It lights
+- **Dimming:** after 10 seconds of quiet the screen fades down (on the box, the backlight dims to 20%). It lights
   up again at once for "Hey Max", a card, a timer, a notification or a touch (a touch on a dimmed screen only
   wakes it). Change the delay (0 = never) and how dark it gets in **Settings → Screen**.
 - **Max's face:** a 3D robot (a glossy white head with a glass visor, glowing ear pods and an antenna) whose eyes

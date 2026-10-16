@@ -149,7 +149,7 @@ export class DeviceService implements OnModuleInit {
     return ok && this.backlight()?.supported !== false;
   }
   private dimmed = false;
-  private dimLevel = 10;
+  private dimLevel = 20;
 
   private applyBrightness(): boolean {
     try {

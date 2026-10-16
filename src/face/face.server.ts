@@ -163,7 +163,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
         res.writeHead(403).end();
         return;
       }
-      const backlight = this.device?.dim(url.searchParams.get('on') === '1', this.ambient?.settings.dimLevel ?? 10) ?? false;
+      const backlight = this.device?.dim(url.searchParams.get('on') === '1', this.ambient?.settings.dimLevel ?? 20) ?? false;
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ backlight }));
       return;
     }

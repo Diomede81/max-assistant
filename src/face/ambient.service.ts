@@ -57,7 +57,7 @@ const PHOTO_EXT: Record<string, string> = { ffd8ff: 'jpg', '89504e': 'png', '524
 export class AmbientService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Ambient');
   private readonly store: SealedStore<AmbientSettings>;
-  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true, faceStyle: 'robot', dimAfterSec: 10, dimLevel: 10 };
+  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true, faceStyle: 'robot', dimAfterSec: 10, dimLevel: 20 };
   private events: { list: CalEvent[]; at: number; mode: string } = { list: [], at: 0, mode: '' };
   private timer?: NodeJS.Timeout;
   private readonly photoDir: string;
@@ -95,7 +95,7 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
     if (changes.frameFrom !== undefined && !t.test(changes.frameFrom)) return 'Times must be like 19:00.';
     if (changes.frameTo !== undefined && !t.test(changes.frameTo)) return 'Times must be like 23:00.';
     if (changes.dimAfterSec !== undefined) changes.dimAfterSec = Math.max(0, Math.min(3600, Math.round(changes.dimAfterSec) || 0));
-    if (changes.dimLevel !== undefined) changes.dimLevel = Math.max(5, Math.min(80, Math.round(changes.dimLevel) || 10));
+    if (changes.dimLevel !== undefined) changes.dimLevel = Math.max(5, Math.min(80, Math.round(changes.dimLevel) || 20));
     if (changes.frameEverySec !== undefined) changes.frameEverySec = Math.max(5, Math.min(600, Math.round(changes.frameEverySec) || 20));
     this.settings = { ...this.settings, ...changes };
     this.store.save(this.settings).catch((err) => this.log.warn(`Could not save the screen settings: ${(err as Error).message}`));

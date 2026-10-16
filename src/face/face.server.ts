@@ -156,6 +156,17 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       })();
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/dim') {
+      // The page dims itself after a quiet spell; on the box the backlight goes down too. Same origin only.
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) {
+        res.writeHead(403).end();
+        return;
+      }
+      const backlight = this.device?.dim(url.searchParams.get('on') === '1', this.ambient?.settings.dimLevel ?? 10) ?? false;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ backlight }));
+      return;
+    }
     if (req.method === 'POST' && (url.pathname === '/unlock' || url.pathname === '/lock') && this.lock) {
       // The start-up code keypad, and the menu's Lock. Only the screen itself (same origin).
       const origin = req.headers.origin;

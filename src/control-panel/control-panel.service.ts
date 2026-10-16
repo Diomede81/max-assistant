@@ -442,6 +442,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         notifyEmail: f.get('notifyEmail') === 'on',
         notifyTodos: f.get('notifyTodos') === 'on',
         faceStyle: f.get('faceStyle') === 'classic' ? 'classic' : 'robot',
+        ...(f.has('dimAfterSec') ? { dimAfterSec: Number(f.get('dimAfterSec')) } : {}),
+        ...(f.has('dimLevel') ? { dimLevel: Number(f.get('dimLevel')) } : {}),
         frameFrom: f.get('frameFrom') ?? '',
         frameTo: f.get('frameTo') ?? '',
         frameEverySec: Number(f.get('frameEverySec') ?? 20),

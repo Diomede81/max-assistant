@@ -106,6 +106,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #lock .pad button.blank { visibility: hidden; }
 #lock .pad button.del { border-color: transparent; background: transparent; font-size: 4.6vmin; }
 #lock.paused .pad button { opacity: .35; }
+/* Dims after a quiet spell (on the box the backlight dims too; this darkens screens without one). */
+#dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+#dim.on { transition: opacity 1.5s ease; }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -136,6 +139,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <div id="caption" hidden></div>
 <div id="lock" hidden><div class="lk"><div class="lt">🔒 Enter your code</div><div class="dots" id="lkDots"></div><div class="lmsg" id="lkMsg"></div><div class="pad" id="lkPad"></div></div></div>
 <div id="frame" hidden><img id="fa" alt=""><img id="fb" alt=""><div class="fshade"></div><div class="fclock" id="fclock"></div></div>
+<div id="dim"></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
 (() => {
@@ -166,7 +170,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); if (info.faceStyle && wantRobot() !== R3.wanted) location.reload(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle && wantRobot() !== R3.wanted) location.reload(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -418,6 +422,37 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   }
   setInterval(renderFrame, 1000);
 
+  // ---------- dim after a quiet spell; anything happening lights the screen up again ----------
+  const dimEl = document.getElementById('dim');
+  let dimOn = false, dimLastActive = Date.now(), dimBacklight = false;
+  function busyForDim() {
+    // Talking, thinking, a card, the menu, captions, the photo frame or WiFi setup: stay bright.
+    return (info.state !== 'idle' && info.state !== 'sleeping') || cardShown() || !menuEl.hidden || !captionEl.hidden || !frameEl.hidden;
+  }
+  function dimNow() {
+    dimOn = true;
+    dimEl.classList.add('on');
+    dimEl.style.opacity = '0.72'; // until the box confirms its backlight is dimming
+    if (demo) return;
+    fetch('/dim?on=1', { method: 'POST' }).then((r) => r.json()).then((j) => {
+      dimBacklight = Boolean(j.backlight);
+      if (dimOn) dimEl.style.opacity = dimBacklight ? '0.25' : '0.72';
+    }).catch(() => undefined);
+  }
+  function undim() {
+    if (!dimOn) return;
+    dimOn = false;
+    dimEl.classList.remove('on');
+    dimEl.style.opacity = '0';
+    if (!demo) fetch('/dim?on=0', { method: 'POST' }).catch(() => undefined);
+  }
+  function checkDim() {
+    const after = Number(params.get('dim') || (info.dimAfterSec === undefined ? 10 : info.dimAfterSec));
+    if (busyForDim()) { dimLastActive = Date.now(); undim(); return; }
+    if (!dimOn && after > 0 && Date.now() - dimLastActive > after * 1000) dimNow();
+  }
+  setInterval(checkDim, 500);
+
   // ---------- start-up code keypad (until the code is entered, Max shows nothing personal) ----------
   const lockEl = document.getElementById('lock');
   const lkDots = document.getElementById('lkDots'), lkMsg = document.getElementById('lkMsg'), lkPad = document.getElementById('lkPad');
@@ -474,6 +509,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let pressAt = 0, pressFired = false, toast = '', toastUntil = 0, menuIdle = 0, countdown = 0;
   let frameTouch = false;
   addEventListener('pointerdown', () => {
+    dimLastActive = Date.now();
+    if (dimOn) { frameTouch = true; undim(); return; } // a touch on a dimmed screen only wakes it
     if (!frameEl.hidden) { frameTouch = true; idleSince = Date.now() + (demo ? 15000 : 0); renderFrame(); return; }
     if (!menuEl.hidden) return;
     pressAt = performance.now(); pressFired = false;

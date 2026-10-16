@@ -90,5 +90,17 @@ Amazon Music, podcasts, Safari...) can play through him: in the app's speaker / 
 - **Turn AirPlay off / on** on the control panel. It's also off while Max is locked (start-up code).
 - While Max talks, the AirPlay music turns down like any other music. Pause and skip from the phone;
   "what's playing?" works by voice.
+- The music card on the screen shows the song, the artist and the **album cover** when the app sends it
+  (Apple Music and most others do).
 - It plays through the same speaker as Max. The setup installs it (`shairport-sync`, run as Max's user);
-  the package's own open speaker is switched off so only the protected one exists.
+  the package's own open speaker is switched off so only the protected one exists. It plays straight into
+  the box's sound system, so it comes out of Max's speaker.
+- **Connected but no sound?** Update Max, then on the box run
+  `sudo journalctl _SYSTEMD_USER_UNIT=max-airplay.service -n 30 --no-pager` and look for an error.
+
+## Speaker sound
+
+**Settings → Device → Speaker sound** on the control panel tunes everything Max plays (his voice, Spotify,
+radio, AirPlay): **Flat** (as it is), **Warm** (fuller, more bass, softer highs; best for music) or **Voice**
+(clearer speech). It changes within a couple of seconds and the volume stays the same. "Hey Max" keeps
+working during music: the mic board still hears exactly what the speaker plays.

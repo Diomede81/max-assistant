@@ -134,6 +134,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.
+- **Speaker sound:** **Settings → Device → Speaker sound**: Flat, Warm (fuller, for music) or Voice (clearer
+  speech). For a louder, richer speaker, seal its chamber airtight and fill it loosely with speaker wadding.
 - **Start-up code:** in **Settings → Security** on the control panel, set a 6-digit code. From then on, every
   time the box starts, Max shows a keypad and stays locked until the code is typed: he won't answer
   ("I'm locked, please enter my code on the screen"), won't run any action, and his screen shows nothing

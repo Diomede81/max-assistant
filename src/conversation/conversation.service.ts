@@ -279,11 +279,13 @@ export class ConversationService implements OnApplicationBootstrap {
         if (isStopRequest(text.value)) {
           this.log.log(`Stopping: you said "${text.value}"`);
           this.control?.consumeEnd();
+          this.face?.conversationEnded();
           return;
         }
         const outcome = await this.respond(text.value, text.endOfSpeech);
         if (outcome === 'ended') {
           this.log.log('Conversation ended by Max (told to stop, or the speech was not meant for him)');
+          this.face?.conversationEnded();
           return;
         }
         if (outcome === 'interrupted') {

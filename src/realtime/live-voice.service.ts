@@ -11,6 +11,8 @@ import type { VoiceClient } from './voice-client';
 
 export const PCM24 = { rate: 24000, width: 2, channels: 1 };
 const RECORD_TIMEOUT_MS = 20_000;
+/** A reminder waits at most this long for its live-voice recording (the chimes play meanwhile). */
+const ANNOUNCE_TIMEOUT_MS = 10_000;
 const SAMPLE = "Hi, I'm Max. This is how I'd sound. How can I help?";
 
 /** The voices each provider offers, with a word on each (the dashboard's list). */
@@ -147,6 +149,20 @@ export class LiveVoiceService implements OnModuleInit {
     return p;
   }
 
+  /**
+   * A one-off line in the live voice (a reminder or a timer going off), recorded now and not kept.
+   * Undefined if it can't be recorded in time: the caller says it in the standard voice instead.
+   */
+  async line(text: string, timeoutMs = ANNOUNCE_TIMEOUT_MS): Promise<Buffer | undefined> {
+    if (!this.active || !text.trim()) return undefined;
+    try {
+      return await this.record(text, this.voice, this.style, timeoutMs);
+    } catch (err) {
+      this.log.warn(`Could not say "${text}" in the live voice (${(err as Error).message}); using the standard voice`);
+      return undefined;
+    }
+  }
+
   async play(pcm: Buffer): Promise<void> {
     await this.speaker.play(PCM24, (async function* () { yield pcm; })());
   }
@@ -164,7 +180,7 @@ export class LiveVoiceService implements OnModuleInit {
   }
 
   /** One short session that only says `text`, recorded (no tools, no microphone). */
-  private record(text: string, voice = this.voice, style = this.style): Promise<Buffer> {
+  private record(text: string, voice = this.voice, style = this.style, timeoutMs = RECORD_TIMEOUT_MS): Promise<Buffer> {
     const r = this.cfg.realtime;
     const client: VoiceClient = new (r.provider === 'gemini' ? GeminiLiveClient : RealtimeClient)({
       url: r.url,
@@ -193,7 +209,7 @@ export class LiveVoiceService implements OnModuleInit {
         else if (!parts.length) reject(new Error('no audio came back'));
         else resolve(Buffer.concat(parts));
       };
-      const timer = setTimeout(() => finish(new Error('timed out')), RECORD_TIMEOUT_MS);
+      const timer = setTimeout(() => finish(new Error('timed out')), timeoutMs);
       client.on('audio', (b: Buffer) => parts.push(b));
       client.on('response-done', () => finish());
       client.on('error', (e: Error) => finish(e));

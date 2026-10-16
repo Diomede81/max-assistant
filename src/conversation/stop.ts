@@ -1,5 +1,5 @@
 /**
- * "Stop", "that's all", "never mind", "I'm not talking to you"... Said on its own (not "stop the
+ * "Stop", "that's all", "never mind", "thank you", "I'm not talking to you"... Said on its own (not "stop the
  * music"), it ends the conversation at once: Max goes quiet and back to waiting for the wake word,
  * without asking the AI model.
  */
@@ -16,6 +16,8 @@ const PHRASES = [
 const STOP = new Set(PHRASES.map((p) => p.replace(/'/g, '')));
 const WAKE_WORDS = /^(hey |hi |ok |okay )?(max|maxie|jarvis)\b ?/;
 const POLITE = /\b(please|thanks|thank you|max|now)$/;
+/** "Thank you", "great, thanks", "thank you very much", "perfect, thanks Max"... (short, nothing else asked). */
+const THANKS = /^((ok|okay|oh|great|perfect|lovely|brilliant|cool|nice|awesome|fantastic|wonderful|excellent|good|right|alright|fine|super|that s great|that s perfect|that s all|that s it|thats great|thats perfect|thats all|thats it|all good|got it|no) )*(thanks|thank you|thankyou|cheers|ta)( (so|very) much| a lot| a million| again| for that| for your help| max| mate)*$/;
 
 export function isStopRequest(text: string): boolean {
   let t = text
@@ -26,6 +28,7 @@ export function isStopRequest(text: string): boolean {
     .trim();
   if (!t || t.split(' ').length > 7) return false;
   t = t.replace(WAKE_WORDS, '').trim();
+  if (THANKS.test(t)) return true;
   for (let i = 0; i < 2 && !STOP.has(t); i++) t = t.replace(POLITE, '').trim(); // "stop please max"
   return STOP.has(t) || STOP.has(t.replace(/^(ok|okay|no|oh|alright) /, ''));
 }

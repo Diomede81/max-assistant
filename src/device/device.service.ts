@@ -19,6 +19,9 @@ export interface DeviceStatus {
   brightness: number;
   /** Whether the box's screen can change its brightness (known after the first change on the box). */
   brightnessSupported?: boolean;
+  /** What Max says when he hears "Hey Max" (empty: a short beep), and the start-up jingle. */
+  greeting?: string;
+  startSound?: boolean;
 }
 
 /**
@@ -28,11 +31,14 @@ export interface DeviceStatus {
  * so he asks the box through the folder they share (/run/max/brightness-request; the box's
  * max-brightness service applies it) and keeps the level so it is set again after a restart.
  */
+export const DEFAULT_GREETING = 'Hello, how can I help?';
+
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; startSound?: boolean }>;
   private level = 100;
+  private voice: { greeting: string; startSound: boolean } = { greeting: DEFAULT_GREETING, startSound: true };
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
     this.store = new SealedStore(cfg.memory.dir, 'device');
@@ -40,7 +46,9 @@ export class DeviceService implements OnModuleInit {
 
   onModuleInit(): void {
     try {
-      this.level = clamp(this.store.load()?.brightness ?? 100, MIN_BRIGHTNESS);
+      const saved = this.store.load();
+      this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
+      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, startSound: saved?.startSound ?? true };
     } catch {
       // keep full brightness
     }
@@ -49,7 +57,32 @@ export class DeviceService implements OnModuleInit {
   }
 
   async status(): Promise<DeviceStatus> {
-    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported };
+    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice };
+  }
+
+  // ---------- Greeting and start-up sound ----------
+
+  /** What Max says when he hears "Hey Max" (empty: just the short beep). */
+  get greeting(): string {
+    return this.voice.greeting;
+  }
+
+  /** A short jingle when Max starts, so you know he's ready. */
+  get startSound(): boolean {
+    return this.voice.startSound;
+  }
+
+  setVoice(changes: { greeting?: string; startSound?: boolean }): string {
+    if (changes.greeting !== undefined) this.voice.greeting = changes.greeting.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (changes.startSound !== undefined) this.voice.startSound = changes.startSound;
+    this.persist();
+    return 'Saved.';
+  }
+
+  private persist(): void {
+    this.store
+      .save({ brightness: this.level, ...this.voice })
+      .catch((err) => this.log.warn(`Could not save the device settings: ${(err as Error).message}`));
   }
 
   // ---------- Volume ----------
@@ -93,7 +126,7 @@ export class DeviceService implements OnModuleInit {
   setBrightness(pct: number): number | string {
     if (!this.cfg.face.onBox) return 'Screen brightness can only be changed on the Max box';
     this.level = clamp(pct, MIN_BRIGHTNESS);
-    this.store.save({ brightness: this.level }).catch((err) => this.log.warn(`Could not save the brightness: ${(err as Error).message}`));
+    this.persist();
     if (!this.applyBrightness()) return "Couldn't reach the box's screen settings";
     this.log.log(`Brightness ${this.level}%`);
     return this.level;

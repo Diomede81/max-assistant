@@ -16,6 +16,7 @@ import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.s
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
 import { LockService } from '../lock/lock.service';
+import { DeviceService } from '../device/device.service';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
@@ -26,6 +27,10 @@ const HISTORY_LIMIT = 16;
 const HISTORY_RESET_MS = 2 * 60 * 1000;
 const FOLLOW_UP_WINDOW_MS = 5000;
 const CHIME_GRACE_MS = 400;
+/** The start-up jingle waits a moment for the sound system to be ready. */
+const START_SOUND_DELAY_MS = 1500;
+/** A short pause after the greeting before listening (the mic board cancels most of his own voice). */
+const AFTER_GREETING_MS = 250;
 const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
@@ -71,8 +76,12 @@ export class ConversationService implements OnApplicationBootstrap {
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
   /** The start-up code: while locked, Max doesn't answer or announce anything. */
   @Optional() @Inject(LockService) private readonly lock?: LockService;
+  /** The greeting ("Hello, how can I help?") and the start-up jingle, set on the control panel. */
+  @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   private historyMode?: Mode;
   private lastIgnoredWakeAt = 0;
+  /** He greeted (rather than beeped) at the last wake-up. */
+  private greeted = false;
   /** end_conversation: the AI decided the conversation is over. */
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   @Optional() @Inject(ToolRouterService) private readonly toolRouter?: ToolRouterService;
@@ -91,6 +100,11 @@ export class ConversationService implements OnApplicationBootstrap {
     }
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();
+    // A jingle when Max starts, so you know he's ready; and the greeting prepared so it plays instantly.
+    setTimeout(() => {
+      if (this.device?.startSound ?? true) void this.tts.jingle().catch((err) => this.log.warn(`Start-up sound: ${(err as Error).message}`));
+      if (this.device?.greeting) void this.tts.prepare(this.device.greeting);
+    }, START_SOUND_DELAY_MS);
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
     // the current conversation ends (never in the middle of an answer).
     this.timers.on('fired', (t) => {
@@ -200,10 +214,17 @@ export class ConversationService implements OnApplicationBootstrap {
     }
 
     this.log.log(`Wake word "${name}" detected - listening for your request`);
-    this.face?.setState('listening');
-    if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
     // Turn any music down while we talk (in parallel with the chime, so no added delay).
     const ducked = this.music?.duckStart();
+    // "Hello, how can I help?" (set on the control panel), or the short beep if there's no greeting.
+    const greeting = this.device?.greeting;
+    this.greeted = Boolean(greeting);
+    if (greeting) {
+      await ducked;
+      await this.tts.sayReady(greeting).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+      await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
+    } else if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    this.face?.setState('listening');
     try {
       await this.talk();
     } finally {
@@ -217,7 +238,7 @@ export class ConversationService implements OnApplicationBootstrap {
     if (this.cfg.voiceMode === 'realtime') {
       this.state = 'respond';
       await this.realtime
-        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime)
+        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime && !this.greeted)
         .catch((err) => this.log.error(`Realtime conversation failed: ${(err as Error).message}`));
       this.onChunk = () => undefined;
     } else {

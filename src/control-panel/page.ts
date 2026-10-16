@@ -9,7 +9,7 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean };
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean };
   updates?: {
     onBox: boolean;
     version?: { sha: string; date: string; subject: string; repo: string };
@@ -590,6 +590,11 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 ${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
+${d.device ? `<form class="stack" method="post" action="/device/voice">
+<div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
+<div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
+<p class="meta">To end a conversation, say "stop", "that's all" or simply "thank you" (also "great, thanks", "thank you very much"...).</p>
+</form>` : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
 ${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}

@@ -51,7 +51,7 @@ export interface FaceInfo {
   /** The box is installing an update (Max restarts during it: the face says so instead of "Reconnecting"). */
   updating?: boolean;
   /** The card on screen (Max's face shrinks to the top while it shows). */
-  card?: Card & { until: number };
+  card?: Card & { until: number; seq: number };
   /** Live captions: what Max heard, or what he's saying. */
   caption?: { who: 'you' | 'max'; text: string };
   /** Around the face when idle: weather, next meeting, to-dos; and the evening photo frame. */
@@ -361,13 +361,17 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   // ---------- Cards ----------
 
-  private card?: Card & { until: number };
+  private card?: Card & { until: number; seq: number };
+  /** Each card shown gets a new number: closing one on the screen hides that card, not the next one with the same id. */
+  private cardSeq = 0;
   private handlers: CardHandlers = {};
   private caption?: { who: 'you' | 'max'; text: string; until: number };
 
   showCard(card: Card, handlers: CardHandlers = {}): void {
     if (!this.cfg.face.enabled) return;
-    this.card = { ...card, until: Date.now() + (card.ttlMs ?? CARD_MS) };
+    // An update of the card on screen (music position, recipe step) keeps its number; a new card gets a new one.
+    const same = this.card && this.card.id === card.id && Date.now() < this.card.until;
+    this.card = { ...card, until: Date.now() + (card.ttlMs ?? CARD_MS), seq: same ? this.card!.seq : ++this.cardSeq };
     this.handlers = handlers;
     void this.tickInfo();
   }

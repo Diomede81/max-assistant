@@ -50,7 +50,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #cardEl .cbig { font-size: 6vmin; font-weight: 800; line-height: 1.2; margin: 1vmin 0; }
 #cardEl .cbody { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; font-size: 3.5vmin; line-height: 1.4; color: #cfeee6; text-align: left; margin: 0 2vmin; }
 #cardEl .cbody::-webkit-scrollbar { display: none; }
-#cardEl .cimg { width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
+#cardEl .cimg { flex-shrink: 0; width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
 #cardEl .clines { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; text-align: left; display: grid; align-content: start; gap: 1.1vmin; margin: .6vmin 1vmin 0; }
 #cardEl .clines::-webkit-scrollbar { display: none; }
 #cardEl .cl { display: grid; grid-template-columns: 11vmin 1fr; gap: 1.6vmin; align-items: baseline; }
@@ -321,12 +321,13 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   // ---------- cards (Max's face shrinks to the top while one shows) ----------
   const cardEl = document.getElementById('card' + 'El');
   const captionEl = document.getElementById('caption');
-  let cardKey = '', cardGone = '';
+  let cardKey = '', cardGone = -1;
   const escC = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  function cardShown() { return info.card && info.card.id !== cardGone && info.card.until > Date.now() && info.state !== 'setup'; }
+  // cardGone: the card closed with Back to Max (its number: a later card with the same id still shows).
+  function cardShown() { return info.card && (info.card.seq ?? info.card.id) !== cardGone && info.card.until > Date.now() && info.state !== 'setup'; }
   function renderCard() {
     const c = cardShown() ? info.card : undefined;
-    const key = c ? JSON.stringify(Object.assign({}, c, { until: 0 })) : '';
+    const key = c ? JSON.stringify(Object.assign({}, c, { until: 0, seq: 0 })) : '';
     if (key === cardKey) return;
     const fresh = !cardKey || (c && JSON.parse(cardKey || '{}').id !== c.id);
     cardKey = key;
@@ -358,7 +359,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       b.onclick = (e) => {
         e.stopPropagation();
         const a = b.getAttribute('data-a');
-        if (a === 'dismiss') { cardGone = c.id; renderCard(); renderCaption(); }
+        if (a === 'dismiss') { cardGone = c.seq ?? c.id; renderCard(); renderCaption(); }
         fetch('/card?id=' + encodeURIComponent(c.id) + '&action=' + encodeURIComponent(a), { method: 'POST' }).catch(() => undefined);
       };
     }

@@ -37,6 +37,7 @@ export interface PanelData {
   notice?: { kind: 'ok' | 'error'; text: string };
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
+  trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
   composio: {
     configured: boolean;
@@ -598,11 +599,12 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 
 <div class="pane" id="tab-connections">
-<div class="jump"><a href="#apps">Apps</a><a href="#web">Web search</a><a href="#home-assistant">Home Assistant</a>${musicSection(d.music) ? '<a href="#music">Music</a>' : ''}${servers ? '<a href="#servers">Other</a>' : ''}</div>
+<div class="jump"><a href="#apps">Apps</a><a href="#web">Web search</a>${d.trains ? '<a href="#trains">Trains</a>' : ''}<a href="#home-assistant">Home Assistant</a>${musicSection(d.music) ? '<a href="#music">Music</a>' : ''}${servers ? '<a href="#servers">Other</a>' : ''}</div>
 <section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
 <div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
+${d.trains ? trainsSection(d.trains) : ''}
 <section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
 ${musicSection(d.music)}
@@ -708,4 +710,15 @@ function airplayRow(a: NonNullable<PanelData['music']>['airplay']): string {
 <div class="addfact"><form method="post" action="/music/airplay"><input type="hidden" name="enabled" value="${a.enabled ? 'off' : 'on'}"><button class="btn ${a.enabled ? 'secondary' : ''}" type="submit">${a.enabled ? 'Turn AirPlay off' : 'Turn AirPlay on'}</button></form>
 <form method="post" action="/music/airplay-code" onsubmit="return confirm('Every phone and computer will have to enter the new code. Continue?')"><button class="btn secondary" type="submit">New code</button></form></div>
 <p class="meta">A new code makes every device ask again (use it if someone you don't want has the code). AirPlay is switched off while Max is locked.</p></div></li>`;
+}
+
+function trainsSection(t: NonNullable<PanelData['trains']>): string {
+  const row = (name: string, on: boolean, yes: string, no: string) =>
+    `<li class="row"><div><div class="name">${name} ${on ? badge(true) : '<span class="badge off">Not set up</span>'}</div><div class="meta">${on ? yes : no}</div></div></li>`;
+  return `<section id="trains"><h2>Trains</h2><ul>
+${row('Live departures (National Rail)', t.departures, '"When\'s the next train to Waterloo?", "is the 8:15 on time?": times, delays, platforms', 'Add <code>RAIL_DATA_KEY</code> to <code>.env</code> (free at <a href="https://raildata.org.uk" target="_blank" rel="noopener">raildata.org.uk</a>, "Live Departure Board" product) and restart Max. See docs/TRAINS.md.')}
+${row('Journey planning (Google Maps)', t.journeys, '"Trains to Manchester tomorrow morning", "get me to Bath by 10": options on the screen with a QR code to book on Trainline', 'Add <code>GOOGLE_MAPS_API_KEY</code> (Routes API) to <code>.env</code> and restart Max. See docs/TRAINS.md.')}
+</ul>
+<form class="addfact" method="post" action="/trains/home"><label class="meta" for="homeSt">Home station (the "from" when you don't say)</label><input id="homeSt" name="station" maxlength="60" value="${esc(t.home?.name ?? '')}" placeholder="e.g. Twickenham"><button class="btn" type="submit">Save</button></form>
+</section>`;
 }

@@ -209,6 +209,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
     actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
   SCENES.push(['speaking', 'neutral', 'Card email'], ['idle', 'neutral', 'Locked']);
+  SCENES.push(['idle', 'neutral', 'Glance work']);
   DEMO_CARDS['Card email'] = { id: 'd10', kind: 'list', icon: '✉️', title: 'Email', subtitle: 'From Anna Rossi · 09:42', big: 'Milan launch: venue confirmed', until: FOREVER,
     body: 'Anna confirms the venue for the Milan launch on 12 November and has signed the contract. She needs your final guest list by Friday, and asks whether you want the evening or the afternoon slot.' };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
@@ -244,7 +245,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
         card: DEMO_CARDS[label],
         caption: label === 'Captions' ? { who: 'you', text: "What's the weather like this afternoon?" } : undefined,
-        glance: label === 'Glance' || label === 'Photo frame' ? {
+        glance: label === 'Glance' || label === 'Glance work' || label === 'Photo frame' ? {
           weather: { icon: '⛅', temp: 14, text: 'Partly cloudy', hi: 16, lo: 9, rain: 30 },
           next: { time: '10:00', title: 'Q4 planning', now: false },
           todos: { critical: 2, overdue: 1, today: 3 },
@@ -252,6 +253,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         } : undefined,
       };
       if (label === 'Locked') info.locked = { triesLeft: 5 };
+      if (label === 'Glance work') info.mode = 'work';
       setTimeout(() => { renderCard(); renderCaption(); renderFrame(); renderLock(); }, 0); // after the card code below is set up
       renderSetup();
     };
@@ -939,28 +941,33 @@ ${ROBOT3D_JS}
 
   function drawChrome(now, s, rgb, state, cmp = 0) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
+    // With the 3D robot, the top text sits higher (in the band near the screen's edge, clear of his
+    // head and antenna) and gets a soft dark shadow so it reads over anything behind it.
+    const badge = info.mode && info.mode !== 'personal' && state !== 'setup' && cmp < 0.3;
+    if (R3.on) { g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 8 * s; }
     // mode badge
-    if (info.mode && info.mode !== 'personal' && state !== 'setup' && cmp < 0.3) {
+    if (badge) {
       const label = info.mode.toUpperCase();
       g.font = '700 ' + Math.round(22 * s) + 'px system-ui, sans-serif';
       const w = g.measureText(label).width + 36 * s;
-      roundRect(cx - w / 2, cy - 290 * s, w, 40 * s, 20 * s);
+      const by = R3.on ? 330 : 290;
+      roundRect(cx - w / 2, cy - by * s, w, 40 * s, 20 * s);
       g.fillStyle = info.mode === 'work' ? 'rgba(255,196,120,0.18)' : 'rgba(150,140,220,0.2)'; g.fill();
-      g.fillStyle = info.mode === 'work' ? '#ffc478' : '#b8b0f0'; g.fillText(label, cx, cy - 269 * s);
+      g.fillStyle = info.mode === 'work' ? '#ffc478' : '#b8b0f0'; g.fillText(label, cx, cy - (by - 21) * s);
     }
     // weather at the top while idle
     const gl = info.glance || {};
     if (gl.weather && state === 'idle' && cmp < 0.3) {
       const w = gl.weather;
       g.font = '600 ' + Math.round(30 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.8);
-      // (a little higher above the 3D robot, clear of his antenna)
-      const top = info.mode && info.mode !== 'personal' ? cy - 218 * s : cy - (R3.on ? 282 : 262) * s;
+      const top = R3.on ? cy - (badge ? 272 : 290) * s : badge ? cy - 218 * s : cy - 262 * s;
       g.fillText(fit(w.icon + '  ' + w.temp + '°  ·  ' + w.text, 330 * s), cx, top);
       if (w.hi !== undefined) {
         g.font = '500 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.45);
-        g.fillText(w.lo + '° – ' + w.hi + '°' + (w.rain ? '  ·  ' + w.rain + '% rain' : ''), cx, top + 32 * s);
+        g.fillText(w.lo + '° – ' + w.hi + '°' + (w.rain ? '  ·  ' + w.rain + '% rain' : ''), cx, top + (R3.on ? 28 : 32) * s);
       }
     }
+    g.shadowBlur = 0; g.shadowColor = 'transparent';
     // bottom line: timer, music, or the clock
     let text = '', sub = '', sub2 = '', sub2Warn = false;
     const timer = (info.timers || []).slice().sort((a, b) => a.endsAt - b.endsAt)[0];

@@ -2,6 +2,7 @@
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
+import { SPEAKER_TONES } from '../device/device.service';
 
 export interface PanelData {
   music?: {
@@ -16,7 +17,7 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean };
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean; tone?: string };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -621,6 +622,9 @@ ${d.device ? `<form class="stack" method="post" action="/device/voice">
 ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
+${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>
+${Object.entries(SPEAKER_TONES).map(([k, label]) => `<label class="meta tick"><input type="radio" name="tone" value="${k}" ${(d.device!.tone ?? 'flat') === k ? 'checked' : ''} onchange="this.form.submit()"> ${esc(label)}</label>`).join('')}
+<noscript><button class="btn" type="submit">Save</button></noscript></form>` : ''}
 ${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}
 ${d.onBox
   ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>

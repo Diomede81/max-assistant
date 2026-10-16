@@ -82,6 +82,16 @@ sleep 2
 "${USER_SYSTEMCTL[@]}" enable --now pipewire pipewire-pulse wireplumber || warn "Could not start PipeWire yet; it starts after a reboot."
 "${USER_SYSTEMCTL[@]}" enable max-audio-defaults.service || true
 
+# Speaker sound: the tuning chosen on the control panel (flat, warm or voice), applied by a small
+# equaliser between Max and the mic board.
+install -m 755 "$REPO/scripts/pi/max-sound.sh" /usr/local/bin/max-sound
+for u in max-sound.service max-sound-config.path max-sound-reload.service; do
+  install -D -m 644 "$REPO/scripts/pi/systemd/$u" "/etc/systemd/user/$u"
+done
+"${USER_SYSTEMCTL[@]}" daemon-reload || true
+"${USER_SYSTEMCTL[@]}" enable max-sound.service max-sound-config.path || true
+"${USER_SYSTEMCTL[@]}" restart max-sound-config.path max-sound.service || true
+
 # AirPlay: "Max" as a speaker on iPhones, iPads and Macs, protected by a 4-digit code (control panel).
 # The package's own system-wide receiver has no code and would be a second, open speaker: masked.
 say "Setting up AirPlay (code required)"

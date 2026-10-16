@@ -13,10 +13,11 @@ import { ModelsModule } from './models/models.module';
 import { DeviceModule } from './device/device.module';
 import { UpdatesModule } from './updates/updates.module';
 import { LockModule } from './lock/lock.module';
+import { LiveVoiceModule } from './realtime/live-voice.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, WebModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

@@ -17,6 +17,7 @@ import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
 import { LockService } from '../lock/lock.service';
 import { DeviceService } from '../device/device.service';
+import { LiveVoiceService } from '../realtime/live-voice.service';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
@@ -78,6 +79,8 @@ export class ConversationService implements OnApplicationBootstrap {
   @Optional() @Inject(LockService) private readonly lock?: LockService;
   /** The greeting ("Hello, how can I help?") and the start-up jingle, set on the control panel. */
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
+  /** Real-time mode: the greeting recorded in Max's live voice, so it sounds like the rest of the conversation. */
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
   private historyMode?: Mode;
   private lastIgnoredWakeAt = 0;
   /** He greeted (rather than beeped) at the last wake-up. */
@@ -103,7 +106,10 @@ export class ConversationService implements OnApplicationBootstrap {
     // A jingle when Max starts, so you know he's ready; and the greeting prepared so it plays instantly.
     setTimeout(() => {
       if (this.device?.startSound ?? true) void this.tts.jingle().catch((err) => this.log.warn(`Start-up sound: ${(err as Error).message}`));
-      if (this.device?.greeting) void this.tts.prepare(this.device.greeting);
+      if (this.device?.greeting) {
+        void this.tts.prepare(this.device.greeting); // the stand-in until the live voice has recorded it
+        void this.liveVoice?.ensure(this.device.greeting);
+      }
     }, START_SOUND_DELAY_MS);
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
     // the current conversation ends (never in the middle of an answer).
@@ -221,7 +227,12 @@ export class ConversationService implements OnApplicationBootstrap {
     this.greeted = Boolean(greeting);
     if (greeting) {
       await ducked;
-      await this.tts.sayReady(greeting).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+      const live = this.liveVoice?.active ? this.liveVoice.recorded(greeting) : undefined;
+      if (live) await this.liveVoice!.play(live).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+      else {
+        await this.tts.sayReady(greeting).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+        void this.liveVoice?.ensure(greeting); // in the live voice from next time
+      }
       await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
     } else if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
     this.face?.setState('listening');

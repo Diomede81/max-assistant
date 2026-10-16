@@ -20,6 +20,7 @@ import { SoulService } from '../soul/soul.service';
 import { ModesService } from '../memory/modes.service';
 import { isStopRequest } from '../conversation/stop';
 import { ConversationControl } from '../actions/conversation-control';
+import { LiveVoiceService } from './live-voice.service';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -44,6 +45,8 @@ export class RealtimeConversationService {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
+  /** The voice and speaking style chosen on the control panel (else REALTIME_VOICE / REALTIME_STYLE). */
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -75,9 +78,9 @@ export class RealtimeConversationService {
       url: rt.url,
       apiKey: rt.apiKey,
       model: rt.model,
-      voice: rt.voice,
+      voice: this.liveVoice?.voice ?? rt.voice,
       instructions:
-        `${this.soul?.systemPrompt() ?? this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
+        `${this.soul?.systemPrompt() ?? this.cfg.llm.systemPrompt}\n${this.liveVoice?.style ?? rt.style}\nCurrent local time: ${describeNow()}.` +
         (this.memory.enabled ? `\n${this.memory.promptSection()}` : '') +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
       tools: rt.tools
@@ -156,7 +159,7 @@ export class RealtimeConversationService {
     connected = true;
     for (const pcm of early.splice(0)) client.sendAudio(pcm);
     this.face?.setState('listening');
-    this.log.log(`Connected to ${providerName} ${rt.model} (voice "${rt.voice}") in ${Date.now() - started} ms - talk now`);
+    this.log.log(`Connected to ${providerName} ${rt.model} (voice "${options.voice}") in ${Date.now() - started} ms - talk now`);
 
     let player: AsyncQueue<Buffer> | undefined;
     let playing: Promise<void> = Promise.resolve();

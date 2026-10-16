@@ -109,6 +109,10 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
     /* not supported by Gemini Live */
   }
 
+  speak(text: string): void {
+    this.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } });
+  }
+
   close(): void {
     this.closing = true;
     this.ws?.close();

@@ -75,6 +75,12 @@ and it copes well with "umm"s and rephrasing.
 
 ## Make it yours
 
+**Easiest:** on the control panel, **Settings → Device → Max's voice**: pick a voice, optionally describe how he
+speaks, press **▶ Try it on Max** to hear a sample on the box, then **Save**. That overrides `REALTIME_VOICE` /
+`REALTIME_STYLE`. The "Hey Max" greeting is recorded once in the chosen voice (a few seconds after starting or
+saving) and replayed instantly from then on; until then the standard voice says it.
+
+
 | Setting | What it does |
 |---|---|
 | `REALTIME_VOICE` | `cedar` (male) and `marin` (female) are OpenAI's most natural voices. Others: `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `alloy` |

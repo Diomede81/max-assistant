@@ -15,10 +15,11 @@ umask 077
 # out of the mic board's speaker. Use the most direct connection this shairport-sync build has
 # (its version line lists them): PulseAudio protocol (served by PipeWire), then PipeWire itself,
 # then ALSA through PipeWire's or PulseAudio's ALSA plug-in.
+# Older builds write the names in capitals ("-PA-"), newer ones in lower case ("-pa-").
 BUILD="$(/usr/bin/shairport-sync -V 2>&1 | head -1)"
-case "-$BUILD-" in
-  *-PA-*) BACKEND=pa ;;
-  *-PW-*|*-pw-*) BACKEND=pw ;;
+case "-$(echo "$BUILD" | tr '[:upper:]' '[:lower:]')-" in
+  *-pa-*) BACKEND=pa ;;
+  *-pw-*) BACKEND=pw ;;
   *) BACKEND=alsa ;;
 esac
 ALSA_DEVICE=default

@@ -170,7 +170,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle && (wantRobot() !== R3.wanted || (R3.wanted && faceChoice() !== R3.style))) location.reload(); renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle) { faceKnown = true; applyFace(); } renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -1089,7 +1089,9 @@ ${ROBOT3D_JS}
     return t + '…';
   }
 
-  if (wantRobot()) startRobot();
+  // The 3D face starts once Max says which one is chosen (or after 2 s without him, e.g. the demo).
+  let faceKnown = false;
+  setTimeout(() => { if (!faceKnown) { faceKnown = true; applyFace(); } }, 2000);
   requestAnimationFrame(frame);
 })();
 </script>

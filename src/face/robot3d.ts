@@ -13,7 +13,7 @@
  */
 export const ROBOT3D_JS = String.raw`
   // ---------- 3D robot face ----------
-  const R3 = { on: false, wanted: false, frames: 0, time: 0, lowered: false };
+  const R3 = { on: false, wanted: false, frames: 0, time: 0, lowered: false, gen: 0 };
   const VW = 768, VH = 675, VS = 1.5, VC = 20; // visor texture size, pixels per design unit, design y of its centre
   const visorCv = document.createElement('canvas'); visorCv.width = VW; visorCv.height = VH;
   const vg = visorCv.getContext('2d');
@@ -33,11 +33,13 @@ export const ROBOT3D_JS = String.raw`
   async function startRobot() {
     R3.wanted = true;
     R3.style = faceChoice();
+    const gen = ++R3.gen; // a newer start or a stop makes this one give up
     let THREE, RoomEnvironment;
     try {
       THREE = await import('/vendor/three.module.min.js');
       RoomEnvironment = (await import('/vendor/RoomEnvironment.js')).RoomEnvironment;
     } catch (e) { console.warn('3D face: library not available, using the classic face', e); return; }
+    if (gen !== R3.gen) return;
     const c3 = document.createElement('canvas');
     c3.id = 'c3';
     let renderer;
@@ -199,6 +201,7 @@ export const ROBOT3D_JS = String.raw`
       camera.updateProjectionMatrix();
     }
     addEventListener('resize', resize3); resize3();
+    R3.resize = resize3;
 
     R3.c3 = c3; R3.renderer = renderer; R3.scene = scene; R3.camera = camera; R3.head = head;
     R3.tex = tex; R3.visorMat = visorMat; R3.glow = glow; R3.tipGlow = tipGlow; R3.key = key; R3.THREE = THREE;
@@ -264,9 +267,22 @@ export const ROBOT3D_JS = String.raw`
   }
 
   function stopRobot(why) {
-    console.warn('3D face off: ' + why + '; using the classic face');
+    console.warn('3D face off: ' + why);
+    R3.gen++;
     R3.on = false;
+    if (R3.resize) removeEventListener('resize', R3.resize);
     if (R3.c3) R3.c3.remove();
     if (R3.renderer) R3.renderer.dispose();
+    R3.c3 = undefined; R3.renderer = undefined; R3.resize = undefined;
+    R3.frames = 0; R3.started = 0; R3.lowered = false;
+  }
+
+  /** Shows the chosen face: swaps the 3D character (or to and from the classic face) in place, no reload. */
+  function applyFace() {
+    const want = wantRobot() ? faceChoice() : 'classic';
+    const have = R3.wanted ? R3.style : 'classic';
+    if (want === have) return;
+    if (R3.wanted) { stopRobot('switching to ' + want); R3.wanted = false; }
+    if (want !== 'classic') startRobot();
   }
 `;

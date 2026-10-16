@@ -23,6 +23,17 @@ export interface Glance {
   frame?: { photos: string[]; everySec: number };
 }
 
+/** The faces to choose from on the control panel (the 3D ones are drawn in robot3d.ts). */
+export const FACE_STYLES = {
+  robot: 'Max: the white 3D robot',
+  astro: 'Astro droid: silver dome, blue panels (Star Wars style)',
+  golden: 'Golden droid: polished gold (Star Wars style)',
+  rolling: 'Rolling droid: white and orange (Star Wars style)',
+  alien: 'Blue alien: big ears (Disney style)',
+  classic: 'Classic: the flat face (lightest for the box)',
+} as const;
+export type FaceStyle = keyof typeof FACE_STYLES;
+
 export interface AmbientSettings {
   glance: boolean;
   frame: boolean;
@@ -35,8 +46,8 @@ export interface AmbientSettings {
   notifyBriefing: boolean;
   notifyEmail: boolean;
   notifyTodos: boolean;
-  /** The face on the round screen: the 3D robot, or the classic flat face. */
-  faceStyle: 'robot' | 'classic';
+  /** The face on the round screen: a 3D character (see FACE_STYLES), or the classic flat face. */
+  faceStyle: FaceStyle;
   /** Dim the screen after this many quiet seconds (0 = never), down to this brightness (%). */
   dimAfterSec: number;
   dimLevel: number;

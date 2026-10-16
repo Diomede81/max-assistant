@@ -17,7 +17,7 @@ import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
-import { AmbientService } from '../face/ambient.service';
+import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
@@ -455,7 +455,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         notifyBriefing: f.get('notifyBriefing') === 'on',
         notifyEmail: f.get('notifyEmail') === 'on',
         notifyTodos: f.get('notifyTodos') === 'on',
-        faceStyle: f.get('faceStyle') === 'classic' ? 'classic' : 'robot',
+        faceStyle: ((f.get('faceStyle') ?? '') in FACE_STYLES ? f.get('faceStyle') : 'robot') as FaceStyle,
         ...(f.has('dimAfterSec') ? { dimAfterSec: Number(f.get('dimAfterSec')) } : {}),
         ...(f.has('dimLevel') ? { dimLevel: Number(f.get('dimLevel')) } : {}),
         frameFrom: f.get('frameFrom') ?? '',

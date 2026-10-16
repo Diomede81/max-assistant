@@ -1,6 +1,8 @@
 /**
  * The 3D robot face (three.js, WebGL): a glossy white rounded head with a dark glass visor, two
- * glowing "ear" pods and a small antenna. Max's eyes, brows and mouth are drawn exactly as on the
+ * glowing "ear" pods and a small antenna; or one of the other characters (an astro droid, a golden
+ * droid, a rolling droid, a blue alien), which share the head and visor and differ in their shell,
+ * colours and accessories. Max's eyes, brows and mouth are drawn exactly as on the
  * classic face (same expressions, blinks, gaze and lip-sync), onto the visor, and the whole head
  * moves in 3D: it turns to look around, tilts, nods as he speaks and droops when he sleeps.
  *
@@ -18,14 +20,19 @@ export const ROBOT3D_JS = String.raw`
   /** Half the screen height in 3D units: the head (radius 1) fills about half the screen, leaving room above and below for the clock and glance. */
   const VIEW_HALF = 1.82;
 
+  /** Which face: 'classic' (flat) or a 3D character (robot, astro, golden, rolling, alien). */
+  const CHARACTERS = ['robot', 'astro', 'golden', 'rolling', 'alien'];
+  function faceChoice() {
+    const p = params.get('face') || info.faceStyle || 'robot';
+    return p === 'classic' || CHARACTERS.indexOf(p) >= 0 ? p : 'robot';
+  }
   function wantRobot() {
-    const p = params.get('face');
-    if (p) return p !== 'classic';
-    return (info.faceStyle || 'robot') !== 'classic';
+    return faceChoice() !== 'classic';
   }
 
   async function startRobot() {
     R3.wanted = true;
+    R3.style = faceChoice();
     let THREE, RoomEnvironment;
     try {
       THREE = await import('/vendor/three.module.min.js');
@@ -78,19 +85,113 @@ export const ROBOT3D_JS = String.raw`
     const visor = new THREE.Mesh(vgeo, visorMat);
     head.add(visor);
 
-    // Ear pods with a glowing ring, and a little antenna with a glowing tip (they take Max's colour).
+    // Max's colour (it follows his mood): glowing rings, lenses and tips on every character.
     const glow = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x6ee1ff, emissiveIntensity: 1.6 });
     const tipGlow = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x6ee1ff, emissiveIntensity: 2 });
-    for (const sd of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.27, 0.18, 48), shell);
-      ear.rotation.z = Math.PI / 2; ear.position.set(sd * 0.96, -0.04, 0); head.add(ear);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 16, 48), glow);
-      ring.rotation.y = Math.PI / 2; ring.position.set(sd * 1.055, -0.04, 0); head.add(ring);
+    const mat = (color, roughness, metalness, env) => new THREE.MeshStandardMaterial({ color: color, roughness: roughness, metalness: metalness || 0, envMapIntensity: env === undefined ? 1.15 : env });
+    const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); head.add(o); return o; };
+    const deg = Math.PI / 180;
+    // A point on the head's surface (around: 0 = front, 90 = his left; up: 0 = eye level, 90 = top), facing outwards.
+    const onShell = (o, around, up, out) => {
+      const r = 1 + (out || 0), a = around * deg, e = up * deg;
+      o.position.set(Math.sin(a) * Math.cos(e) * r, Math.sin(e) * 0.94 * r, Math.cos(a) * Math.cos(e) * 0.92 * r);
+      o.lookAt(o.position.clone().multiplyScalar(2));
+      head.add(o);
+      return o;
+    };
+    // A ring around the top of the head, just above the visor.
+    const crownRing = (m, up, tube) => {
+      const e = up * deg;
+      const ring = add(new THREE.TorusGeometry(Math.cos(e) * 1.005, tube, 12, 96), m, 0, Math.sin(e) * 0.94, 0);
+      ring.rotation.x = Math.PI / 2; ring.scale.set(1, 0.92, 1);
+      return ring;
+    };
+    const ears = (m) => {
+      for (const sd of [-1, 1]) {
+        const ear = add(new THREE.CylinderGeometry(0.25, 0.27, 0.18, 48), m, sd * 0.96, -0.04, 0);
+        ear.rotation.z = Math.PI / 2;
+        const ring = add(new THREE.TorusGeometry(0.16, 0.03, 16, 48), glow, sd * 1.055, -0.04, 0);
+        ring.rotation.y = Math.PI / 2;
+      }
+    };
+    const antenna = (m, x, z, height) => {
+      add(new THREE.CylinderGeometry(0.016, 0.024, height, 12), m, x, 0.9 + height / 2, z);
+      add(new THREE.SphereGeometry(0.05, 20, 14), tipGlow, x, 0.92 + height, z);
+    };
+
+    if (R3.style === 'astro') {
+      // Astro droid: a silver dome with blue panels, a big lens on top and a little projector.
+      skull.material = mat(0xc9ced6, 0.3, 0.85, 1.3);
+      const white = mat(0xf2f5f8, 0.25), blue = mat(0x2456c4, 0.35, 0.1);
+      crownRing(blue, 50, 0.035);
+      crownRing(blue, 70, 0.022);
+      // Blue panels between the two rings, all around the dome (the front ones above the visor).
+      for (const a of [-38, 38, -80, 80, 125, -125, 180]) onShell(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.05), blue), a, 60, 0.012);
+      for (const a of [-90, 90]) onShell(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.34, 0.05), white), a, 5, 0.01);
+      const lens = onShell(new THREE.Group(), 0, 61, 0.02);
+      const lensBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.12, 32), mat(0x111317, 0.3, 0.4));
+      lensBody.rotation.x = Math.PI / 2; lens.add(lensBody);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 24, 16), tipGlow); eye.position.z = 0.06; lens.add(eye);
+      const proj = onShell(new THREE.Group(), 40, 18, 0);
+      const projBody = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.12, 24), white);
+      projBody.rotation.x = Math.PI / 2; proj.add(projBody);
+      const projLens = new THREE.Mesh(new THREE.SphereGeometry(0.045, 16, 12), glow); projLens.position.z = 0.06; proj.add(projLens);
+    } else if (R3.style === 'golden') {
+      // Golden droid: polished gold, round ear plates and a brow over the visor.
+      const gold = mat(0xd8a83c, 0.26, 1, 1.4);
+      skull.material = gold;
+      for (const sd of [-1, 1]) {
+        const plate = add(new THREE.CylinderGeometry(0.24, 0.26, 0.1, 48), gold, sd * 0.97, -0.02, -0.02);
+        plate.rotation.z = Math.PI / 2;
+        const inner = add(new THREE.CylinderGeometry(0.13, 0.13, 0.11, 32), mat(0x3a3020, 0.5, 0.6), sd * 0.985, -0.02, -0.02);
+        inner.rotation.z = Math.PI / 2;
+        const dot = add(new THREE.SphereGeometry(0.05, 16, 12), glow, sd * 1.03, -0.02, -0.02);
+        dot.scale.x = 0.6;
+      }
+      onShell(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.07, 0.08), gold), 0, 50, 0.005);
+      crownRing(mat(0xb08428, 0.3, 1, 1.4), 62, 0.025);
+    } else if (R3.style === 'rolling') {
+      // Rolling droid: white with orange rings, silver discs on the sides and two antennas.
+      const orange = mat(0xf0782a, 0.35, 0.05), silver = mat(0xb8bec7, 0.3, 0.85, 1.3);
+      crownRing(orange, 52, 0.04);
+      crownRing(mat(0x9aa0a8, 0.3, 0.8, 1.3), 58, 0.018);
+      for (const sd of [-1, 1]) {
+        const ring = add(new THREE.TorusGeometry(0.28, 0.045, 16, 64), orange, sd * 0.94, -0.06, 0);
+        ring.rotation.y = Math.PI / 2;
+        const disc = add(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 40), silver, sd * 0.955, -0.06, 0);
+        disc.rotation.z = Math.PI / 2;
+        const lamp = add(new THREE.SphereGeometry(0.06, 16, 12), glow, sd * 0.99, -0.06, 0);
+        lamp.scale.x = 0.6;
+      }
+      for (const a of [-140, 140, 180]) onShell(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.04), orange), a, 20, 0.01);
+      antenna(silver, 0.16, -0.1, 0.34);
+      antenna(silver, 0.3, -0.12, 0.14);
+    } else if (R3.style === 'alien') {
+      // Blue alien: soft blue fur, big pointy ears with pink insides and a tuft on top.
+      const fur = mat(0x3f6fd8, 0.85, 0, 0.5), pink = mat(0xe88aa8, 0.8, 0, 0.4), dark = mat(0x2b4fa8, 0.85, 0, 0.5);
+      skull.material = fur;
+      for (const sd of [-1, 1]) {
+        const ear = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.3, 32), fur);
+        outer.scale.z = 0.42;
+        const inside = new THREE.Mesh(new THREE.ConeGeometry(0.29, 1.0, 32), pink);
+        inside.scale.z = 0.2; inside.position.set(0, -0.08, 0.09);
+        ear.add(outer); ear.add(inside);
+        ear.position.set(sd * 1.12, 0.36, -0.08);
+        ear.rotation.z = -sd * 58 * deg;
+        ear.rotation.y = -sd * 14 * deg;
+        head.add(ear);
+      }
+      for (const [x, tilt, len] of [[-0.09, 18, 0.22], [0, 0, 0.28], [0.09, -18, 0.22]]) {
+        const tuft = add(new THREE.ConeGeometry(0.045, len, 12), dark, x, 0.92 + len / 2 - 0.04, -0.05);
+        tuft.rotation.z = tilt * deg;
+      }
+    } else {
+      // Max: the white robot with glowing ear pods and a little antenna.
+      ears(shell);
+      add(new THREE.CylinderGeometry(0.02, 0.028, 0.14, 16), shell, 0, 0.97, 0);
+      add(new THREE.SphereGeometry(0.06, 24, 16), tipGlow, 0, 1.06, 0);
     }
-    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.028, 0.14, 16), shell);
-    stalk.position.set(0, 0.97, 0); head.add(stalk);
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 24, 16), tipGlow);
-    tip.position.set(0, 1.06, 0); head.add(tip);
 
     function resize3() {
       renderer.setSize(innerWidth, innerHeight, false);

@@ -153,8 +153,9 @@ A Raspberry Pi 5 with a round 720×720 touch screen, a ReSpeaker XVF3800 4-micro
 cancellation, so "Hey Max" works while he talks or plays music) and a speaker, in a 3D-printed case
 (`hardware/enclosure/`). Setup: **[docs/PI.md](docs/PI.md)**.
 
-- **His face:** a 3D robot whose eyes and mouth show his expressions and move with his voice (or the
-  classic flat face). It dims after 10 seconds of quiet and lights up for "Hey Max", a card or a touch.
+- **His face:** a 3D robot whose eyes and mouth show his expressions and move with his voice. Pick another
+  character on the control panel (an astro droid, a golden droid, a rolling droid or a blue alien) or the
+  classic flat face. It dims after 10 seconds of quiet and lights up for "Hey Max", a card or a touch.
 - **Cards on the screen:** timers and reminders, what's playing, recipes step by step, your emails with a
   short summary, the news headlines, and "Your day" (meetings, reminders, to-dos with a **Done** button).
   When the conversation ends, the screen goes back to his face (timers, reminders and recipes stay until you

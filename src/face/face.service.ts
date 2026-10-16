@@ -19,7 +19,7 @@ import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service
 import { BuiltinActionsService } from '../actions/builtin-actions.service';
 import { ScreenToolsService } from '../actions/screen-tools.service';
 import { LockService } from '../lock/lock.service';
-import { AmbientService, Glance } from './ambient.service';
+import { AmbientService, FaceStyle, Glance } from './ambient.service';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -61,7 +61,7 @@ export interface FaceInfo {
   /** A start-up code is set (the menu offers Lock). */
   canLock?: boolean;
   /** Which face to draw: the 3D robot or the classic flat face. */
-  faceStyle?: 'robot' | 'classic';
+  faceStyle?: FaceStyle;
   /** Dim the screen after this many quiet seconds (0 = never). */
   dimAfterSec?: number;
 }

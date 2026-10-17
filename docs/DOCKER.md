@@ -39,7 +39,8 @@ container connects to it over the network.
 ```bash
 brew install pulseaudio
 # Start a sound server that accepts connections from Docker:
-pulseaudio --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;192.168.0.0/16;172.16.0.0/12 auth-anonymous=1" \
+# Only this Mac and Docker may connect (anyone allowed here can use the Mac's microphone and speakers).
+pulseaudio --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" \
            --exit-idle-time=-1 --daemon
 pactl info   # should print "Server Name: pulseaudio"
 ```

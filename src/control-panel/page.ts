@@ -396,8 +396,18 @@ const NOTES: Record<string, string> = {
 const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
+/** One tap away at the top: what's used most. Everything else is in the menu drawer (DRAWER). */
+const QUICK = ['overview', 'myday', 'projects'];
+
+/** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
+const DRAWER: [string, [string, string, string][]][] = [
+  ['Max', [['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
+  ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
+  ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
+];
+
 const TABS: [string, string][] = [
-  ['overview', 'Overview'],
+  ['overview', 'Home'],
   ['myday', 'My Day'],
   ['routines', 'Routines'],
   ['max', 'Max'],
@@ -458,6 +468,15 @@ ${busy ? '' : '<form method="post" action="/updates/check"><button class="btn se
 }
 
 /** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
+/** Home: what's playing (radio, AirPlay) and the AirPlay code, to hand to a guest's phone. */
+function musicTile(mu: PanelData['music'], tile: (href: string, k: string, v: string, meta: string) => string): string {
+  if (!mu) return '';
+  const a = mu.airplay;
+  const now = mu.radio?.playing ? `📻 ${esc(mu.radio.playing)}` : a?.playing ? '📱 AirPlay' : 'Nothing playing';
+  const code = a?.onBox ? (!a.enabled ? 'AirPlay off' : a.locked ? 'AirPlay off while Max is locked' : `AirPlay code <b>${esc(a.code)}</b>`) : 'Radio, Spotify and AirPlay';
+  return tile('#music', 'Music', now, code);
+}
+
 function overview(d: PanelData): string {
   const m = d.memory;
   const modes = m
@@ -471,17 +490,19 @@ function overview(d: PanelData): string {
   const facts = m ? m.vaults.filter((v) => m.readable.includes(v.name)).reduce((n, v) => n + v.facts.length, 0) : 0;
   const tasks = m ? m.projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'open').length, 0) : 0;
   const music = d.music && d.music.state !== 'off' ? (d.music.state === 'ready' ? badge(true, 'Ready') : badge(false, '', d.music.state === 'pairing' ? 'Sign-in needed' : 'Not running')) : '';
+  // Everyday things first (your day, music, news, projects), then how Max's connections are doing.
   const tiles = [
+    m ? myDayTile(m, tile) : '',
+    musicTile(d.music, tile),
+    d.routines ? newsTile(d.routines, tile) : '',
+    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.composio.configured
       ? tile('#apps', 'Apps', `${count(d.composio.apps)} personal · ${count(d.composio.workApps)} work`, 'Email, calendar, messaging and more')
       : tile('#apps', 'Apps', badge(false, '', 'Not set up'), 'Add a Composio key to connect email and other apps'),
     tile('#web', 'Web search', d.web?.configured ? badge(d.web.connected) : badge(false, '', 'Not set up'), d.web?.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages'),
     tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
-    music ? tile('#music', 'Music', `Spotify ${music}`, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
-    m ? myDayTile(m, tile) : '',
-    d.routines ? newsTile(d.routines, tile) : '',
+    music ? tile('#music', 'Spotify', music, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
     m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
-    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
     d.location ? tile('#location', 'Home location', d.location.place ? esc(d.location.place) : badge(false, '', 'Not set'), 'For local answers and search results') : '',
   ].join('');
@@ -575,7 +596,16 @@ form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-s
 @media (max-width:520px){.row{flex-direction:column;align-items:stretch}.btn{text-align:center}.addfact{flex-wrap:wrap}.addfact input{flex-basis:100%}}
 .nav{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;margin:0 -16px 16px;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}.nav a{flex:none;padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600}
-.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
+.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}
+.nav .menu{margin-left:auto;flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-weight:600;cursor:pointer}.nav .menu.on{border-color:var(--accent);color:var(--accent)}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}.scrim[hidden],.drawer[hidden]{display:none}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(300px,86vw);background:var(--card);border-left:1px solid var(--line);z-index:21;overflow-y:auto;padding:12px 16px 24px;box-shadow:-8px 0 24px rgba(0,0,0,.15)}
+.dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.dhead button{border:0;background:none;font-size:20px;color:var(--muted);cursor:pointer;padding:6px}
+.dgroup{padding:10px 0;border-top:1px solid var(--line)}.dgroup:first-of-type{border-top:0}.dtitle{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:0 0 4px}
+.dgroup a{display:block;padding:9px 10px;border-radius:8px;text-decoration:none;color:var(--text);font-weight:600}.dgroup a:hover{background:var(--bg)}.dgroup a.on{background:var(--accent);color:#fff}
+.dgroup .dot,.menu .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
+.pane.focus>section:not(.on),.pane.focus>p,.pane.focus>.jump{display:none}
+.stack input[type=password]{display:block;width:100%;max-width:340px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin:6px 0}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
 section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block}.pane>h2.title{font-size:13px;margin:0 0 10px}
 .jump{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}.jump a{font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--text)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
@@ -584,7 +614,12 @@ section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block
 </style><script>document.documentElement.className='js'</script></head><body data-tab="${esc(TABS.some((t) => t[0] === d.tab) ? d.tab : 'overview')}"><main>
 <div class="top"><div><h1>Max</h1><p class="sub">Voice: ${esc(d.voice)}</p></div>
 <div class="acts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div></div>
-<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id]).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}</nav>
+<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id] && QUICK.includes(id)).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}
+<button type="button" class="menu" id="menuBtn" aria-controls="drawer" aria-expanded="false">☰ Menu${Object.entries(attention).some(([id, on]) => on && !QUICK.includes(id)) ? '<span class="dot" title="Something in the menu needs attention"></span>' : ''}</button></nav>
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-label="Menu" hidden><div class="dhead"><b>Menu</b><button type="button" id="drawerClose" aria-label="Close">✕</button></div>
+${DRAWER.map(([group, items]) => `<div class="dgroup"><div class="dtitle">${group}</div>${items.filter(([, , tab]) => show[tab]).map(([href, label, tab]) => `<a href="${href}" data-tab="${tab}">${label}${attention[tab] && (tab !== 'connections' && tab !== 'settings') ? '<span class="dot"></span>' : ''}</a>`).join('')}</div>`).join('')}
+</aside>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 
 <div class="pane" id="tab-overview">${overview(d)}</div>
@@ -600,7 +635,6 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 
 <div class="pane" id="tab-connections">
-<div class="jump"><a href="#apps">Apps</a><a href="#web">Web search</a>${d.trains ? '<a href="#trains">Trains</a>' : ''}<a href="#home-assistant">Home Assistant</a>${musicSection(d.music) ? '<a href="#music">Music</a>' : ''}${servers ? '<a href="#servers">Other</a>' : ''}</div>
 <section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
@@ -650,14 +684,34 @@ ${d.lock ? lockRow(d.lock) : ''}
 (function () {
   var panes = [].slice.call(document.querySelectorAll('.pane'));
   var links = [].slice.call(document.querySelectorAll('.nav a'));
+  var drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim'), menuBtn = document.getElementById('menuBtn');
+  var dlinks = [].slice.call(drawer.querySelectorAll('a'));
+  // Menu entries for sections that aren't there (an app not set up...) are left out.
+  dlinks.forEach(function (a) { if (!document.getElementById(a.getAttribute('href').slice(1))) a.remove(); });
+  function openMenu(open) {
+    drawer.hidden = !open; scrim.hidden = !open;
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { var first = drawer.querySelector('a.on') || drawer.querySelector('a'); if (first) first.focus(); }
+  }
+  menuBtn.addEventListener('click', function () { openMenu(drawer.hidden); });
+  scrim.addEventListener('click', function () { openMenu(false); });
+  document.getElementById('drawerClose').addEventListener('click', function () { openMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) openMenu(false); });
+  dlinks.forEach(function (a) { a.addEventListener('click', function () { openMenu(false); }); });
   function route() {
     var id = decodeURIComponent(location.hash.slice(1));
     var el = id && document.getElementById(id);
     var pane = el && (el.classList.contains('pane') ? el : el.closest('.pane'));
     if (!pane) pane = document.getElementById('tab-' + document.body.getAttribute('data-tab')) || panes[0];
-    panes.forEach(function (p) { p.classList.toggle('on', p === pane); });
+    // A section opened from the menu (Apps, Security...) shows on its own, not the whole page of settings.
+    var section = el && el !== pane && el.tagName === 'SECTION' && el.parentNode === pane && (pane.id === 'tab-connections' || pane.id === 'tab-settings') ? el : null;
+    panes.forEach(function (p) { p.classList.toggle('on', p === pane); p.classList.toggle('focus', p === pane && !!section); });
+    [].slice.call(pane.querySelectorAll(':scope > section')).forEach(function (sct) { sct.classList.toggle('on', sct === section); });
     links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + pane.id); });
-    if (el && el !== pane) el.scrollIntoView(); else window.scrollTo(0, 0);
+    var inMenu = false;
+    dlinks.forEach(function (a) { var on = a.getAttribute('href') === '#' + (section ? section.id : pane.id); a.classList.toggle('on', on); inMenu = inMenu || on; });
+    menuBtn.classList.toggle('on', inMenu);
+    if (el && el !== pane && !section) el.scrollIntoView(); else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
   route();

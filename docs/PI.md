@@ -42,7 +42,7 @@ This includes your `.env` (keys and settings). Then, on the **box** (over SSH), 
 | Setting | On the box |
 | --- | --- |
 | `PULSE_SERVER` | **Delete this line** if it's there (it's for the Mac sound bridge) |
-| `PANEL_PASSWORD` | Set one: the control panel will be reachable from your home network |
+| `PANEL_PASSWORD` | Optional: on your first visit the control panel asks you to choose a password (with a code shown on Max's screen); this sets it instead |
 | `REALTIME_BARGE_IN=on` | Recommended: the mic board's echo cancellation lets you talk over Max |
 | `COMPOSE_PROFILES=max,music` | Add `,music` if you use the Spotify speaker |
 | `MEMORY_KEY` | Keep the same value as on your Mac |
@@ -67,7 +67,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 
 ## Using the box
 
-- **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi.
+- **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi. The first time, it asks you to
+  choose a password and to type the code Max shows on his screen.
 - **Boot screen:** while the box starts (and shuts down) it shows Max's face on a dark screen instead of
   raspberries and scrolling text. To use **your own logo**:
   1. Make a **PNG** picture, ideally square, about **400 × 400 pixels**, with the important part inside a
@@ -146,9 +147,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   does. To lock him yourself, hold a finger on the screen for 2 seconds and tap **Lock**.
   - After 5 wrong tries the keypad pauses for 30 seconds, then 1, 2, 4... up to 15 minutes. Turning the box
     off and on doesn't reset this, and the control panel's "current code" boxes count towards the same tries.
-  - Changing or turning off the code needs the current code. **Forgot it?** If the control panel has a
-    password (`PANEL_PASSWORD`), sign in and use **Remove code**; otherwise delete `data/startup-code.json`
-    in the `max-assistant` folder on the box and restart Max.
+  - Changing or turning off the code needs the current code. **Forgot it?** Sign in to the control panel and
+    use **Remove code** (or delete `data/startup-code.json` in the `max-assistant` folder on the box and restart Max).
   - Only a scrambled fingerprint of the code is stored, never the code itself.
 - **Turning off and on:** never just pull the plug (it can damage the SD card). Instead:
   - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**

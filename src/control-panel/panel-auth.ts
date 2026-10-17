@@ -1,32 +1,78 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { Logger } from '@nestjs/common';
+import { SealedStore } from '../memory/sealed-store';
 
 const SESSION_MS = 12 * 3600_000;
 const MAX_FAILS = 5;
 const LOCKOUT_MS = 5 * 60_000;
 const COOKIE = 'max_session';
+const MIN_PASSWORD = 8;
+/** The code Max shows on his screen to create the password (proves you're at home). */
+const SETUP_CODE_MS = 5 * 60_000;
+const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+
+interface Saved {
+  salt?: string;
+  hash?: string;
+}
+
+export interface PanelAuthOptions {
+  /** PANEL_PASSWORD from .env (wins over the one chosen on the panel). */
+  envPassword: string;
+  /** A password is required (on the box, where the panel is reachable from the home network). */
+  required: boolean;
+  /** Where the chosen password's fingerprint is kept. */
+  dir: string;
+  /** Shows the setup code on Max's screen. */
+  showCode: (code: string, ttlMs: number) => void;
+}
 
 /**
- * Optional password for the control panel (PANEL_PASSWORD), since it shows Max's memory.
- * Sessions are random tokens kept in memory (signing in again after a restart is fine),
- * sent as an HttpOnly cookie. Five wrong passwords lock sign-in for five minutes.
+ * The control panel's password, since it shows Max's memory and can turn the box off.
+ *
+ * On the box it's required. The first visit asks to choose one, and to prove you're at home, to type
+ * the 6-digit code Max shows on his screen at that moment (someone on the WiFi but not in the room
+ * can't). PANEL_PASSWORD in .env works too, and wins. Only a scrypt fingerprint of a chosen password
+ * is stored. Sessions are random tokens in memory (signing in again after a restart is fine), sent
+ * as an HttpOnly cookie. Five wrong passwords pause sign-in from that device for five minutes.
  */
 export class PanelAuth {
+  private readonly log = new Logger('ControlPanel');
   private readonly sessions = new Map<string, number>();
-  private readonly hash?: Buffer;
-  private fails = 0;
-  private lockedUntil = 0;
+  private readonly envHash?: Buffer;
+  private readonly store: SealedStore<Saved>;
+  private saved: Saved = {};
+  private readonly fails = new Map<string, { n: number; until: number }>();
+  private setup?: { code: string; until: number; tries: number };
 
-  constructor(password: string) {
-    if (password) this.hash = sha(password);
+  constructor(private readonly opts: PanelAuthOptions) {
+    if (opts.envPassword) this.envHash = sha(opts.envPassword);
+    this.store = new SealedStore(opts.dir, 'panel-password');
+    try {
+      this.saved = this.store.load() ?? {};
+    } catch {
+      // none chosen yet
+    }
   }
 
+  /** The panel asks for a password. */
   get enabled(): boolean {
-    return !!this.hash;
+    return Boolean(this.envHash || this.saved.hash);
+  }
+
+  /** Set in .env (then it can't be changed from the panel). */
+  get fromEnv(): boolean {
+    return Boolean(this.envHash);
+  }
+
+  /** Required but not chosen yet: the first visit creates it. */
+  get needsSetup(): boolean {
+    return this.opts.required && !this.enabled;
   }
 
   allowed(req: IncomingMessage): boolean {
-    if (!this.hash) return true;
+    if (!this.enabled) return !this.opts.required;
     const token = cookie(req, COOKIE);
     const until = token ? this.sessions.get(token) : undefined;
     if (!until || until < Date.now()) {
@@ -37,32 +83,34 @@ export class PanelAuth {
   }
 
   async handleLogin(req: IncomingMessage, res: ServerResponse, readForm: (r: IncomingMessage) => Promise<URLSearchParams>): Promise<void> {
-    if (!this.hash) {
+    if (this.needsSetup) return this.handleSetup(req, res, readForm);
+    if (!this.enabled) {
       res.writeHead(302, { Location: '/' }).end();
       return;
     }
     if (req.method === 'POST') {
-      if (Date.now() < this.lockedUntil) return page(res, 'Too many attempts. Try again in a few minutes.');
+      const who = client(req);
+      const paused = this.paused(who);
+      if (paused) return page(res, `Too many attempts. Try again in ${Math.ceil(paused / 60_000)} min.`);
       const pw = (await readForm(req)).get('password') ?? '';
-      if (timingSafeEqual(sha(pw), this.hash)) {
-        this.fails = 0;
-        const token = randomBytes(32).toString('base64url');
-        this.sessions.set(token, Date.now() + SESSION_MS);
-        res
-          .writeHead(302, {
-            Location: '/',
-            'Set-Cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}`,
-          })
-          .end();
-        return;
+      if (this.matches(pw)) {
+        this.fails.delete(who);
+        return this.signIn(res);
       }
-      if (++this.fails >= MAX_FAILS) {
-        this.fails = 0;
-        this.lockedUntil = Date.now() + LOCKOUT_MS;
-      }
+      this.failed(who);
       return page(res, 'Wrong password.');
     }
     return page(res);
+  }
+
+  /** Settings > Security: a new password (the current one first). */
+  change(current: string, next: string, again: string): { ok: boolean; message: string } {
+    if (this.envHash) return { ok: false, message: 'The password is set in .env (PANEL_PASSWORD): change it there.' };
+    if (!this.matches(current)) return { ok: false, message: 'The current password is wrong.' };
+    const bad = weak(next, again);
+    if (bad) return { ok: false, message: bad };
+    this.choose(next);
+    return { ok: true, message: 'Password changed.' };
   }
 
   logout(req: IncomingMessage, res: ServerResponse): void {
@@ -70,9 +118,100 @@ export class PanelAuth {
     if (token) this.sessions.delete(token);
     res.writeHead(302, { Location: '/login', 'Set-Cookie': `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0` }).end();
   }
+
+  // ---------- First visit on the box: choose a password, with the code shown on Max's screen ----------
+
+  private async handleSetup(req: IncomingMessage, res: ServerResponse, readForm: (r: IncomingMessage) => Promise<URLSearchParams>): Promise<void> {
+    const who = client(req);
+    if (req.method !== 'POST') {
+      this.newSetupCode();
+      return setupPage(res);
+    }
+    const paused = this.paused(who);
+    if (paused) return setupPage(res, `Too many attempts. Try again in ${Math.ceil(paused / 60_000)} min.`);
+    const f = await readForm(req);
+    const s = this.setup;
+    const code = (f.get('code') ?? '').replace(/\D/g, '');
+    if (!s || Date.now() > s.until) {
+      this.newSetupCode();
+      return setupPage(res, 'That code has expired: Max is showing a new one.');
+    }
+    if (code.length !== 6 || !timingSafeEqual(sha(code), sha(s.code))) {
+      this.failed(who);
+      if (++s.tries >= MAX_FAILS) this.newSetupCode();
+      return setupPage(res, 'Wrong code. Type the 6 digits Max is showing on his screen.');
+    }
+    const pw = f.get('password') ?? '';
+    const bad = weak(pw, f.get('again') ?? '');
+    if (bad) return setupPage(res, bad);
+    this.setup = undefined;
+    this.fails.delete(who);
+    this.choose(pw);
+    this.log.log('Control panel password chosen (with the code on the screen)');
+    return this.signIn(res);
+  }
+
+  private newSetupCode(): void {
+    if (this.setup && Date.now() < this.setup.until - 60_000) {
+      this.opts.showCode(this.setup.code, this.setup.until - Date.now()); // still valid: show it again
+      return;
+    }
+    this.setup = { code: String(randomInt(0, 1_000_000)).padStart(6, '0'), until: Date.now() + SETUP_CODE_MS, tries: 0 };
+    this.opts.showCode(this.setup.code, SETUP_CODE_MS);
+  }
+
+  // ---------- Helpers ----------
+
+  private matches(pw: string): boolean {
+    if (this.envHash) return timingSafeEqual(sha(pw), this.envHash);
+    if (!this.saved.hash || !this.saved.salt) return false;
+    const want = Buffer.from(this.saved.hash, 'base64');
+    const got = scryptSync(pw, Buffer.from(this.saved.salt, 'base64'), want.length, SCRYPT);
+    return timingSafeEqual(got, want);
+  }
+
+  private choose(pw: string): void {
+    const salt = randomBytes(16);
+    this.saved = { salt: salt.toString('base64'), hash: scryptSync(pw, salt, 32, SCRYPT).toString('base64') };
+    this.sessions.clear(); // everyone signs in again with the new password
+    this.store.save(this.saved).catch((err) => this.log.error(`Could not save the control panel password: ${(err as Error).message}`));
+  }
+
+  private signIn(res: ServerResponse): void {
+    const token = randomBytes(32).toString('base64url');
+    this.sessions.set(token, Date.now() + SESSION_MS);
+    res
+      .writeHead(302, { Location: '/', 'Set-Cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}` })
+      .end();
+  }
+
+  /** Wrong tries are counted per device, so nobody can lock the household out. */
+  private failed(who: string): void {
+    const f = this.fails.get(who) ?? { n: 0, until: 0 };
+    f.n++;
+    if (f.n >= MAX_FAILS) {
+      f.n = 0;
+      f.until = Date.now() + LOCKOUT_MS;
+      this.log.warn(`Control panel: ${MAX_FAILS} wrong tries from ${who}, paused for ${LOCKOUT_MS / 60_000} min`);
+    }
+    this.fails.set(who, f);
+    if (this.fails.size > 1000) this.fails.delete(this.fails.keys().next().value!);
+  }
+
+  private paused(who: string): number {
+    const left = (this.fails.get(who)?.until ?? 0) - Date.now();
+    return left > 0 ? left : 0;
+  }
+}
+
+function weak(pw: string, again: string): string | undefined {
+  if (pw.length < MIN_PASSWORD) return `Choose a password of at least ${MIN_PASSWORD} characters.`;
+  if (pw !== again) return "The two passwords don't match.";
+  return undefined;
 }
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest();
+const client = (req: IncomingMessage) => req.socket.remoteAddress ?? 'unknown';
 
 function cookie(req: IncomingMessage, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
@@ -82,15 +221,34 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
   return undefined;
 }
 
-function page(res: ServerResponse, error?: string): void {
-  res.writeHead(error ? 401 : 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Max Control Panel</title>
-<style>:root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#5d6670;--line:#e3e6ea;--accent:#2f6fed;--err:#b42318}
+const STYLE = `<style>:root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#5d6670;--line:#e3e6ea;--accent:#2f6fed;--err:#b42318}
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--text:#e8eaed;--muted:#9aa3ad;--line:#2b3138;--accent:#6e9bff;--err:#ff8a80}}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:360px;margin:12vh auto;padding:0 16px}form{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
-h1{font-size:22px;margin:0 0 12px}input{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin-bottom:12px}
-button{width:100%;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px;font:inherit;font-weight:600;cursor:pointer}.err{color:var(--err);margin:0 0 12px}</style></head>
-<body><main><form method="post" action="/login"><h1>Max</h1>${error ? `<p class="err">${error}</p>` : ''}
-<input type="password" name="password" placeholder="Control panel password" autofocus required autocomplete="current-password"><button type="submit">Sign in</button></form></main></body></html>`);
+main{max-width:380px;margin:10vh auto;padding:0 16px}form{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+h1{font-size:22px;margin:0 0 12px}p{margin:0 0 12px}.muted{color:var(--muted);font-size:14px}label{display:block;font-size:14px;margin-bottom:4px}
+input{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin-bottom:12px}
+button{width:100%;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px;font:inherit;font-weight:600;cursor:pointer}.err{color:var(--err)}</style>`;
+
+function send(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Max Control Panel</title>${STYLE}</head>
+<body><main>${body}</main></body></html>`);
+}
+
+/** Error texts are fixed strings from this file (never user input). */
+function page(res: ServerResponse, error?: string): void {
+  send(res, error ? 401 : 200, `<form method="post" action="/login"><h1>Max</h1>${error ? `<p class="err">${error}</p>` : ''}
+<input type="password" name="password" placeholder="Control panel password" autofocus required autocomplete="current-password"><button type="submit">Sign in</button></form>`);
+}
+
+function setupPage(res: ServerResponse, error?: string): void {
+  send(res, error ? 401 : 200, `<form method="post" action="/login"><h1>Protect Max's control panel</h1>
+<p class="muted">This page shows Max's memory and can turn him off, and anyone on your WiFi can open it. Choose a password.
+To show you're at home, type the 6-digit code Max is showing on his screen now (if he's locked, unlock him first).</p>
+${error ? `<p class="err">${error}</p>` : ''}
+<label for="code">Code on Max's screen</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required autofocus>
+<label for="pw">New password (at least ${MIN_PASSWORD} characters)</label><input id="pw" type="password" name="password" minlength="${MIN_PASSWORD}" required autocomplete="new-password">
+<label for="pw2">Same password again</label><input id="pw2" type="password" name="again" minlength="${MIN_PASSWORD}" required autocomplete="new-password">
+<button type="submit">Save and sign in</button>
+<p class="muted" style="margin:12px 0 0">You can also set <code>PANEL_PASSWORD</code> in <code>.env</code> on the box instead.</p></form>`);
 }

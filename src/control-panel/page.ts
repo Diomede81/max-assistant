@@ -65,6 +65,7 @@ export interface PanelData {
     }[];
     autoLearn: boolean;
     passwordSet: boolean;
+    passwordFromEnv?: boolean;
     workApps: string[];
     selected?: string;
     query?: string;
@@ -370,7 +371,7 @@ ${post('/memory/delete', { id: f.id, vault: v.name }, 'Forget')}</div></li>`,
     : `<li class="empty">${m.autoLearn ? 'Max files a one-line note after each conversation worth remembering.' : 'Conversation notes are off (MEMORY_AUTO_LEARN=off).'}</li>`;
   const kinds = ['fact', 'person', 'preference', 'routine', 'date', 'project'].map((k) => `<option>${k}</option>`).join('');
   return `<section id="memory"><h2>Memory</h2>
-${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.</p>'}
+${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).</p>'}
 <p class="meta">${esc(m.modeText)} Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: Personal vault locked · Guest: only Household. Household is shared. <a href="#mode">Change mode</a></p>
 <div class="tabs">${tabs}</div>
 <form class="search" method="get" action="/#memory">${hidden('vault', v.name)}<input name="q" value="${esc(m.query ?? '')}" placeholder="Search ${VAULT_LABEL[v.name]}…"><button class="btn secondary" type="submit">Search</button></form>
@@ -636,7 +637,12 @@ ${d.onBox
 </section>
 ${d.updates ? updatesSection(d.updates) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
-<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
+<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>
+${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" method="post" action="/security/password" style="margin-top:8px">
+<input type="password" name="current" placeholder="Current password" required autocomplete="current-password">
+<input type="password" name="password" placeholder="New password (8+ characters)" minlength="8" required autocomplete="new-password">
+<input type="password" name="again" placeholder="New password again" minlength="8" required autocomplete="new-password">
+<div><button class="btn secondary" type="submit">Change password</button></div></form>` : d.memory?.passwordFromEnv ? '<div class="meta">Set in <code>.env</code> (<code>PANEL_PASSWORD</code>): change it there.</div>' : ''}</div></li>
 ${d.lock ? lockRow(d.lock) : ''}
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
 </main>

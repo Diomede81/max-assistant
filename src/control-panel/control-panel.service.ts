@@ -19,6 +19,7 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
+import { showCard } from '../face/screen';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
@@ -59,10 +60,29 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     private readonly projects: ProjectsService,
     private readonly todos: TodoService,
   ) {
-    this.auth = new PanelAuth(cfg.controlPanel.password);
+    this.auth = new PanelAuth({
+      envPassword: cfg.controlPanel.password,
+      // On the box the panel is reachable from the home network: it always has a password.
+      required: cfg.face.onBox,
+      dir: cfg.memory.dir,
+      showCode: (code, ttlMs) =>
+        showCard({
+          id: 'panel-code',
+          kind: 'notice',
+          icon: '🔐',
+          title: 'Control panel',
+          big: `${code.slice(0, 3)} ${code.slice(3)}`,
+          body: "Someone is choosing the control panel's password: type this code there. If that isn't you, ignore it.",
+          ttlMs,
+        }),
+    });
+    const extra = [cfg.controlPanel.publicUrl, ...cfg.controlPanel.allowedHosts];
+    this.hosts = new Set(extra.map((h) => hostOf(h)).filter(Boolean));
   }
 
   private readonly auth: PanelAuth;
+  /** Extra names the panel answers to (CONTROL_PANEL_URL's, CONTROL_PANEL_HOSTS). */
+  private readonly hosts: Set<string>;
 
   onModuleInit(): void {
     const { port, host, publicUrl } = this.cfg.controlPanel;
@@ -78,6 +98,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    // Never inside another website's frame (click tricks), no guessing of file types, no leaking addresses.
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    // Only answer to the panel's own names (max.local, the box's address, localhost...): a website whose name
+    // is made to point at the box ("DNS rebinding") could otherwise read the panel from the user's browser.
+    if (!hostAllowed(req.headers.host, this.hosts)) {
+      res.writeHead(421, { 'Content-Type': 'text/plain' }).end('Open the control panel by its own address, e.g. http://max.local:8099');
+      return;
+    }
     // Stop other websites open in the browser from posting to the panel (e.g. planting a "memory").
     if (req.method === 'POST' && !sameOrigin(req)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
@@ -227,6 +258,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/trains/home' && this.trains) {
       const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
       return this.redirect(res, `/?${/^Home station/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#trains`);
+    }
+    if (req.method === 'POST' && url.pathname === '/security/password') {
+      const f = await readForm(req);
+      const out = this.auth.change(f.get('current') ?? '', f.get('password') ?? '', f.get('again') ?? '');
+      return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
@@ -547,6 +583,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             })),
             autoLearn: this.cfg.memory.autoLearn,
             passwordSet: this.auth.enabled,
+            passwordFromEnv: this.auth.fromEnv,
             workApps: this.cfg.memory.workApps,
             activity: this.memory.recentActivity(60),
             today: localToday(),
@@ -659,4 +696,25 @@ function sameOrigin(req: IncomingMessage): boolean {
   } catch {
     return false;
   }
+}
+
+/** The host name (no port) of a URL or a bare name. */
+function hostOf(v: string): string {
+  try {
+    return new URL(v.includes('://') ? v : `http://${v}`).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The panel's own names: localhost, an IP address (how a home network reaches the box), a single-word
+ * name or a .local one (max, max.local), plus CONTROL_PANEL_URL's and CONTROL_PANEL_HOSTS. A public
+ * name (evil.example) pointed at the box by a website is refused.
+ */
+function hostAllowed(header: string | undefined, extra: Set<string>): boolean {
+  const h = hostOf(header ?? '');
+  if (!h) return false;
+  if (h === 'localhost' || h.endsWith('.local') || !h.includes('.') || extra.has(h)) return true;
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':');
 }

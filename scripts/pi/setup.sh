@@ -226,7 +226,7 @@ set_env() { grep -q "^$1=" .env && sed -i "s|^$1=.*|$1=$2|" .env || echo "$1=$2"
 set_env MAX_UID "$USER_ID"
 set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
-grep -q '^PANEL_PASSWORD=.\+' .env || warn "PANEL_PASSWORD is not set in .env. On the box the control panel is reachable from your home network, so set one."
+grep -q '^PANEL_PASSWORD=.\+' .env || say "The control panel asks you to choose a password on your first visit (with a code shown on Max's screen)."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
 # Every "docker compose" command on the box includes the Pi settings (sound, control panel on the
 # home network), so a plain "docker compose up -d" can't lock the control panel to the box itself.

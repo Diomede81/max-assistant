@@ -10,6 +10,8 @@ itself while this runs. If it stops, the system's own handling comes back: a pre
 off safely. Pressing the button while the box is off turns it on (that's the Pi's firmware).
 """
 import os
+import tempfile
+import stat
 import select
 import struct
 import subprocess
@@ -62,13 +64,36 @@ def find_button():
     return named[0] if named else None
 
 
+# Status files go into the folder Max shares with the box (/run/max), where Max's container can create
+# files too, including links pointing at system files. A root service must never write through such a
+# link: the file is written in a folder only root can use, then moved in with one rename, which
+# replaces whatever is at that name (a planted link included) and never follows it.
+PRIVATE_DIR = '/run/max-box'
+
+
+def put_shared(run_dir, name, text):
+    os.makedirs(PRIVATE_DIR, mode=0o755, exist_ok=True)
+    st = os.lstat(PRIVATE_DIR)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s is not a private folder' % PRIVATE_DIR)
+    fd, tmp = tempfile.mkstemp(dir=PRIVATE_DIR)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.makedirs(run_dir, exist_ok=True)
+        os.replace(tmp, os.path.join(run_dir, name))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def ask_max():
     try:
-        os.makedirs(RUN_DIR, exist_ok=True)
-        tmp = NOTE + '.tmp'
-        with open(tmp, 'w') as f:
-            f.write(str(int(time.time() * 1000)))
-        os.rename(tmp, NOTE)
+        put_shared(RUN_DIR, os.path.basename(NOTE), str(int(time.time() * 1000)))
         log('Power button pressed: asking on the screen')
     except OSError as e:
         log('Could not ask Max (%s)' % e)

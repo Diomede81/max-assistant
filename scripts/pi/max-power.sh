@@ -4,7 +4,7 @@
 # ("poweroff" or "reboot"); max-power.path notices it and runs this. /run is emptied at every
 # start, so an old note can never turn the box off later.
 F="${MAX_RUN_DIR:-/run/max}/power-request"
-[ -f "$F" ] || exit 0
+[ -f "$F" ] && [ ! -L "$F" ] || { rm -f "$F"; exit 0; }  # a real file only, not a planted link
 ACTION="$(head -c 20 "$F" | tr -cd 'a-z')"
 rm -f "$F"
 case "$ACTION" in

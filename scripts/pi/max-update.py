@@ -17,6 +17,8 @@ If the setup fails, the code goes back to the version that was running.
 import hashlib
 import json
 import os
+import tempfile
+import stat
 import re
 import subprocess
 import sys
@@ -58,13 +60,35 @@ def log(msg):
         pass
 
 
+# Status files go into the folder Max shares with the box (/run/max), where Max's container can create
+# files too, including links pointing at system files. A root service must never write through such a
+# link: the file is written in a folder only root can use, then moved in with one rename, which
+# replaces whatever is at that name (a planted link included) and never follows it.
+PRIVATE_DIR = '/run/max-box'
+
+
+def put_shared(run_dir, name, text):
+    os.makedirs(PRIVATE_DIR, mode=0o755, exist_ok=True)
+    st = os.lstat(PRIVATE_DIR)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s is not a private folder' % PRIVATE_DIR)
+    fd, tmp = tempfile.mkstemp(dir=PRIVATE_DIR)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.makedirs(run_dir, exist_ok=True)
+        os.replace(tmp, os.path.join(run_dir, name))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write_json(name, data):
-    os.makedirs(RUN, exist_ok=True)
-    path = os.path.join(RUN, name)
-    with open(path + '.tmp', 'w') as f:
-        json.dump(data, f)
-    os.chmod(path + '.tmp', 0o644)
-    os.replace(path + '.tmp', path)
+    put_shared(RUN, name, json.dumps(data))
 
 
 def status(state, message, **extra):

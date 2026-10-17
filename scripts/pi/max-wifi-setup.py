@@ -19,6 +19,8 @@ MAX_WIFI_PORTAL_BIND (10.42.0.1, NetworkManager's hotspot address).
 import html
 import json
 import os
+import tempfile
+import stat
 import secrets
 import subprocess
 import sys
@@ -101,13 +103,35 @@ def scan():
     return sorted(nets.values(), key=lambda n: -n['signal'])
 
 
+# Status files go into the folder Max shares with the box (/run/max), where Max's container can create
+# files too, including links pointing at system files. A root service must never write through such a
+# link: the file is written in a folder only root can use, then moved in with one rename, which
+# replaces whatever is at that name (a planted link included) and never follows it.
+PRIVATE_DIR = '/run/max-box'
+
+
+def put_shared(run_dir, name, text):
+    os.makedirs(PRIVATE_DIR, mode=0o755, exist_ok=True)
+    st = os.lstat(PRIVATE_DIR)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s is not a private folder' % PRIVATE_DIR)
+    fd, tmp = tempfile.mkstemp(dir=PRIVATE_DIR)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.makedirs(run_dir, exist_ok=True)
+        os.replace(tmp, os.path.join(run_dir, name))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write_status(data):
-    os.makedirs(RUN_DIR, exist_ok=True)
-    tmp = STATUS + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump({**data, 'at': int(time.time() * 1000)}, f)
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, STATUS)
+    put_shared(RUN_DIR, os.path.basename(STATUS), json.dumps({**data, 'at': int(time.time() * 1000)}))
 
 
 def clear_status():

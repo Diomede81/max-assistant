@@ -86,7 +86,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('WhatsApp');
   private readonly authStore: SealedStore<{ data: string }>;
   private readonly settingsStore: SealedStore<{ allowed: AllowedContact[] }>;
-  private readonly msgStore: SealedStore<{ chats: Record<string, Chat>; names: Record<string, string> }>;
+  private readonly msgStore: SealedStore<{ chats: Record<string, Chat>; names: Record<string, string>; lids?: Record<string, string> }>;
   private lib?: Baileys;
   private sock?: Socket;
   private state: WhatsAppStatus['state'] = 'off';
@@ -97,6 +97,12 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private chats: Record<string, Chat> = {};
   /** Names by id: the user's own contact names, else the names people gave themselves. */
   private names: Record<string, string> = {};
+  /**
+   * WhatsApp's hidden ids for people ("…@lid") and their phone numbers ("…@s.whatsapp.net"). A person's
+   * chat can come under either: Max files it under the phone number once he knows it, so it matches
+   * the allowed list and the names saved on the phone.
+   */
+  private lids: Record<string, string> = {};
   private auth?: { creds: Record<string, unknown>; keys: Record<string, Record<string, unknown>> };
   private saveAuthTimer?: NodeJS.Timeout;
   private saveMsgTimer?: NodeJS.Timeout;
@@ -117,6 +123,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       const m = this.msgStore.load();
       this.chats = m?.chats ?? {};
       this.names = m?.names ?? {};
+      this.lids = m?.lids ?? {};
     } catch (err) {
       this.log.warn(`Could not read the saved WhatsApp settings: ${(err as Error).message}`);
     }
@@ -300,8 +307,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       return 'Not sent: nobody is on the allowed list yet. The user adds the people Max may message on the control panel (Connections → WhatsApp).';
     }
     const num = normaliseNumber(to);
-    const found = num ? { match: this.allowed.find((a) => a.number === num), ambiguous: [] } : bestMatch(this.allowed, (a) => a.name, to);
+    // the name as it is on the list (or a whole word of it): a near miss ("Dan" for "Daniela") is never sent to
+    const found = num ? { match: this.allowed.find((a) => a.number === num), ambiguous: [] } : bestMatch(this.allowed, (a) => a.name, to, 2);
     if (!found.match) {
+      const near = num ? undefined : bestMatch(this.allowed, (a) => a.name, to).match;
+      if (near) return `Not sent: did the user mean ${near.name}? Ask them, and if so call again with to="${near.name}" (read that name back when confirming).`;
       if (found.ambiguous.length) return `Not sent: "${to}" could be ${found.ambiguous.map((a) => a.name).join(' or ')}. Ask which.`;
       return `Not sent: ${to} isn't on the allowed list (${this.allowed.map((a) => a.name).join(', ')}). The user can add people on the control panel; Max can't add them by voice.`;
     }
@@ -320,18 +330,28 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private findChat(query: string): { chat: Chat } | { say: string } {
     const all = Object.values(this.chats);
     const num = normaliseNumber(query);
-    // a person on the allowed list ("my wife") counts as their name
-    const allowed = num ? undefined : bestMatch(this.allowed, (a) => a.name, query).match;
-    const pn = num ?? allowed?.number;
-    if (pn) {
-      const c = all.find((x) => x.pn === `${pn}@s.whatsapp.net`);
-      if (c) return { chat: c };
-      if (num) return { say: `No messages with ${showNumber(num)} in the last ${KEEP_DAYS} days.` };
+    if (num) {
+      const c = this.chats[`${num}@s.whatsapp.net`];
+      return c ? { chat: c } : { say: `No messages with ${showNumber(num)} in the last ${KEEP_DAYS} days.${this.recent()}` };
     }
-    const r = bestMatch(all, (c) => c.name, query);
-    if (r.match) return { chat: r.match };
-    if (r.ambiguous.length) return { say: `Several chats match "${query}": ${r.ambiguous.slice(0, 5).map((c) => c.name).join(', ')}. Ask which.` };
-    return { say: `No WhatsApp chat called "${query}" in the last ${KEEP_DAYS} days.` };
+    // someone on the allowed list ("Magda", "my wife"): their chat, by number
+    const allowed = bestMatch(this.allowed, (a) => a.name, query).match;
+    const mine = allowed && this.chats[`${allowed.number}@s.whatsapp.net`];
+    if (mine) return { chat: mine };
+    // by the chat's name (saved on the phone, or the person's own), or the list name's
+    for (const q of allowed ? [query, allowed.name] : [query]) {
+      const r = bestMatch(all, (c) => c.name, q);
+      if (r.match) return { chat: r.match };
+      if (r.ambiguous.length) return { say: `Several chats match "${q}": ${r.ambiguous.slice(0, 5).map((c) => c.name).join(', ')}. Ask which.` };
+    }
+    return { say: `No WhatsApp chat called "${query}" with messages in the last ${KEEP_DAYS} days.${this.recent()}` };
+  }
+
+  /** The chats with the latest messages: lets the user (or Max) see what the chat is actually called. */
+  private recent(): string {
+    const last = (c: Chat) => c.msgs[c.msgs.length - 1]?.at ?? 0;
+    const names = Object.values(this.chats).sort((a, b) => last(b) - last(a)).slice(0, 8).map((c) => c.name);
+    return names.length ? ` Recent chats: ${names.join(', ')}. If one of these is the person, read that one.` : ' No messages at all yet: WhatsApp may still be sending them to Max (it can take a few minutes after linking).';
   }
 
   private card(subtitle: string, lines: CardLine[]): void {
@@ -424,6 +444,10 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         this.retry = 0;
         this.phone = String(sock.user?.id ?? '').split(/[:@]/)[0] || undefined;
         this.log.log('WhatsApp connected');
+        // chats still filed under a hidden id (e.g. kept by an earlier version): find their numbers
+        for (const id of Object.keys(this.chats).filter((k) => k.endsWith('@lid'))) {
+          void sock.signalRepository?.lidMapping?.getPNForLID(id).then((pn) => pn && this.learn(id, pn)).catch(() => undefined);
+        }
       }
       if (u.connection === 'close') {
         const code = (u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
@@ -449,14 +473,22 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         }, wait);
       }
     });
-    sock.ev.on('messaging-history.set', ({ chats, contacts, messages }) => {
+    sock.ev.on('messaging-history.set', ({ chats, contacts, messages, lidPnMappings }) => {
+      for (const l of lidPnMappings ?? []) this.learn(l.lid, l.pn);
+      for (const c of chats) {
+        if (c.lidJid && c.pnJid) this.learn(c.lidJid, c.pnJid);
+        else if (c.id && c.pnJid) this.learn(c.id, c.pnJid);
+        const n = c.name || c.displayName;
+        if (c.id && n && !this.names[c.id]) this.names[c.id] = n;
+      }
       for (const c of contacts) this.nameOf(c);
-      for (const c of chats) if (c.id && c.name) this.names[c.id] = c.name;
+      this.log.log(`WhatsApp: received ${chats.length} chats, ${contacts.length} contacts and ${messages.length} recent messages from the phone`);
       // what was there before linking counts as already seen
       for (const m of messages) this.keep(m, true);
       this.saveMessages();
     });
     sock.ev.on('contacts.upsert', (cs) => cs.forEach((c) => this.nameOf(c)));
+    sock.ev.on('lid-mapping.update', (l) => this.learn(l.lid, l.pn));
     sock.ev.on('contacts.update', (cs) => cs.forEach((c) => c.id && this.nameOf(c as { id: string; name?: string; notify?: string })));
     sock.ev.on('groups.upsert', (gs) => gs.forEach((g) => this.setGroupName(g.id, g.subject)));
     sock.ev.on('groups.update', (gs) => gs.forEach((g) => g.id && g.subject && this.setGroupName(g.id, g.subject)));
@@ -497,16 +529,65 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     clearTimeout(this.saveAuthTimer);
     clearTimeout(this.saveMsgTimer);
     this.authStore.save({ data: '' }).catch(() => undefined);
+    this.lids = {};
     this.msgStore.save({ chats: {}, names: {} }).catch(() => undefined);
   }
 
   // ---------- Messages ----------
 
+  /** A contact's name: the one saved on the phone wins over the name people gave themselves. */
   private nameOf(c: { id: string; name?: string; notify?: string; phoneNumber?: string; lid?: string }): void {
-    const n = c.name || c.notify;
-    if (!n) return;
-    for (const id of [c.id, c.phoneNumber, c.lid]) if (id) this.names[id] = n;
-    for (const [jid, chat] of Object.entries(this.chats)) if (!chat.group && (jid === c.id || chat.pn === c.phoneNumber || jid === c.lid) && c.name) chat.name = c.name;
+    const ids = [c.id, c.phoneNumber, c.lid].filter((x): x is string => Boolean(x)).map(bare);
+    const lid = ids.find((x) => x.endsWith('@lid'));
+    const pn = ids.find((x) => x.endsWith('@s.whatsapp.net'));
+    if (lid && pn) this.learn(lid, pn);
+    for (const id of ids) {
+      if (c.name) this.names[id] = c.name;
+      else if (c.notify && !this.names[id]) this.names[id] = c.notify;
+    }
+    for (const id of ids) {
+      const chat = this.chats[this.chatKey(id)];
+      if (chat && !chat.group) chat.name = this.personName(this.chatKey(id)) ?? chat.name;
+    }
+  }
+
+  /** A person's hidden id and phone number belong together: their chat moves to the phone number. */
+  private learn(lidJid?: string | null, pnJid?: string | null): void {
+    if (!lidJid || !pnJid) return;
+    const lid = bare(lidJid);
+    const pn = bare(pnJid);
+    if (!lid.endsWith('@lid') || !pn.endsWith('@s.whatsapp.net') || this.lids[lid] === pn) return;
+    this.lids[lid] = pn;
+    if (this.names[lid] && !this.names[pn]) this.names[pn] = this.names[lid];
+    const old = this.chats[lid];
+    if (old) {
+      delete this.chats[lid];
+      const into = this.chats[pn];
+      if (into) {
+        for (const m of old.msgs) if (!into.msgs.some((x) => x.id === m.id)) into.msgs.push(m);
+        into.msgs.sort((a, b) => a.at - b.at);
+        into.seen = Math.max(into.seen, old.seen);
+      } else this.chats[pn] = { ...old, pn };
+    }
+    const chat = this.chats[pn];
+    if (chat) {
+      chat.pn = pn;
+      chat.name = this.personName(pn) ?? chat.name;
+    }
+    this.saveMessages();
+  }
+
+  /** Where a chat is filed: the phone number when known, else the id it came with. */
+  private chatKey(jid: string): string {
+    const j = bare(jid);
+    return this.lids[j] ?? j;
+  }
+
+  /** A person's name: saved on the phone, else on the allowed list, else what they call themselves. */
+  private personName(key: string): string | undefined {
+    const lid = Object.keys(this.lids).find((l) => this.lids[l] === key);
+    const allowed = this.allowed.find((a) => `${a.number}@s.whatsapp.net` === key);
+    return this.names[key] || (lid && this.names[lid]) || allowed?.name || undefined;
   }
 
   private setGroupName(id: string, subject?: string): void {
@@ -517,27 +598,32 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
   private keep(m: WAMessage, old: boolean): void {
     const B = this.lib!;
-    const jid = m.key.remoteJid;
-    if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter') || jid.endsWith('@broadcast')) return;
+    const raw = m.key.remoteJid ? bare(m.key.remoteJid) : '';
+    if (!raw || raw === 'status@broadcast' || raw.endsWith('@newsletter') || raw.endsWith('@broadcast')) return;
     const text = messageText(B, m);
     if (!text) return;
     const at = Number(m.messageTimestamp ?? 0) * 1000 || Date.now();
     if (Date.now() - at > KEEP_DAYS * 86_400_000) return;
-    const group = jid.endsWith('@g.us');
-    const alt = m.key.remoteJidAlt;
-    const pn = jid.endsWith('@s.whatsapp.net') ? jid : alt?.endsWith('@s.whatsapp.net') ? alt : undefined;
-    let chat = this.chats[jid];
-    if (!chat) {
-      const allowed = pn && this.allowed.find((a) => `${a.number}@s.whatsapp.net` === pn);
-      const name = this.names[jid] || (pn && this.names[pn]) || (allowed ? allowed.name : '') || (!group && !m.key.fromMe && m.pushName) || (pn ? showNumber(pn.split('@')[0]) : group ? 'A group' : 'Someone');
-      chat = this.chats[jid] = { name, group, pn, msgs: [], seen: 0 };
-      if (group && !this.names[jid]) void this.sock?.groupMetadata(jid).then((g) => this.setGroupName(jid, g.subject)).catch(() => undefined);
+    const group = raw.endsWith('@g.us');
+    if (raw.endsWith('@lid')) {
+      if (m.key.remoteJidAlt) this.learn(raw, m.key.remoteJidAlt);
+      // not known yet: ask the library (it learns them as messages come and go)
+      else if (!this.lids[raw]) void this.sock?.signalRepository?.lidMapping?.getPNForLID(raw).then((pn) => pn && this.learn(raw, pn)).catch(() => undefined);
     }
-    if (pn) chat.pn = pn;
+    const key = this.chatKey(raw);
+    const pn = key.endsWith('@s.whatsapp.net') ? key : undefined;
+    let chat = this.chats[key];
+    if (!chat) {
+      const name = group ? this.names[key] : this.personName(key) || (!m.key.fromMe && m.pushName) || undefined;
+      chat = this.chats[key] = { name: name || (pn ? showNumber(pn.split('@')[0]) : group ? 'A group' : 'Someone'), group, pn, msgs: [], seen: 0 };
+      if (group && !this.names[key]) void this.sock?.groupMetadata(key).then((g) => this.setGroupName(key, g.subject)).catch(() => undefined);
+    } else if (!group && !m.key.fromMe && m.pushName && /^(Someone|\+\d[\d ]*)$/.test(chat.name) && !this.personName(key)) {
+      chat.name = m.pushName; // only had a number: their own name is better
+    }
     if (old) chat.seen = Math.max(chat.seen, at);
     const id = m.key.id ?? `${at}`;
     if (chat.msgs.some((x) => x.id === id)) return;
-    const from = m.key.fromMe ? 'You' : group ? m.pushName || this.names[m.key.participant ?? ''] || 'Someone' : chat.name;
+    const from = m.key.fromMe ? 'You' : group ? m.pushName || this.names[bare(m.key.participant ?? '')] || 'Someone' : chat.name;
     chat.msgs.push({ id, at, from, mine: Boolean(m.key.fromMe), text: text.slice(0, TEXT_MAX) });
     chat.msgs.sort((a, b) => a.at - b.at);
     if (chat.msgs.length > PER_CHAT) chat.msgs.splice(0, chat.msgs.length - PER_CHAT);
@@ -578,7 +664,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
   private writeMessages(): void {
     this.prune();
-    this.msgStore.save({ chats: this.chats, names: this.names }).catch((err) => this.log.warn(`Could not save WhatsApp messages: ${(err as Error).message}`));
+    this.msgStore.save({ chats: this.chats, names: this.names, lids: this.lids }).catch((err) => this.log.warn(`Could not save WhatsApp messages: ${(err as Error).message}`));
   }
 
   private saveSettings(): void {
@@ -617,4 +703,9 @@ export function messageText(B: Pick<Baileys, 'normalizeMessageContent'>, m: WAMe
   if (c.contactMessage) return `[contact: ${c.contactMessage.displayName ?? ''}]`;
   if (c.pollCreationMessage || c.pollCreationMessageV3) return `[poll: ${(c.pollCreationMessage ?? c.pollCreationMessageV3)?.name ?? ''}]`;
   return '';
+}
+
+/** An id without the device part ("447700900123:5@s.whatsapp.net" → "447700900123@s.whatsapp.net"). */
+function bare(jid: string): string {
+  return jid.replace(/:\d+(?=@)/, '');
 }

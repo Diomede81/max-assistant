@@ -52,19 +52,23 @@ export function nameScore(name: string, query: string): number {
   const words = n.split(' ');
   if (` ${n} `.includes(` ${q} `)) return 2;
   if (q.length >= 3 && words.some((w) => w.startsWith(q))) return 1;
+  // the name inside a longer phrase ("my wife Magda"): good enough to read her chat, not to send to
+  if (n.length >= 3 && ` ${q} `.includes(` ${n} `)) return 1;
+  // a longer form of the name: "Magdalena" for "Magda", "Alessandro" for "Ale"
+  if (words.some((w) => w.length >= 3 && q.split(' ')[0].startsWith(w))) return 1;
   return 0;
 }
 
 /** The best match for what was said, if one stands out (two equally good: none, ask which). */
-export function bestMatch<T>(items: T[], name: (t: T) => string, query: string): { match?: T; ambiguous: T[] } {
-  let best = 0;
+export function bestMatch<T>(items: T[], name: (t: T) => string, query: string, minScore = 1): { match?: T; ambiguous: T[] } {
+  let best = minScore - 1;
   let found: T[] = [];
   for (const it of items) {
     const s = nameScore(name(it), query);
     if (s > best) {
       best = s;
       found = [it];
-    } else if (s && s === best) found.push(it);
+    } else if (s >= minScore && s === best) found.push(it);
   }
   return found.length === 1 ? { match: found[0], ambiguous: [] } : { ambiguous: found };
 }

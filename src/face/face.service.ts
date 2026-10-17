@@ -405,7 +405,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     const now = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
     this.music = now && { title: now.title, artist: now.artist };
     this.musicMood = now ? moodFor(`${now.genre ?? ''} ${now.artist} ${now.title}`) : undefined;
-    if (this.music && this.ambient?.settings.dance !== false) this.groove.start();
+    if (this.music && this.ambient?.settings.dance !== false) void this.groove.start();
     else this.groove.stop();
     // A new song: show the music card for a moment.
     if (this.music && this.music.title !== before) await this.musicCard(MUSIC_CARD_MS);

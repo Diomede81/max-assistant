@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { Logger } from '@nestjs/common';
+import { sinkInputs } from '../music/sink-inputs';
 
 /**
  * Max dancing to the music: the beat of what's playing (listened to from the speaker's own output,
@@ -130,28 +131,45 @@ export class BeatTracker {
 
 const FRAME_MS = 50;
 
+/** The music streams to listen to: the radio, AirPlay and Spotify (not Max's own voice). */
+const MUSIC = /max radio|shairport|librespot|spotify/;
+
 /**
- * Listens to what the speaker is playing (the sound system's "monitor" of its output) while music
- * plays, and emits 'frame' (GrooveFrame) every 50 ms. Nothing is recorded or kept: the sound only
- * becomes a loudness and a beat. Without a sound system (e.g. no parec) the face keeps time by itself.
+ * Listens to the music while it plays and emits 'frame' (GrooveFrame) every 50 ms. Nothing is
+ * recorded or kept: the sound only becomes a loudness and a beat. It listens to the music stream
+ * itself (wherever the sound system sends it: the speaker, another output, or nowhere when no speaker
+ * is plugged in), else to what the default speaker plays. Without a sound system (e.g. no parec) the
+ * face keeps time by itself.
  */
 export class GrooveListener extends EventEmitter {
   private readonly log = new Logger('Groove');
   private proc?: ChildProcess;
+  /** What parec listens to: a stream's number, or the default speaker ('default'). */
+  private target?: number | 'default';
   private tracker = new BeatTracker();
   private tick?: NodeJS.Timeout;
   private failures = 0;
+  /** Listening to a single stream didn't work on this sound system: the default speaker only. */
+  private noStreams = false;
   private wanted = false;
 
   get bpm(): number | undefined {
     return this.wanted ? this.tracker.bpm : undefined;
   }
 
-  start(): void {
-    if (this.wanted) return;
-    this.wanted = true;
-    this.tracker = new BeatTracker();
-    this.tick = setInterval(() => this.emit('frame', this.tracker.frame()), FRAME_MS);
+  /** Starts listening, or (already listening) follows the music to its current stream, e.g. radio to AirPlay. */
+  async start(): Promise<void> {
+    if (!this.wanted) {
+      this.wanted = true;
+      this.failures = 0;
+      this.tracker = new BeatTracker();
+      this.tick = setInterval(() => this.emit('frame', this.tracker.frame()), FRAME_MS);
+    }
+    const target = await this.find();
+    if (!this.wanted) return;
+    if (this.proc && target === this.target) return;
+    this.kill();
+    this.target = target;
     this.listen();
   }
 
@@ -159,23 +177,39 @@ export class GrooveListener extends EventEmitter {
     this.wanted = false;
     clearInterval(this.tick);
     this.tick = undefined;
+    this.target = undefined;
+    this.kill();
+  }
+
+  private kill(): void {
     const p = this.proc;
     this.proc = undefined;
     p?.kill();
   }
 
+  /** The newest music stream playing, or the default speaker. */
+  private async find(): Promise<number | 'default'> {
+    if (this.noStreams) return 'default';
+    const s = (await sinkInputs()).filter((x) => MUSIC.test(x.names)).sort((a, b) => b.index - a.index)[0];
+    return s ? s.index : 'default';
+  }
+
   private listen(): void {
-    if (!this.wanted || this.proc || this.failures >= 3) return;
+    if (!this.wanted || this.proc || this.failures >= 3 || this.target === undefined) return;
+    const target = this.target;
+    const from = target === 'default' ? ['-d', '@DEFAULT_MONITOR@'] : [`--monitor-stream=${target}`];
     let proc: ChildProcess;
     try {
-      proc = spawn('parec', ['-d', '@DEFAULT_MONITOR@', '--raw', '--format=s16le', `--rate=${RATE}`, '--channels=1', '--latency-msec=40'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = spawn('parec', [...from, '--raw', '--format=s16le', `--rate=${RATE}`, '--channels=1', '--latency-msec=40'], { stdio: ['ignore', 'pipe', 'ignore'] });
     } catch {
       return;
     }
     this.proc = proc;
     const started = Date.now();
     let rest: Buffer = Buffer.alloc(0);
+    let heard = false;
     proc.stdout?.on('data', (d: Buffer) => {
+      heard = true;
       const buf = rest.length ? Buffer.concat([rest, d]) : d;
       const even = buf.length & ~1;
       rest = buf.subarray(even);
@@ -185,9 +219,22 @@ export class GrooveListener extends EventEmitter {
       if (this.proc !== proc) return;
       this.proc = undefined;
       if (!this.wanted) return;
-      if (Date.now() - started < 10_000 && ++this.failures >= 3) {
-        this.log.warn('Could not listen to the speaker for the beat: Max will keep time by himself.');
+      if (target !== 'default') {
+        // The stream ended (another station, another source): find the music again. Twice without a
+        // sound: this sound system can't listen to a single stream, so the default speaker from now on.
+        if (!heard && ++this.failures >= 2) {
+          this.noStreams = true;
+          this.failures = 0;
+          this.log.log('Listening to the default speaker for the beat');
+        }
+        setTimeout(() => void this.start(), 1000);
         return;
+      }
+      if (Date.now() - started < 10_000) {
+        if (++this.failures >= 3) {
+          this.log.warn('Could not listen to the music for the beat: Max will keep time by himself.');
+          return;
+        }
       }
       setTimeout(() => this.listen(), 2000);
     };

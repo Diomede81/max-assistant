@@ -170,7 +170,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle) { faceKnown = true; applyFace(); } renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); checkPowerAsk(); connectedOnce = true; connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle) { faceKnown = true; applyFace(); } renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -620,6 +620,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       });
     }).catch(() => menu('<h1>Updates</h1><p>Could not check for updates.</p>' + BACK, { uBack: closeMenu }));
   }
+  // The box's power button was pressed: ask what to do (holding it for 5 s turns the box off anyway).
+  let powerAsked = 0;
+  function checkPowerAsk() {
+    if (!info.powerAsk || info.powerAsk === powerAsked) return;
+    const first = powerAsked === 0 && !connectedOnce;
+    powerAsked = info.powerAsk;
+    if (first && Date.now() - info.powerAsk > 3000) return; // a press from before this page opened
+    clearInterval(countdown);
+    menu('<h1>Power button</h1><p>Turn Max off, or restart him?</p><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
+      '<button class="quiet" id="mCancel">Back to Max</button><p>Holding the button for 5 seconds turns him off straight away.</p>', {
+      mOff: () => confirmPower('poweroff'), mRestart: () => confirmPower('reboot'), mCancel: closeMenu,
+    });
+  }
+  let connectedOnce = false;
   // A few seconds to change your mind, then the box is asked to turn off / restart.
   function confirmPower(action) {
     const off = action === 'poweroff';

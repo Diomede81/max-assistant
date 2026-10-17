@@ -30,6 +30,9 @@ export interface ActivityEvent extends Activity {
 const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
 const CONFIRM_WINDOW_MS = 3 * 60 * 1000;
 const CONFIRM_PARAM = 'confirmed';
+/** Links Max may open with read_webpage: seen in what he read (search results, briefing, email) this recently. */
+const LINK_MEMORY_MS = 3600_000;
+const URL_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
 /** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
 const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 
@@ -48,6 +51,8 @@ export class ToolRouterService {
   private readonly log = new Logger(ToolRouterService.name);
   private readonly pending = new Map<string, number>();
   private externalContentAt = 0;
+  /** Links seen in action results (search results, the briefing, emails...): the ones read_webpage may open. */
+  private readonly links = new Map<string, number>();
 
   constructor(
     private readonly modes: ModesService,
@@ -120,13 +125,38 @@ export class ToolRouterService {
     // Belt and braces: nothing runs while the start-up code hasn't been entered.
     if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
     const what = describeActivity(name);
-    if (!what) return this.run(name, args);
+    if (!what) return this.rememberLinks(await this.run(name, args));
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };
     this.activity.emit('start', ev);
     const out = await this.run(name, args);
+    this.rememberLinks(out);
     this.activity.emit('end', { ...ev, ok: !/^Error:|^Could not do that/.test(out) });
     this.activity.emit('result', { name, out });
     return out;
+  }
+
+  /** Remembers the links in an action's result (they may be opened with read_webpage). Returns the result. */
+  private rememberLinks(out: string): string {
+    const now = Date.now();
+    for (const m of out.matchAll(URL_RE)) this.links.set(normLink(m[0]), now);
+    for (const [k, at] of this.links) if (now - at > LINK_MEMORY_MS) this.links.delete(k);
+    return out;
+  }
+
+  /**
+   * read_webpage only opens a link Max saw in something he read (search results, the briefing, an
+   * email...: written without access to the user's data). A link the AI model built itself could carry
+   * the user's information out (https://evil.example/?d=...); for a site the user names, it searches first.
+   */
+  private linkAllowed(url: string): boolean {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return true; // not a link: read_webpage itself says so
+    }
+    const seen = this.links.get(normLink(url));
+    return Boolean(seen && Date.now() - seen < LINK_MEMORY_MS);
   }
 
   private async run(name: string, args: Record<string, unknown>): Promise<string> {
@@ -136,6 +166,14 @@ export class ToolRouterService {
     }
     try {
       if (this.builtin.has(name)) return this.builtin.call(name, args);
+      if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''))) {
+        this.log.warn(`read_webpage refused: ${String(args.url ?? '').slice(0, 120)} wasn't in anything Max read`);
+        return (
+          'Not done: Max only opens pages whose link came from a search, the news briefing or a message he read. For a ' +
+          'website the user names, find the page with web_search first, then read it using a link from the results. ' +
+          'Never build links yourself (and never put the user\'s information into one).'
+        );
+      }
       if (this.web?.has(name)) {
         this.externalContentAt = Date.now(); // facts from web pages are marked unverified
         return await this.web.call(name, args);
@@ -211,4 +249,16 @@ function stableJson(v: unknown): string {
     return `{${Object.keys(v as object).sort().map((k) => `${JSON.stringify(k)}:${stableJson((v as Record<string, unknown>)[k])}`).join(',')}}`;
   }
   return JSON.stringify(v);
+}
+
+/** A link, for comparing: no #fragment, no trailing slash, lower-case host. */
+function normLink(url: string): string {
+  const clean = url.replace(/[.,;:!?]+$/, '');
+  try {
+    const u = new URL(clean);
+    u.hash = '';
+    return `${u.protocol}//${u.host.toLowerCase()}${u.pathname.replace(/\/$/, '')}${u.search}`;
+  } catch {
+    return clean;
+  }
 }

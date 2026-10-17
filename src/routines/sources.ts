@@ -1,3 +1,5 @@
+import { fetchPublic } from '../net/public-url';
+
 /**
  * Collecting headlines from a website for the news briefing, cheapest way first:
  *  1. the site's news feed (RSS or Atom): free, clean titles, dates and summaries;
@@ -38,9 +40,9 @@ export const host = (url: string) => {
 };
 
 async function download(url: string): Promise<{ type: string; body: string; url: string }> {
-  const res = await fetch(url, {
+  // Links come from websites and feeds: only public addresses, redirects checked too (never the home network).
+  const res = await fetchPublic(url, {
     headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/xml;q=0.9,*/*;q=0.8' },
-    redirect: 'follow',
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

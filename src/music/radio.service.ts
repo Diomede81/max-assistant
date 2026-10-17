@@ -4,6 +4,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { LocationService } from '../location/location.service';
 import { SealedStore } from '../memory/sealed-store';
 import { setSinkInputVolume, sinkInputs } from './sink-inputs';
+import { fetchPublic } from '../net/public-url';
 
 export interface Station {
   name: string;
@@ -87,7 +88,14 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
     const q = query.trim();
     const station = q && !/^(the )?radio$|^(my|last|previous) (radio|station)$/i.test(q) ? await this.find(q) : this.last;
     if (!station) return q ? `I couldn't find a radio station for "${q}".` : 'Which station? For example "BBC Radio 2" or "jazz radio".';
-    this.start(station);
+    // The address comes from a public directory anyone can edit: follow it ourselves (redirects included)
+    // and only play a public web stream, never something on the home network or a local file.
+    const url = await publicStream(station.url);
+    if (!url) {
+      this.log.warn(`${station.name}: not a public web stream (${station.url.slice(0, 80)}); not played`);
+      return `${station.name}'s address isn't a public web stream, so I won't play it. Try another station.`;
+    }
+    this.start({ ...station, url });
     this.last = station;
     this.persist();
     return `Playing ${station.name}${station.country ? ` (${station.country})` : ''}.`;
@@ -151,6 +159,8 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
     this.stopping = false;
     const args = ['-nostdin', '-hide_banner', '-loglevel', 'info'];
     if (/^https?:/i.test(station.url)) args.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5');
+    // Web streams only (no local files, no other protocols), whatever the stream or its playlist points to.
+    args.push('-protocol_whitelist', 'http,https,tcp,tls,crypto,httpproxy');
     args.push('-i', station.url, '-vn', '-f', 'pulse', '-name', STREAM_NAME, '-stream_name', station.name.slice(0, 60), 'default');
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
     this.proc = proc;
@@ -229,3 +239,16 @@ export class RadioService implements OnModuleInit, OnModuleDestroy {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/** The stream's final public address (after redirects), or undefined if it isn't a public web address. */
+async function publicStream(url: string): Promise<string | undefined> {
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  try {
+    const res = await fetchPublic(url, { headers: { 'User-Agent': 'max-assistant/1.0' }, signal: AbortSignal.timeout(8000) });
+    await res.body?.cancel().catch(() => undefined); // only the address was needed: the stream itself plays in ffmpeg
+    return res.url || url;
+  } catch (err) {
+    if (/not a public web address/.test((err as Error).message)) return undefined;
+    return url; // unreachable right now (ffmpeg retries, and reports it): the address itself was public
+  }
+}

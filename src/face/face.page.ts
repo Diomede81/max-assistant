@@ -92,6 +92,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 /* Start-up code keypad. */
 #lock { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .94); color: #e9fff8; text-align: center; }
 #lock[hidden] { display: none; }
+#lock .lkx { font: inherit; font-size: 3.4vmin; font-weight: 700; padding: 1.4vmin 5vmin; border-radius: 99vmin; border: 0; background: transparent; color: var(--dim); }
+#lock .lkx[hidden] { display: none; }
 #lock .lk { display: grid; gap: 2vmin; justify-items: center; }
 #lock .lt { font-size: 4.4vmin; font-weight: 700; }
 #lock .dots { display: flex; gap: 2.4vmin; height: 4vmin; align-items: center; }
@@ -137,7 +139,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <div id="setup" hidden><div class="card" id="card"></div></div>
 <div id="cardEl" hidden></div>
 <div id="caption" hidden></div>
-<div id="lock" hidden><div class="lk"><div class="lt">🔒 Enter your code</div><div class="dots" id="lkDots"></div><div class="lmsg" id="lkMsg"></div><div class="pad" id="lkPad"></div></div></div>
+<div id="lock" hidden><div class="lk"><div class="lt" id="lkTitle">🔒 Enter your code</div><div class="dots" id="lkDots"></div><div class="lmsg" id="lkMsg"></div><div class="pad" id="lkPad"></div><button class="lkx" id="lkCancel" hidden>Cancel</button></div></div>
 <div id="frame" hidden><img id="fa" alt=""><img id="fb" alt=""><div class="fshade"></div><div class="fclock" id="fclock"></div></div>
 <div id="dim"></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
@@ -458,6 +460,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   const lockEl = document.getElementById('lock');
   const lkDots = document.getElementById('lkDots'), lkMsg = document.getElementById('lkMsg'), lkPad = document.getElementById('lkPad');
   let lkCode = '', lkNote = '', lkBusy = false;
+  // 'guest': the keypad asks for the household's code to leave guest mode (from the menu), not to unlock.
+  let lkFor = '';
+  const lkCancel = document.getElementById('lkCancel'), lkTitle = document.getElementById('lkTitle');
+  lkCancel.onpointerdown = (e) => e.stopPropagation();
+  lkCancel.onclick = (e) => { e.stopPropagation(); lkFor = ''; renderLock(); };
   lkPad.innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k) =>
     '<button data-k="' + k + '" class="' + (k === '' ? 'blank' : k === 'del' ? 'del' : '') + '" aria-label="' + (k === 'del' ? 'Delete' : k) + '">' + (k === 'del' ? '⌫' : k) + '</button>').join('');
   for (const b of lkPad.querySelectorAll('button')) {
@@ -465,6 +472,11 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     b.onclick = (e) => { e.stopPropagation(); lkKey(b.getAttribute('data-k')); };
   }
   function lkPaused() { return info.locked && info.locked.pausedUntil && info.locked.pausedUntil > Date.now(); }
+  function leaveGuest() {
+    closeMenu();
+    if (!info.canLock) { toast = 'Set a start-up code on the control panel first'; toastUntil = performance.now() + 5000; return; }
+    lkFor = 'guest'; lkCode = ''; lkNote = ''; renderLock();
+  }
   function lkKey(k) {
     if (lkBusy || lkPaused() || !k) return;
     if (k === 'del') lkCode = lkCode.slice(0, -1);
@@ -486,20 +498,28 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       if (code === '246810') { info.locked = undefined; lkCode = ''; renderLock(); } else lkWrong('Wrong code.');
       return;
     }
-    fetch('/unlock', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'code=' + encodeURIComponent(code) })
+    fetch(lkFor === 'guest' ? '/guest/leave' : '/unlock', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'code=' + encodeURIComponent(code) })
       .then((r) => r.json())
-      .then((j) => { lkBusy = false; if (j.ok) { lkCode = ''; lkNote = ''; } else lkWrong(j.message); })
+      .then((j) => {
+        lkBusy = false;
+        if (!j.ok) return lkWrong(j.message);
+        lkCode = ''; lkNote = '';
+        if (lkFor === 'guest') { lkFor = ''; renderLock(); toast = 'Guest mode is off'; toastUntil = performance.now() + 4000; }
+      })
       .catch(() => { lkBusy = false; lkWrong('Could not check the code. Try again.'); });
   }
   function renderLock() {
-    const show = Boolean(info.locked) && info.state !== 'setup';
+    if (lkFor === 'guest' && (info.mode !== 'guest' || info.locked)) lkFor = ''; // left guest mode another way, or locked
+    const show = (Boolean(info.locked) || lkFor === 'guest') && info.state !== 'setup';
     lockEl.hidden = !show;
     if (!show) { lkCode = ''; lkNote = ''; return; }
+    lkTitle.textContent = lkFor === 'guest' ? '👋 Code to leave guest mode' : '🔒 Enter your code';
+    lkCancel.hidden = lkFor !== 'guest';
     lkDots.innerHTML = [0, 1, 2, 3, 4, 5].map((i) => '<i class="' + (i < lkCode.length ? 'on' : '') + '"></i>').join('');
     const paused = lkPaused();
     lockEl.classList.toggle('paused', Boolean(paused));
     lkMsg.textContent = paused ? 'Too many tries. Wait ' + Math.ceil((info.locked.pausedUntil - Date.now()) / 1000) + ' s.'
-      : lkNote || (info.locked.triesLeft < 5 ? info.locked.triesLeft + ' tries left' : '');
+      : lkNote || (info.locked && info.locked.triesLeft < 5 ? info.locked.triesLeft + ' tries left' : '');
   }
   setInterval(() => { if (!lockEl.hidden) renderLock(); }, 1000); // the pause countdown
 
@@ -581,7 +601,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
     menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
       '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div>' +
+      (info.mode === 'guest' ? '<button id="mGuest">👋 Leave guest mode</button>' : '') +
       (info.canLock ? '<button id="mLock">🔒 Lock</button>' : '') + '<button class="quiet" id="mCancel">Back to Max</button>', {
+      mGuest: leaveGuest,
       mUpdate: showUpdate,
       mLock: () => { closeMenu(); fetch('/lock', { method: 'POST' }).catch(() => undefined); if (demo) { info.locked = { triesLeft: 5 }; renderLock(); } },
       mOff: () => confirmPower('poweroff'),

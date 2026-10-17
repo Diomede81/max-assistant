@@ -11,6 +11,7 @@ import { renderFace } from './face.page';
 import { AmbientService } from './ambient.service';
 import { LockService } from '../lock/lock.service';
 import { AirPlayService } from '../music/airplay.service';
+import { ModesService } from '../memory/modes.service';
 
 /** The 3D face's library (three.js), served from Max's own files: the screen needs no internet for it. */
 const VENDOR: Record<string, string> = {
@@ -54,6 +55,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly airplay?: AirPlayService,
+    @Optional() private readonly modes?: ModesService,
   ) {}
 
   onModuleInit(): void {
@@ -196,6 +198,30 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       })();
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/guest/leave' && this.lock && this.modes) {
+      // Leaving guest mode from the screen: only with the household's start-up code.
+      if (!sameOrigin(req)) {
+        res.writeHead(403).end();
+        return;
+      }
+      const lock = this.lock;
+      const modes = this.modes;
+      void (async () => {
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 200) break;
+        }
+        const out = lock.verify(new URLSearchParams(body).get('code') ?? '');
+        if (out.ok) {
+          modes.set('auto');
+          this.log.log('Left guest mode with the start-up code');
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(out));
+        this.broadcast('info', this.face.info());
+      })();
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/wifi-cancel') {
       const origin = req.headers.origin;
       if (origin && new URL(origin).host !== req.headers.host) {
@@ -238,5 +264,16 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
 
   private send(res: ServerResponse, event: string, data: unknown): void {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  }
+}
+
+/** The request comes from the screen itself (same origin), or from no page at all (curl on the box). */
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false; // "null" or garbage
   }
 }

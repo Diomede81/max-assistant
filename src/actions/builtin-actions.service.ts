@@ -139,7 +139,7 @@ export class BuiltinActionsService implements OnModuleInit {
             tool(
               'set_mode',
               'Switch mode. personal: personal + household memory, work locked. work: work + household memory, personal locked. guest: only household info, ' +
-                'for when visitors are around. auto: follow the work-hours schedule again.',
+                'for when visitors are around. auto: follow the work-hours schedule again. Leaving guest mode can\'t be done by voice.',
               { mode: { type: 'string', enum: ['personal', 'work', 'guest', 'auto'] } },
               ['mode'],
             ),
@@ -233,6 +233,11 @@ export class BuiltinActionsService implements OnModuleInit {
             set_mode: (a: Record<string, unknown>) => {
               const m = String(a.mode ?? '');
               if (!['personal', 'work', 'guest', 'auto'].includes(m)) return 'Unknown mode.';
+              // A visitor (or a TV) can't talk their way out of guest mode: that takes the household's code.
+              if (this.modes.mode === 'guest' && m !== 'guest') {
+                return 'Not done: leaving guest mode needs the household. Tell the user to hold a finger on the screen for 2 seconds, ' +
+                  'tap "Leave guest mode" and enter the start-up code (or use the control panel). Guest mode also ends by itself within a day.';
+              }
               return `Now in ${this.modes.set(m as Mode | 'auto')}.`;
             },
           }

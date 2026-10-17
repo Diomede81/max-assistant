@@ -226,6 +226,7 @@ The very first time (to install this updater) it's the old way: copy the new ver
 
 | Problem | What to do |
 | --- | --- |
+| The logs say `You: (8 words)` instead of what you said | On purpose: what you say, emails, memory facts and reminders are kept out of the logs. To see them while troubleshooting, add `LOG_CONTENT=on` to `.env` and run `docker compose up -d`; remove it afterwards. |
 | Screen stays black | On a Pi 5, use the cable with **one narrow end** (22-pin, into the Pi) and one wide end (15-pin, into the screen); the cable with two equal ends is for older Pis. Check both ends are fully in with the latches closed. Then run the setup again and make sure you picked the connector the cable is really in (`CAM/DISP 0` or `1`, printed on the Pi): `sudo MAX_DSI_PORT=0 ./scripts/pi/setup.sh` (or `=1`). |
 | The desktop appears instead of Max's face | The card has Raspberry Pi OS **with desktop**. Run the setup again (it now switches the desktop off at boot), or by hand: `sudo systemctl disable lightdm && sudo systemctl enable max-face && sudo reboot`. To get the desktop back: `sudo systemctl enable lightdm && sudo reboot`. |
 | Control panel won't open from the laptop | On the box, `docker compose ps` must show `0.0.0.0:8099->8099` for `max`; if it shows `127.0.0.1:8099`, run `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d` (the setup now makes this the default). On a Mac, if `curl http://<box address>:8099` works in Terminal but the browser doesn't, allow the browser in System Settings → Privacy & Security → Local Network. |

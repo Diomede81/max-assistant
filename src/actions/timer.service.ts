@@ -4,6 +4,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { MemoryService } from '../memory/memory.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { spokenDuration, spokenWhen } from './clock';
+import { said } from '../log-content';
 
 export interface Timer {
   id: number;
@@ -75,7 +76,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
       endsAt: at ?? Date.now() + Math.round(durationSeconds) * 1000,
     };
     this.timers.set(id, timer);
-    this.log.log(`Timer #${id} set: ${describe(timer)}, ${spokenWhen(timer.endsAt)}`);
+    this.log.log(`Timer #${id} set: ${forLog(timer)}, ${spokenWhen(timer.endsAt)}`);
     this.persist();
     return timer;
   }
@@ -98,7 +99,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
     }
     for (const t of victims) {
       this.timers.delete(t.id);
-      this.log.log(`Timer #${t.id} cancelled (${describe(t)})`);
+      this.log.log(`Timer #${t.id} cancelled (${forLog(t)})`);
     }
     if (victims.length) this.persist();
     return victims;
@@ -115,7 +116,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
     if (!due.length) return;
     for (const t of due) {
       this.timers.delete(t.id);
-      this.log.log(`Timer #${t.id} finished (${describe(t)})`);
+      this.log.log(`Timer #${t.id} finished (${forLog(t)})`);
       this.emit('fired', t);
     }
     this.persist();
@@ -142,7 +143,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
       const late = now - t.endsAt;
       if (t.reminder && late < MISSED_REMINDER_MS) missed.push(`your reminder "${t.reminder.replace(/\.$/, '')}"`);
       else if (!t.reminder && late < MISSED_TIMER_MS) missed.push(`your ${t.name ? `${t.name} ` : ''}timer`);
-      this.log.log(`Timer #${t.id} (${describe(t)}) came due while Max was off`);
+      this.log.log(`Timer #${t.id} (${forLog(t)}) came due while Max was off`);
     }
     this.nextId = Math.max(saved.nextId || 1, ...saved.timers.map((t) => (t?.id ?? 0) + 1));
     this.log.log(`Restored ${this.timers.size} timer${this.timers.size === 1 ? '' : 's'} and reminder${this.timers.size === 1 ? '' : 's'}`);
@@ -164,6 +165,9 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
     clearTimeout(this.startup);
   }
 }
+
+/** For the log: a reminder's words only with LOG_CONTENT=on (they can be personal). */
+const forLog = (t: Pick<Timer, 'name' | 'reminder'>) => (t.reminder ? `reminder ${said(t.reminder)}` : describe(t));
 
 export function describe(t: Pick<Timer, 'name' | 'reminder'>): string {
   if (t.reminder) return `reminder "${t.reminder}"`;

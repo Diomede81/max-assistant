@@ -8,6 +8,7 @@ import { Mode, ModesService, label } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { LocationService } from '../location/location.service';
 import { DEFAULT_MODE_BEHAVIOUR, DEFAULT_SOUL, SoulDoc } from './default-soul';
+import { said } from '../log-content';
 
 export type { SoulDoc } from './default-soul';
 export const SOUL_DOCS: SoulDoc[] = ['soul', 'personal', 'work', 'guest'];
@@ -123,7 +124,7 @@ export class SoulService implements OnModuleInit {
     if (!t || !this.store) return undefined;
     // Journal entries shape who Max is: refuse obvious attempts to rewrite his rules through it.
     if (source === 'conversation' && OVERRIDE.test(t)) {
-      this.log.warn(`Journal entry refused (looks like an instruction to override his rules): ${t}`);
+      this.log.warn(`Journal entry refused (looks like an instruction to override his rules): ${said(t)}`);
       return undefined;
     }
     const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -136,7 +137,7 @@ export class SoulService implements OnModuleInit {
       this.journal.splice(own >= 0 ? own : 0, 1);
     }
     this.persist();
-    this.log.log(`Journal: ${t}`);
+    this.log.log(`Journal: ${said(t)}`);
     return entry;
   }
 

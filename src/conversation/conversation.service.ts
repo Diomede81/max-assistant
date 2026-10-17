@@ -21,6 +21,7 @@ import { LiveVoiceService } from '../realtime/live-voice.service';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
+import { said } from '../log-content';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -133,7 +134,7 @@ export class ConversationService implements OnApplicationBootstrap {
         const { text, timer } = this.pendingAnnouncements.shift()!;
         if (timer) this.face?.setEmotion('surprised', 5000);
         else this.face?.said(text);
-        this.log.log(`Announcing: "${text}"`);
+        this.log.log(`Announcing: ${said(text)}`);
         // In real-time mode it's said in Max's live voice: recorded while the chimes play.
         const live = this.liveVoice?.active ? this.liveVoice.line(text) : undefined;
         await this.tts.chime().catch(() => undefined);
@@ -166,16 +167,16 @@ export class ConversationService implements OnApplicationBootstrap {
       session.write(audio);
       const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
       if (heardWakeWord(text, this.cfg.wakeWord.names)) {
-        this.log.log(`Wake word confirmed ("${text}", ${Date.now() - started} ms)`);
+        this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)`);
         return true;
       }
       // Said it again straight after being ignored: that's a person calling, not noise.
       if (Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
-        this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? `"${text}"` : 'no words'})`);
+        this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? said(text) : 'no words'})`);
         return true;
       }
       this.lastIgnoredWakeAt = Date.now();
-      this.log.log(`Ignored a possible false wake-up: heard ${text ? `"${text}"` : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
+      this.log.log(`Ignored a possible false wake-up: heard ${text ? said(text) : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
       return false;
     } catch (err) {
       session?.abort();
@@ -298,7 +299,7 @@ export class ConversationService implements OnApplicationBootstrap {
         if (!text) return;
         // "Stop", "that's all", "not talking to you": go quiet straight away, no AI involved.
         if (isStopRequest(text.value)) {
-          this.log.log(`Stopping: you said "${text.value}"`);
+          this.log.log(`Stopping: you said ${said(text.value)}`);
           this.control?.consumeEnd();
           this.face?.conversationEnded();
           return;
@@ -386,7 +387,7 @@ export class ConversationService implements OnApplicationBootstrap {
       this.log.log('Heard sound but could not make out any words. Try speaking a little closer to the microphone.');
       return undefined;
     }
-    this.log.log(`You: "${text}"  (stt ${Date.now() - tEnd} ms)`);
+    this.log.log(`You: ${said(text)}  (stt ${Date.now() - tEnd} ms)`);
     return { value: text, endOfSpeech: tEnd };
   }
 
@@ -453,7 +454,7 @@ export class ConversationService implements OnApplicationBootstrap {
       speech.say(sentence);
     }
     if (firstSpoken) {
-      this.log.log(`Max: "${reply.trim()}"  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
+      this.log.log(`Max: ${said(reply.trim())}  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
     }
     for (const m of this.history.slice(historyStart)) {
       if (m.role === 'assistant' && 'tool_calls' in m && m.tool_calls) {

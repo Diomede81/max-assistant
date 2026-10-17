@@ -9,6 +9,7 @@ import { masterKey, newSecret, open, seal, SealedFile, vaultKey } from './crypto
 import { cosine, EmbedderService, fromB64, toB64 } from './embedder.service';
 import { label, ModesService, VaultName, VAULTS } from './modes.service';
 import { Activity, ActivityKind, ActivityLog } from './activity-log';
+import { said } from '../log-content';
 
 export type Kind = 'person' | 'preference' | 'routine' | 'date' | 'project' | 'fact';
 export const KINDS: Kind[] = ['person', 'preference', 'routine', 'date', 'project', 'fact'];
@@ -336,7 +337,7 @@ export class MemoryService implements OnModuleInit {
       });
       this.save(v);
       if (changed) {
-        this.log.log(`Updated [${v.name}]: "${text}"`);
+        this.log.log(`Updated [${v.name}]: ${said(text)}`);
         this.activity('updated', `Updated (${n.source})`, [v.name], [text]);
       }
       return { ok: true, message: changed ? `Updated: ${text}` : 'Already remembered.', item: same };
@@ -363,7 +364,7 @@ export class MemoryService implements OnModuleInit {
     };
     v.data.items.push(item);
     this.save(v);
-    this.log.log(`Remembered [${v.name}/${item.kind}${item.unverified ? ', unverified' : ''}] (${n.source}): "${text}"`);
+    this.log.log(`Remembered [${v.name}/${item.kind}${item.unverified ? ', unverified' : ''}] (${n.source}): ${said(text)}`);
     this.activity('saved', `Saved (${n.source}${item.unverified ? ', unverified' : ''})`, [v.name], [text]);
     return {
       ok: true,
@@ -392,7 +393,7 @@ export class MemoryService implements OnModuleInit {
     v.data.episodes.push({ id: randomUUID(), vault, at: at.toISOString(), summary: text, level: 'note', projectId, vec: vec ? toB64(vec) : undefined });
     this.activity('note', 'New conversation note', [vault], [text]);
     if (v.data.episodes.length > MAX_EPISODES_PER_VAULT) v.data.episodes.splice(0, v.data.episodes.length - MAX_EPISODES_PER_VAULT);
-    this.log.log(`Conversation note [${vault}]: "${text}"`);
+    this.log.log(`Conversation note [${vault}]: ${said(text)}`);
     this.save(v);
   }
 
@@ -518,7 +519,7 @@ export class MemoryService implements OnModuleInit {
     const f = this.find(id);
     if (!f) return false;
     f.v.data.items = f.v.data.items.filter((i) => i.id !== id);
-    this.log.log(`Forgot [${f.v.name}]: "${f.i.text}"`);
+    this.log.log(`Forgot [${f.v.name}]: ${said(f.i.text)}`);
     this.activity('forgot', 'Forgot', [f.v.name], [f.i.text]);
     this.save(f.v);
     return true;
@@ -541,7 +542,7 @@ export class MemoryService implements OnModuleInit {
     dest.data.items.push({ ...f.i, vault: to, updatedAt: new Date().toISOString() });
     this.save(f.v);
     this.save(dest);
-    this.log.log(`Moved to ${to}: "${f.i.text}"`);
+    this.log.log(`Moved to ${to}: ${said(f.i.text)}`);
     this.activity('moved', `Moved from ${f.v.name} to ${to}`, [f.v.name, to], [f.i.text]);
     return true;
   }

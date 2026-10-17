@@ -8,6 +8,7 @@ import { SealedStore } from '../memory/sealed-store';
 import { GeminiLiveClient } from './gemini-live-client';
 import { RealtimeClient } from './realtime-client';
 import type { VoiceClient } from './voice-client';
+import { said } from '../log-content';
 
 export const PCM24 = { rate: 24000, width: 2, channels: 1 };
 const RECORD_TIMEOUT_MS = 20_000;
@@ -158,7 +159,7 @@ export class LiveVoiceService implements OnModuleInit {
     try {
       return await this.record(text, this.voice, this.style, timeoutMs);
     } catch (err) {
-      this.log.warn(`Could not say "${text}" in the live voice (${(err as Error).message}); using the standard voice`);
+      this.log.warn(`Could not say ${said(text)} in the live voice (${(err as Error).message}); using the standard voice`);
       return undefined;
     }
   }

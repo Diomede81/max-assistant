@@ -19,6 +19,7 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { dismissCard, showCard } from '../face/screen';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
@@ -38,6 +39,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
+  @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
@@ -282,6 +284,22 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const f = await readForm(req);
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
       return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#location`);
+    }
+    if (url.pathname.startsWith('/whatsapp/') && this.whatsapp) {
+      const w = this.whatsapp;
+      if (req.method === 'GET' && url.pathname === '/whatsapp/status') {
+        const st = await w.status();
+        return this.json(res, { state: st.state, qrSvg: st.qrSvg });
+      }
+      if (req.method === 'POST') {
+        const f = await readForm(req);
+        let out: { ok: boolean; message: string } | undefined;
+        if (url.pathname === '/whatsapp/link') out = { ok: true, message: await w.link() };
+        else if (url.pathname === '/whatsapp/unlink') out = { ok: true, message: await w.unlink() };
+        else if (url.pathname === '/whatsapp/allow') out = await w.allow(f.get('name') ?? '', f.get('number') ?? '');
+        else if (url.pathname === '/whatsapp/disallow') out = { ok: true, message: w.disallow(f.get('number') ?? '') };
+        if (out) return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#whatsapp`);
+      }
     }
     if (req.method === 'POST' && url.pathname === '/trains/home' && this.trains) {
       const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
@@ -563,6 +581,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       web: this.web?.status,
       trains: this.trains?.status,
+      whatsapp: await this.whatsapp?.status(),
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       routines: this.routines && this.memory.enabled
         ? {

@@ -15,10 +15,11 @@ import { UpdatesModule } from './updates/updates.module';
 import { LockModule } from './lock/lock.module';
 import { LiveVoiceModule } from './realtime/live-voice.module';
 import { TrainsModule } from './trains/trains.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, WebModule, TrainsModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, WebModule, TrainsModule, WhatsAppModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

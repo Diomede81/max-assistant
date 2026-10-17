@@ -110,6 +110,9 @@ Later, with buttons to tick items off, change their priority, criticality or pro
 
 - Say **"Max, work mode"**, **"personal mode"**, **"guest mode"** or **"back to automatic"**. A switch
   lasts until your schedule next changes. The control panel has the same buttons.
+- **Leaving guest mode can't be done by voice**, so a visitor (or the TV) can't talk Max out of it. Hold a finger
+  on the screen for 2 seconds, tap **Leave guest mode** and enter the start-up code (set one in Settings →
+  Security on the control panel), or use the control panel. Guest mode also ends by itself after 24 hours.
 - Personal and work are walled off from each other: outside work mode Max can't see the Work vault,
   and in work mode he can't see the Personal vault (facts, conversation notes, projects and his
   journal alike), whoever asks. Household (bins, appliances, house rules) is shared by both.

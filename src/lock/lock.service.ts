@@ -107,6 +107,15 @@ export class LockService extends EventEmitter implements OnModuleInit {
     return { ok: false, message };
   }
 
+  /**
+   * The household's code for something other than unlocking (leaving guest mode on the screen):
+   * same tries and pauses as the keypad.
+   */
+  verify(code: string): { ok: boolean; message: string } {
+    if (!this.enabled) return { ok: false, message: 'No start-up code is set: set one on the control panel (Settings, Security).' };
+    return this.check(code);
+  }
+
   /** Lock now (the screen menu's Lock). */
   lock(): boolean {
     if (!this.enabled) return false;

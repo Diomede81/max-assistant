@@ -110,14 +110,18 @@ export class TrainsService implements OnModuleInit {
         },
       });
     }
-    if (this.cfg.trains.googleMapsKey) {
+    if (this.cfg.trains.googleMapsKey || this.cfg.trains.railDataKey) {
       out.push({
         type: 'function',
         function: {
           name: 'plan_train_journey',
           description:
-            'Plan a UK train journey, with changes, for a time: "trains to Manchester tomorrow morning", "get me to Bath by ' +
-            '10am on Saturday". Shows the options on the screen with a QR code to book on Trainline. Say the best one or ' +
+            'Plan a UK train journey: "next train to Waterloo", "trains to Manchester tomorrow morning", "get me to Bath by ' +
+            '10am on Saturday". The next trains between two stations come live from National Rail (with delays); later ' +
+            'journeys and ones with changes from Google Maps\' timetable. Shows the options on the screen with a QR code to ' +
+            'book on Trainline. Say the first one or two in order (leave, arrive, how long, changes) exactly as given: never ' +
+            'change, add or drop trains, and never say a train the user mentions does not exist just because it is not in ' +
+            'the answer. Say the best one or ' +
             'two options briefly (leave, arrive, changes) and that the QR code on the screen opens Trainline to book. ' +
             'Ticket prices are only known by Trainline: never guess them. Call it again every time the user asks to see the ' +
             'journey or the QR code again: never say it is on the screen without calling it.',
@@ -210,8 +214,9 @@ export class TrainsService implements OnModuleInit {
   }
 
   /** National Rail's departure board for a station (with each train's calling points). */
-  private async board(crs: string, filterCrs: string | undefined, rows: number): Promise<unknown> {
+  private async board(crs: string, filterCrs: string | undefined, rows: number, offsetMin = 0): Promise<unknown> {
     const qs = new URLSearchParams({ numRows: String(rows), timeWindow: '120' });
+    if (offsetMin) qs.set('timeOffset', String(Math.max(-120, Math.min(119, Math.round(offsetMin)))));
     if (filterCrs) {
       qs.set('filterCrs', filterCrs);
       qs.set('filterType', 'to');
@@ -240,23 +245,133 @@ export class TrainsService implements OnModuleInit {
   // ---------- Journey planning ----------
 
   async journey(toQ: string, fromQ: string, time: string, timeIs: 'depart' | 'arrive'): Promise<string> {
-    if (!this.cfg.trains.googleMapsKey) return 'Journey planning is not set up (GOOGLE_MAPS_API_KEY in .env, see docs/TRAINS.md).';
+    if (!this.cfg.trains.googleMapsKey && !this.cfg.trains.railDataKey) return 'Journey planning is not set up (see docs/TRAINS.md).';
     if (!toQ) return 'Ask the user where they want to go.';
     const from = this.place(fromQ) ?? (this.home ? { text: `${this.home.name} station, UK`, station: this.home } : undefined);
     if (!from) return 'Ask the user where they are leaving from (no home station is set).';
     const to = this.place(toQ)!;
     const when = time ? localTime(time) : undefined;
     if (time && !when) return `"${time}" isn't a date and time like 2026-10-17T08:00.`;
+    // "Next train" between two stations within the next two hours: National Rail's live board (every train,
+    // in order, with delays: what Trainline shows). Otherwise Google Maps' timetable, with changes.
+    const soon = !when || (when.getTime() > Date.now() - 5 * 60_000 && when.getTime() < Date.now() + 110 * 60_000);
+    let trips: Trip[] = [];
+    let live = false;
+    if (this.cfg.trains.railDataKey && from.station && to.station && timeIs === 'depart' && soon) {
+      trips = await this.liveTrips(from.station, to.station, when).catch((err) => {
+        this.log.warn(`Live departures for the journey failed (${(err as Error).message}); using Google Maps`);
+        return [];
+      });
+      live = trips.length > 0;
+    }
+    if (!live) {
+      if (!this.cfg.trains.googleMapsKey) {
+        return this.cfg.trains.railDataKey
+          ? `No direct trains from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text} in the next two hours on the live board, and journeys with changes need Google Maps (GOOGLE_MAPS_API_KEY, see docs/TRAINS.md).`
+          : 'Journey planning is not set up (GOOGLE_MAPS_API_KEY in .env, see docs/TRAINS.md).';
+      }
+      trips = await this.googleTrips(from.text, to.text, when, timeIs);
+    }
+    if (!trips.length) return `No train journey found from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text}${when ? ' at that time' : ''}.`;
+
+    // Trainline for the stations the trains actually use (the user's own words if they were stations).
+    const a = from.station?.name ?? trips[0].fromStop;
+    const b = to.station?.name ?? trips[0].toStop;
+    const link = `https://www.thetrainline.com/en/train-times/${slug(a)}-to-${slug(b)}`;
+    const qr = await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0f14', light: '#ffffff' } });
+    // Short, so the QR code has room: the route, the options on one line each, where to change.
+    showCard({
+      id: 'journey',
+      kind: 'list',
+      icon: '🚆',
+      title: `${shortName(a)} → ${shortName(b)}`,
+      subtitle: `${live ? 'Live' : when ? `${timeIs === 'arrive' ? 'Arrive by' : 'From'} ${dayTime(when)}` : 'Leaving now'} · scan to book`,
+      image: `data:image/svg+xml;base64,${Buffer.from(qr).toString('base64')}`,
+      lines: trips.slice(0, 2).map((t) => ({
+        time: hm(t.depart),
+        text: `→ ${hm(t.arrive)} · ${t.duration} · ${t.changes ? `${t.changes} change${t.changes > 1 ? 's' : ''}` : 'direct'}`,
+        sub: t.changes ? `via ${t.legs.slice(1).map((l) => l.from).join(', ')}` : [t.status, t.platform ? `Platform ${t.platform}` : ''].filter(Boolean).join(' · ') || undefined,
+      })),
+      ttlMs: JOURNEY_CARD_MS,
+    });
+    const rows = trips.map(
+      (t) =>
+        `- Leave ${hm(t.depart)} (${dayName(t.depart)}), arrive ${hm(t.arrive)}, ${t.duration}, ${t.changes ? `${t.changes} change${t.changes > 1 ? 's' : ''}` : 'direct'}` +
+        `${t.status ? `, ${t.status.toLowerCase()}` : ''}${t.platform ? `, platform ${t.platform}` : ''}: ` +
+        t.legs.map((l) => `${hm(l.depart)} ${l.line || 'train'} ${l.from} to ${l.to}`).join('; ') +
+        (t.fare ? ` (fare from Google: ${t.fare})` : ''),
+    );
+    const source = live ? 'live from National Rail' : 'planned times from the Google Maps timetable';
+    return `Train journeys from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text} (${source}), in order:\n${rows.join('\n')}\nThe options and a QR code to book on Trainline are on the screen now. If the user asks to see them again later, call plan_train_journey again (the card is only on the screen when you call it).`;
+  }
+
+  /** Direct trains from the live departure board, with their arrival at the destination (cancelled ones left out). */
+  private async liveTrips(from: Station, to: Station, when?: Date): Promise<Trip[]> {
+    const offset = when ? (when.getTime() - Date.now()) / 60_000 : 0;
+    const board = await this.board(from.crs, to.crs, 10, offset > 1 ? offset : 0);
+    const trips: Trip[] = [];
+    for (const s of list(get(board, 'trainServices'))) {
+      const t = this.service(s, to.crs);
+      if (t.status === 'Cancelled' || !t.arrives) continue;
+      // Scheduled departure (as on the board), with "Expected 13:16" when late; the arrival as now expected.
+      const etd = String(get(s, 'etd') ?? '');
+      const depart = clockTime(t.time);
+      const leaves = clockTime(/^\d\d:\d\d$/.test(etd) ? etd : t.time);
+      const arrive = clockTime(t.arrives, leaves);
+      if (!depart || !leaves || !arrive) continue;
+      trips.push({
+        depart,
+        arrive,
+        duration: span(Math.round((arrive - leaves) / 1000)),
+        changes: 0,
+        status: t.status,
+        platform: t.platform,
+        legs: [{ from: shortName(from.name), to: shortName(to.name), depart, arrive, line: t.operator ?? '' }],
+        fromStop: from.name,
+        toStop: to.name,
+      });
+      if (trips.length >= 4) break;
+    }
+    return trips;
+  }
+
+  /**
+   * Journeys from Google Maps, consecutive like a timetable: Google gives a few "best" routes and can skip
+   * trains, so for "leave after" it's asked again from just after each train found, until there are three.
+   */
+  private async googleTrips(from: string, to: string, when: Date | undefined, timeIs: 'depart' | 'arrive'): Promise<Trip[]> {
+    const found = new Map<string, Trip>();
+    let after = when ?? new Date();
+    for (let ask = 0; ask < (timeIs === 'arrive' ? 1 : 3); ask++) {
+      const routes = await this.routes(from, to, after, timeIs === 'arrive' && when ? 'arrive' : 'depart');
+      for (const r of routes) found.set(`${r.depart}|${r.legs.map((l) => l.line).join('/')}`, r);
+      const next = routes.filter((r) => r.depart >= after.getTime()).sort((a, b) => a.depart - b.depart)[0];
+      if (!next || found.size >= 3) break;
+      after = new Date(next.depart + 60_000);
+    }
+    const all = [...found.values()];
+    if (timeIs === 'arrive' && when) {
+      // "Arrive by": the ones that make it, latest departure first.
+      const inTime = all.filter((r) => r.arrive <= when.getTime());
+      return (inTime.length ? inTime : all).sort((a, b) => b.depart - a.depart).slice(0, 3);
+    }
+    // One per departure time (the quickest), in order.
+    const byTime = new Map<number, Trip>();
+    for (const r of all) if (!byTime.has(r.depart) || r.arrive < byTime.get(r.depart)!.arrive) byTime.set(r.depart, r);
+    return [...byTime.values()].sort((a, b) => a.depart - b.depart).slice(0, 3);
+  }
+
+  private async routes(from: string, to: string, at: Date, kind: 'depart' | 'arrive'): Promise<Trip[]> {
     const body: Json = {
-      origin: { address: from.text },
-      destination: { address: to.text },
+      origin: { address: from },
+      destination: { address: to },
       travelMode: 'TRANSIT',
       computeAlternativeRoutes: true,
       transitPreferences: { allowedTravelModes: ['RAIL'] },
       languageCode: 'en-GB',
       regionCode: 'GB',
+      [kind === 'arrive' ? 'arrivalTime' : 'departureTime']: at.toISOString(),
     };
-    if (when) body[timeIs === 'arrive' ? 'arrivalTime' : 'departureTime'] = when.toISOString();
     const res = await fetch(ROUTES_URL, {
       method: 'POST',
       headers: {
@@ -274,39 +389,7 @@ export class TrainsService implements OnModuleInit {
       }
       throw new Error(`Google Maps answered ${res.status}: ${text}`);
     }
-    const routes = list(get(await res.json(), 'routes')).map((r) => this.route(r)).filter((r): r is Trip => Boolean(r));
-    if (!routes.length) return `No train journey found from ${from.text} to ${to.text}${when ? ' at that time' : ''}.`;
-    // "Arrive by": the ones that make it, latest departure first. Otherwise the earliest first.
-    const inTime = timeIs === 'arrive' && when ? routes.filter((r) => r.arrive <= when.getTime()) : routes;
-    const trips = (inTime.length ? inTime : routes).sort((a, b) => (timeIs === 'arrive' ? b.depart - a.depart : a.depart - b.depart)).slice(0, 3);
-
-    // Trainline for the stations the trains actually use (the user's own words if they were stations).
-    const a = from.station?.name ?? trips[0].fromStop;
-    const b = to.station?.name ?? trips[0].toStop;
-    const link = `https://www.thetrainline.com/en/train-times/${slug(a)}-to-${slug(b)}`;
-    const qr = await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0f14', light: '#ffffff' } });
-    // Short, so the QR code has room: the route, the options on one line each, where to change.
-    showCard({
-      id: 'journey',
-      kind: 'list',
-      icon: '🚆',
-      title: `${shortName(a)} → ${shortName(b)}`,
-      subtitle: `${when ? `${timeIs === 'arrive' ? 'Arrive by' : 'From'} ${dayTime(when)}` : 'Leaving now'} · scan to book`,
-      image: `data:image/svg+xml;base64,${Buffer.from(qr).toString('base64')}`,
-      lines: trips.slice(0, 2).map((t) => ({
-        time: hm(t.depart),
-        text: `→ ${hm(t.arrive)} · ${t.duration} · ${t.changes ? `${t.changes} change${t.changes > 1 ? 's' : ''}` : 'direct'}`,
-        sub: t.changes ? `via ${t.legs.slice(1).map((l) => l.from).join(', ')}` : undefined,
-      })),
-      ttlMs: JOURNEY_CARD_MS,
-    });
-    const rows = trips.map(
-      (t) =>
-        `- Leave ${hm(t.depart)} (${dayName(t.depart)}), arrive ${hm(t.arrive)}, ${t.duration}, ${t.changes ? `${t.changes} change${t.changes > 1 ? 's' : ''}` : 'direct'}: ` +
-        t.legs.map((l) => `${hm(l.depart)} ${l.line || 'train'} ${l.from} to ${l.to}`).join('; ') +
-        (t.fare ? ` (fare from Google: ${t.fare})` : ''),
-    );
-    return `Train journeys from ${from.station?.name ?? from.text} to ${to.station?.name ?? to.text}:\n${rows.join('\n')}\nThe options and a QR code to book on Trainline are on the screen now. If the user asks to see them again later, call plan_train_journey again (the card is only on the screen when you call it).`;
+    return list(get(await res.json(), 'routes')).map((r) => this.route(r)).filter((r): r is Trip => Boolean(r));
   }
 
   /** A station by name (sent to Google as "<name> station"), or any other place as said. */
@@ -339,13 +422,17 @@ export class TrainsService implements OnModuleInit {
     if (!legs.length) return undefined;
     const depart = legs[0].depart;
     const arrive = legs[legs.length - 1].arrive;
-    const secs = parseInt(String(get(r, 'duration') ?? ''), 10) || Math.round((arrive - depart) / 1000);
+    // From the first train leaving to the last arriving (Google's own duration counts from the moment asked).
+    const secs = Math.round((arrive - depart) / 1000);
     const fare = String(get(get(get(r, 'localizedValues'), 'transitFare'), 'text') ?? '') || undefined;
     return { depart, arrive, duration: span(secs), changes: legs.length - 1, legs, fromStop: legs[0].from, toStop: legs[legs.length - 1].to, fare };
   }
 }
 
 interface Trip {
+  /** Live trains only: "On time", "Expected 12:45", "Cancelled"; and the platform. */
+  status?: string;
+  platform?: string;
   depart: number;
   arrive: number;
   duration: string;
@@ -438,4 +525,15 @@ export function localTime(s: string): Date | undefined {
   const p = (t: string) => Number(parts.find((x) => x.type === t)?.value);
   const asLocal = Date.UTC(p('year'), p('month') - 1, p('day'), p('hour'), p('minute'));
   return new Date(guess - (asLocal - guess));
+}
+
+/** "12:41" today in the box's time zone (tomorrow if that's long past, e.g. after midnight), or after `after`. */
+function clockTime(hhmm: string, after?: number): number | undefined {
+  if (!/^\d\d:\d\d$/.test(hhmm)) return undefined;
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: tz() }).format(after ?? Date.now());
+  let t = localTime(`${day}T${hhmm}`)?.getTime();
+  if (t === undefined) return undefined;
+  if (after !== undefined) while (t < after) t += 24 * 3600_000;
+  else if (t < Date.now() - 6 * 3600_000) t += 24 * 3600_000;
+  return t;
 }

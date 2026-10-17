@@ -117,14 +117,17 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (url.pathname === '/update' && this.updates) {
       // The screen menu's Update button: what's new (GET), install it (POST). Same origin only.
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
       const u = this.updates;
       const send = (data: unknown) => res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
       if (req.method === 'POST') {
+        if (this.lock?.locked) {
+          send({ ok: false, message: 'Unlock Max first (enter the start-up code).' });
+          return;
+        }
         const message = u.request('screen');
         send({ ok: message.startsWith('Updating'), message });
         return;
@@ -139,8 +142,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (url.pathname === '/device' && this.device) {
       // Volume and brightness from the screen's menu. Only the screen itself (same origin).
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
@@ -156,8 +158,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && (url.pathname === '/card' || url.pathname === '/tap')) {
       // Buttons on a card, and a short tap on the face. Only the screen itself (same origin).
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
@@ -169,8 +170,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname === '/dim') {
       // The page dims itself after a quiet spell; on the box the backlight goes down too. Same origin only.
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
@@ -180,8 +180,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && (url.pathname === '/unlock' || url.pathname === '/lock') && this.lock) {
       // The start-up code keypad, and the menu's Lock. Only the screen itself (same origin).
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
@@ -223,8 +222,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/wifi-cancel') {
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
         return;
       }
@@ -234,9 +232,8 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname === '/power') {
       // Only the screen itself (same origin, and this port is only open on the box) may do this.
-      const origin = req.headers.origin;
       const action = url.searchParams.get('action');
-      if ((origin && new URL(origin).host !== req.headers.host) || (action !== 'poweroff' && action !== 'reboot')) {
+      if (!sameOrigin(req) || (action !== 'poweroff' && action !== 'reboot')) {
         res.writeHead(403).end();
         return;
       }
@@ -246,9 +243,13 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname === '/wifi-setup') {
       // Only the screen itself (same origin) may ask for WiFi setup.
-      const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) {
+      if (!sameOrigin(req)) {
         res.writeHead(403).end();
+        return;
+      }
+      if (this.lock?.locked) {
+        // Locked: the setup network's password and QR code would let a stranger repoint the box.
+        res.writeHead(423, { 'Content-Type': 'text/plain' }).end('Unlock Max first');
         return;
       }
       const ok = this.face.requestWifiSetup();

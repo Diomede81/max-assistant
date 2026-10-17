@@ -164,7 +164,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   setup** in the screen's menu, Max says so and shows a QR code. Scan it with your phone: it joins Max's temporary
   "Max-Setup" network and opens a page where you choose your WiFi and type its password. Max tells you
   when he's connected. If nobody uses the setup network for 10 minutes, it switches itself off and the
-  box tries your known networks again.
+  box tries your known networks again. If Max is locked (start-up code), he asks for the code first: the QR
+  code and the setup network's password (12 random letters and digits) only show once it's entered.
   To leave setup mode (e.g. you opened it by mistake), tap **Back to Max** under the QR code: the box goes
   back to your usual WiFi straight away. Every screen in the menu has a **Back to Max** button.
 - **The face:**

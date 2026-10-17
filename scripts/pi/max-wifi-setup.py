@@ -137,7 +137,11 @@ class Setup:
             log('Starting WiFi setup mode')
             self.networks = scan()  # scan first: a single radio can't scan well while hosting
             if not self.password:
-                self.password = ''.join(secrets.choice('0123456789') for _ in range(8))
+                # 12 random letters and digits (no look-alikes such as 0/o, 1/l), in groups of four so it's
+                # easy to type: about 59 bits, out of reach of offline guessing (8 digits took minutes).
+                chars = 'abcdefghjkmnpqrstuvwxyz23456789'
+                raw = ''.join(secrets.choice(chars) for _ in range(12))
+                self.password = '-'.join(raw[i:i + 4] for i in range(0, 12, 4))
             nmcli('connection', 'delete', AP_CON)
             ok, out = nmcli('device', 'wifi', 'hotspot', 'ifname', IFACE, 'con-name', AP_CON,
                             'ssid', AP_SSID, 'password', self.password)

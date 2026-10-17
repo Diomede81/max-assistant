@@ -291,7 +291,9 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     const locked = this.lock?.status();
     if (!locked) return info;
     // Locked (start-up code): the clock, timers and the keypad only; nothing personal.
-    return { ...info, locked, reminder: undefined, music: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
+    // The WiFi setup network's password and QR code only after the code is entered (they let anyone repoint the box).
+    const wifi = info.wifi ? { ...info.wifi, password: undefined, qrSvg: undefined } : undefined;
+    return { ...info, locked, wifi, reminder: undefined, music: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
   }
 
   private fullInfo(): FaceInfo {

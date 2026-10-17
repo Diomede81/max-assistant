@@ -141,7 +141,10 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
         const data = part.inlineData?.data;
         if (data && String(part.inlineData.mimeType ?? '').startsWith('audio/')) this.emit('audio', Buffer.from(data, 'base64'));
       }
-      if (sc.inputTranscription?.text) this.userText += sc.inputTranscription.text;
+      if (sc.inputTranscription?.text) {
+        this.userText += sc.inputTranscription.text;
+        this.emit('user-words', this.userText.trim()); // as it comes in, before the turn ends
+      }
       if (sc.outputTranscription?.text) {
         this.maxText += sc.outputTranscription.text;
         this.emit('assistant-text', sc.outputTranscription.text);

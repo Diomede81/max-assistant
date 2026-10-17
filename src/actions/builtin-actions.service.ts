@@ -93,7 +93,8 @@ export class BuiltinActionsService implements OnModuleInit {
       tool(
         'device_power',
         'Turn this device (the Max box) off, or restart it. ONLY when the user clearly asks to turn you off, shut down, ' +
-          'power off or restart the device. Ask "Are you sure?" first and call with confirmed=true only after they say yes. ' +
+          'power off or restart the device. Call it without confirmed first: you are then told to ask the user; call again ' +
+          'with confirmed=true only after they answer yes. ' +
           'Not for "stop" or "go to sleep" (that is end_conversation), and not for other devices (lights, TV: Home Assistant).',
         {
           action: { type: 'string', enum: ['off', 'restart'] },

@@ -3,10 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Logger } from '@nestjs/common';
 import { SealedStore } from '../memory/sealed-store';
 
-const SESSION_MS = 12 * 3600_000;
+/** A device stays signed in this long after it was allowed (or until signed out / removed). */
+const DEVICE_MS = 30 * 24 * 3600_000;
+/** How long a sign-in waits for Allow on Max's screen. */
+const APPROVAL_MS = 2 * 60_000;
 const MAX_FAILS = 5;
 const LOCKOUT_MS = 5 * 60_000;
-const COOKIE = 'max_session';
+const COOKIE = 'max_device';
+const PENDING_COOKIE = 'max_signin';
 const MIN_PASSWORD = 8;
 /** The code Max shows on his screen to create the password (proves you're at home). */
 const SETUP_CODE_MS = 5 * 60_000;
@@ -15,6 +19,18 @@ const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 interface Saved {
   salt?: string;
   hash?: string;
+}
+
+/** A signed-in device: only a fingerprint of its key is kept. */
+export interface PanelDevice {
+  id: string;
+  label: string;
+  created: number;
+  lastUsed: number;
+  expires: number;
+}
+interface StoredDevice extends PanelDevice {
+  hash: string;
 }
 
 export interface PanelAuthOptions {
@@ -26,6 +42,11 @@ export interface PanelAuthOptions {
   dir: string;
   /** Shows the setup code on Max's screen. */
   showCode: (code: string, ttlMs: number) => void;
+  /**
+   * New devices are allowed on Max's screen after the password (on the box). Shows the request with
+   * Allow / Deny; `answer` is called with the choice. Undefined: the password alone signs in.
+   */
+  askOnScreen?: (device: string, ttlMs: number, answer: (allowed: boolean) => void) => void;
 }
 
 /**
@@ -34,15 +55,22 @@ export interface PanelAuthOptions {
  * On the box it's required. The first visit asks to choose one, and to prove you're at home, to type
  * the 6-digit code Max shows on his screen at that moment (someone on the WiFi but not in the room
  * can't). PANEL_PASSWORD in .env works too, and wins. Only a scrypt fingerprint of a chosen password
- * is stored. Sessions are random tokens in memory (signing in again after a restart is fine), sent
- * as an HttpOnly cookie. Five wrong passwords pause sign-in from that device for five minutes.
+ * is stored. Five wrong passwords pause sign-in from that device for five minutes.
+ *
+ * Signing in on a new phone or computer takes two steps: the password, then Allow on Max's screen
+ * (something you know, and being at home). The device then stays signed in for 30 days: a random key
+ * in an HttpOnly cookie, of which only a fingerprint is stored. Devices are listed in Settings >
+ * Security, where they can be removed; changing the password signs out all the others.
  */
 export class PanelAuth {
   private readonly log = new Logger('ControlPanel');
-  private readonly sessions = new Map<string, number>();
   private readonly envHash?: Buffer;
   private readonly store: SealedStore<Saved>;
   private saved: Saved = {};
+  private readonly deviceStore: SealedStore<{ devices: StoredDevice[] }>;
+  private devices: StoredDevice[] = [];
+  /** Sign-ins waiting for Allow on the screen, by their own random id (in a short-lived cookie). */
+  private readonly pending = new Map<string, { who: string; label: string; until: number; state: 'waiting' | 'allowed' | 'denied' }>();
   private readonly fails = new Map<string, { n: number; until: number }>();
   private setup?: { code: string; until: number; tries: number };
 
@@ -53,6 +81,12 @@ export class PanelAuth {
       this.saved = this.store.load() ?? {};
     } catch {
       // none chosen yet
+    }
+    this.deviceStore = new SealedStore(opts.dir, 'panel-devices');
+    try {
+      this.devices = (this.deviceStore.load()?.devices ?? []).filter((d) => d.expires > Date.now());
+    } catch {
+      // none yet
     }
   }
 
@@ -73,13 +107,21 @@ export class PanelAuth {
 
   allowed(req: IncomingMessage): boolean {
     if (!this.enabled) return !this.opts.required;
+    return Boolean(this.device(req));
+  }
+
+  /** The signed-in device making this request (its cookie's key matches a remembered, unexpired device). */
+  private device(req: IncomingMessage): StoredDevice | undefined {
     const token = cookie(req, COOKIE);
-    const until = token ? this.sessions.get(token) : undefined;
-    if (!until || until < Date.now()) {
-      if (token) this.sessions.delete(token);
-      return false;
+    if (!token) return undefined;
+    const hash = sha(token).toString('base64');
+    const d = this.devices.find((x) => x.hash === hash);
+    if (!d || d.expires < Date.now()) return undefined;
+    if (Date.now() - d.lastUsed > 3600_000) {
+      d.lastUsed = Date.now();
+      this.saveDevices();
     }
-    return true;
+    return d;
   }
 
   async handleLogin(req: IncomingMessage, res: ServerResponse, readForm: (r: IncomingMessage) => Promise<URLSearchParams>): Promise<void> {
@@ -88,34 +130,116 @@ export class PanelAuth {
       res.writeHead(302, { Location: '/' }).end();
       return;
     }
+    const url = new URL(req.url ?? '/', 'http://x');
+    if (url.pathname === '/login/wait') return this.wait(req, res);
     if (req.method === 'POST') {
       const who = client(req);
       const paused = this.paused(who);
       if (paused) return page(res, `Too many attempts. Try again in ${Math.ceil(paused / 60_000)} min.`);
       const pw = (await readForm(req)).get('password') ?? '';
-      if (this.matches(pw)) {
-        this.fails.delete(who);
-        return this.signIn(res);
+      if (!this.matches(pw)) {
+        this.failed(who);
+        return page(res, 'Wrong password.');
       }
-      this.failed(who);
-      return page(res, 'Wrong password.');
+      this.fails.delete(who);
+      const label = deviceName(req.headers['user-agent']);
+      if (!this.opts.askOnScreen) return this.trust(res, label);
+      return this.askOnScreen(res, who, label);
     }
     return page(res);
   }
 
+  /** The password was right: Max's screen asks Allow / Deny, and this page waits for the answer. */
+  private askOnScreen(res: ServerResponse, who: string, label: string): void {
+    for (const [id, p] of this.pending) if (p.who === who || p.until < Date.now()) this.pending.delete(id); // one at a time per device
+    const id = randomBytes(24).toString('base64url');
+    const request = { who, label, until: Date.now() + APPROVAL_MS, state: 'waiting' as 'waiting' | 'allowed' | 'denied' };
+    this.pending.set(id, request);
+    this.opts.askOnScreen!(label, APPROVAL_MS, (allowed) => {
+      if (this.pending.get(id) !== request || request.until < Date.now()) return;
+      request.state = allowed ? 'allowed' : 'denied';
+      this.log.log(`Control panel sign-in from ${label} (${who}) ${allowed ? 'allowed' : 'denied'} on the screen`);
+    });
+    res.setHeader('Set-Cookie', `${PENDING_COOKIE}=${id}; HttpOnly; SameSite=Strict; Path=/login; Max-Age=${APPROVAL_MS / 1000}`);
+    waitingPage(res, label);
+  }
+
+  /** The waiting page asks every two seconds: allowed (the device is signed in), denied, or still waiting. */
+  private wait(req: IncomingMessage, res: ServerResponse): void {
+    const id = cookie(req, PENDING_COOKIE) ?? '';
+    const p = this.pending.get(id);
+    const json = (state: string, extra: Record<string, string> = {}): void => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra }).end(JSON.stringify({ state }));
+    };
+    if (!p || p.until < Date.now() || p.who !== client(req)) {
+      if (p) this.pending.delete(id);
+      return json('expired');
+    }
+    if (p.state === 'waiting') return json('waiting');
+    this.pending.delete(id);
+    if (p.state === 'denied') return json('denied');
+    const token = this.addDevice(p.label);
+    json('allowed', { 'Set-Cookie': deviceCookie(token) });
+  }
+
+  private trust(res: ServerResponse, label: string): void {
+    const token = this.addDevice(label);
+    res.writeHead(302, { Location: '/', 'Set-Cookie': deviceCookie(token) }).end();
+  }
+
+  private addDevice(label: string): string {
+    const token = randomBytes(32).toString('base64url');
+    const now = Date.now();
+    this.devices = this.devices.filter((d) => d.expires > now);
+    this.devices.push({ id: randomBytes(6).toString('hex'), hash: sha(token).toString('base64'), label, created: now, lastUsed: now, expires: now + DEVICE_MS });
+    if (this.devices.length > 30) this.devices = this.devices.slice(-30);
+    this.saveDevices();
+    return token;
+  }
+
+  private saveDevices(): void {
+    this.deviceStore.save({ devices: this.devices }).catch((err) => this.log.error(`Could not save the signed-in devices: ${(err as Error).message}`));
+  }
+
+  /** Settings > Security: the signed-in devices (which one is this). */
+  listDevices(req: IncomingMessage): (PanelDevice & { current: boolean })[] {
+    const me = this.device(req);
+    return this.devices
+      .filter((d) => d.expires > Date.now())
+      .map(({ hash: _h, ...d }) => ({ ...d, current: d.id === me?.id }))
+      .sort((a, b) => b.lastUsed - a.lastUsed);
+  }
+
+  /** Settings > Security: sign a device out ("all": every one except this). */
+  removeDevice(req: IncomingMessage, id: string): string {
+    const me = this.device(req);
+    const before = this.devices.length;
+    this.devices = id === 'all' ? this.devices.filter((d) => d.id === me?.id) : this.devices.filter((d) => d.id !== id);
+    this.saveDevices();
+    const n = before - this.devices.length;
+    return id === 'all' ? `Signed out ${n} other device${n === 1 ? '' : 's'}.` : n ? 'Device signed out.' : 'That device was already signed out.';
+  }
+
   /** Settings > Security: a new password (the current one first). */
-  change(current: string, next: string, again: string): { ok: boolean; message: string } {
+  change(req: IncomingMessage, current: string, next: string, again: string): { ok: boolean; message: string } {
     if (this.envHash) return { ok: false, message: 'The password is set in .env (PANEL_PASSWORD): change it there.' };
     if (!this.matches(current)) return { ok: false, message: 'The current password is wrong.' };
     const bad = weak(next, again);
     if (bad) return { ok: false, message: bad };
+    const me = this.device(req);
     this.choose(next);
-    return { ok: true, message: 'Password changed.' };
+    // Every other device signs in again with the new password.
+    this.devices = this.devices.filter((d) => d.id === me?.id);
+    this.saveDevices();
+    return { ok: true, message: 'Password changed. Other devices will need to sign in again.' };
   }
 
   logout(req: IncomingMessage, res: ServerResponse): void {
-    const token = cookie(req, COOKIE);
-    if (token) this.sessions.delete(token);
+    const me = this.device(req);
+    if (me) {
+      this.devices = this.devices.filter((d) => d.id !== me.id);
+      this.saveDevices();
+    }
     res.writeHead(302, { Location: '/login', 'Set-Cookie': `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0` }).end();
   }
 
@@ -148,7 +272,7 @@ export class PanelAuth {
     this.fails.delete(who);
     this.choose(pw);
     this.log.log('Control panel password chosen (with the code on the screen)');
-    return this.signIn(res);
+    return this.trust(res, deviceName(req.headers['user-agent']));
   }
 
   private newSetupCode(): void {
@@ -173,16 +297,7 @@ export class PanelAuth {
   private choose(pw: string): void {
     const salt = randomBytes(16);
     this.saved = { salt: salt.toString('base64'), hash: scryptSync(pw, salt, 32, SCRYPT).toString('base64') };
-    this.sessions.clear(); // everyone signs in again with the new password
     this.store.save(this.saved).catch((err) => this.log.error(`Could not save the control panel password: ${(err as Error).message}`));
-  }
-
-  private signIn(res: ServerResponse): void {
-    const token = randomBytes(32).toString('base64url');
-    this.sessions.set(token, Date.now() + SESSION_MS);
-    res
-      .writeHead(302, { Location: '/', 'Set-Cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}` })
-      .end();
   }
 
   /** Wrong tries are counted per device, so nobody can lock the household out. */
@@ -211,6 +326,14 @@ function weak(pw: string, again: string): string | undefined {
 }
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest();
+const deviceCookie = (token: string) => `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DEVICE_MS / 1000}`;
+
+/** "iPhone (Safari)", "Mac (Chrome)", "Windows (Edge)"... from the browser's description of itself. */
+export function deviceName(ua = ''): string {
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Device';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+  return `${os} (${browser})`;
+}
 const client = (req: IncomingMessage) => req.socket.remoteAddress ?? 'unknown';
 
 function cookie(req: IncomingMessage, name: string): string | undefined {
@@ -251,4 +374,26 @@ ${error ? `<p class="err">${error}</p>` : ''}
 <label for="pw2">Same password again</label><input id="pw2" type="password" name="again" minlength="${MIN_PASSWORD}" required autocomplete="new-password">
 <button type="submit">Save and sign in</button>
 <p class="muted" style="margin:12px 0 0">You can also set <code>PANEL_PASSWORD</code> in <code>.env</code> on the box instead.</p></form>`);
+}
+
+/** After the password: "tap Allow on Max's screen", then signed in (the page checks every 2 seconds). */
+function waitingPage(res: ServerResponse, device: string): void {
+  send(res, 200, `<form onsubmit="return false"><h1>Allow on Max's screen</h1>
+<p>Max is asking on his screen whether <b>${device.replace(/[<>&"]/g, '')}</b> may open the control panel. Tap <b>Allow</b> there.</p>
+<p class="muted" id="st">Waiting… (if Max is locked, unlock him first)</p>
+<p class="muted">This device then stays signed in for 30 days.</p></form>
+<script>
+(function () {
+  var st = document.getElementById('st');
+  function check() {
+    fetch('/login/wait', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.state === 'allowed') { location.href = '/'; return; }
+      if (j.state === 'denied') { st.textContent = 'Not allowed on the screen.'; st.className = 'err'; return; }
+      if (j.state === 'expired') { st.innerHTML = 'Nobody answered on the screen in time. <a href="/login">Try again</a>'; return; }
+      setTimeout(check, 2000);
+    }).catch(function () { setTimeout(check, 3000); });
+  }
+  setTimeout(check, 1500);
+})();
+</script>`);
 }

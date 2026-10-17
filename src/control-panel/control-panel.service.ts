@@ -19,7 +19,7 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
-import { showCard } from '../face/screen';
+import { dismissCard, showCard } from '../face/screen';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
@@ -75,6 +75,31 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           body: "Someone is choosing the control panel's password: type this code there. If that isn't you, ignore it.",
           ttlMs,
         }),
+      // On the box, a new device signs in with the password and then Allow on Max's screen.
+      askOnScreen: cfg.face.onBox
+        ? (device, ttlMs, answer) => {
+            const done = (allowed: boolean) => () => {
+              answer(allowed);
+              dismissCard('panel-signin');
+            };
+            showCard(
+              {
+                id: 'panel-signin',
+                kind: 'notice',
+                icon: '🔐',
+                title: 'Control panel sign-in',
+                big: device,
+                body: 'wants to open the control panel (the password was right). Allow it only if it is you.',
+                actions: [
+                  { id: 'allow', label: 'Allow', style: 'primary' },
+                  { id: 'deny', label: 'Deny', style: 'danger' },
+                ],
+                ttlMs,
+              },
+              { allow: done(true), deny: done(false) },
+            );
+          }
+        : undefined,
     });
     const extra = [cfg.controlPanel.publicUrl, ...cfg.controlPanel.allowedHosts];
     this.hosts = new Set(extra.map((h) => hostOf(h)).filter(Boolean));
@@ -115,14 +140,14 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     // Password (PANEL_PASSWORD): everything except the login page needs a signed-in session.
-    if (url.pathname === '/login') return this.auth.handleLogin(req, res, readForm);
+    if (url.pathname === '/login' || url.pathname === '/login/wait') return this.auth.handleLogin(req, res, readForm);
     if (url.pathname === '/logout' && req.method === 'POST') return this.auth.logout(req, res);
     if (!this.auth.allowed(req)) {
       if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return this.redirect(res, '/login');
       res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Sign in first');
       return;
     }
-    if (req.method === 'GET' && url.pathname === '/') return this.page(res, url);
+    if (req.method === 'GET' && url.pathname === '/') return this.page(res, url, req);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
     if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
       const f = await readForm(req);
@@ -259,9 +284,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
       return this.redirect(res, `/?${/^Home station/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#trains`);
     }
+    if (req.method === 'POST' && url.pathname === '/security/device-remove') {
+      const msg = this.auth.removeDevice(req, (await readForm(req)).get('id') ?? '');
+      return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#security`);
+    }
     if (req.method === 'POST' && url.pathname === '/security/password') {
       const f = await readForm(req);
-      const out = this.auth.change(f.get('current') ?? '', f.get('password') ?? '', f.get('again') ?? '');
+      const out = this.auth.change(req, f.get('current') ?? '', f.get('password') ?? '', f.get('again') ?? '');
       return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (req.method === 'POST' && url.pathname === '/mode') {
@@ -632,8 +661,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async page(res: ServerResponse, url: URL): Promise<void> {
+  private async page(res: ServerResponse, url: URL, req: IncomingMessage): Promise<void> {
     const d = await this.data();
+    // Settings > Security: the signed-in devices (only on the page, never in /api/status).
+    if (this.auth.enabled) d.devices = this.auth.listDevices(req);
     if (url.searchParams.has('connected')) d.notice = { kind: 'ok', text: 'Signed in. Max can use this app now.' };
     else if (url.searchParams.has('refreshed')) d.notice = { kind: 'ok', text: 'Refreshed.' };
     else if (url.searchParams.get('ok')) d.notice = { kind: 'ok', text: url.searchParams.get('ok')! };

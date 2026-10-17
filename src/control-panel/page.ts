@@ -38,6 +38,8 @@ export interface PanelData {
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
   trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
+  /** Devices signed in to this panel (Settings > Security). */
+  devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
   composio: {
     configured: boolean;
@@ -643,6 +645,7 @@ ${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" meth
 <input type="password" name="password" placeholder="New password (8+ characters)" minlength="8" required autocomplete="new-password">
 <input type="password" name="again" placeholder="New password again" minlength="8" required autocomplete="new-password">
 <div><button class="btn secondary" type="submit">Change password</button></div></form>` : d.memory?.passwordFromEnv ? '<div class="meta">Set in <code>.env</code> (<code>PANEL_PASSWORD</code>): change it there.</div>' : ''}</div></li>
+${d.devices ? devicesRow(d.devices) : ''}
 ${d.lock ? lockRow(d.lock) : ''}
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
 </main>
@@ -727,4 +730,20 @@ ${row('Journey planning (Google Maps)', t.journeys, '"Trains to Manchester tomor
 </ul>
 <form class="addfact" method="post" action="/trains/home"><label class="meta" for="homeSt">Home station (the "from" when you don't say)</label><input id="homeSt" name="station" maxlength="60" value="${esc(t.home?.name ?? '')}" placeholder="e.g. Twickenham"><button class="btn" type="submit">Save</button></form>
 </section>`;
+}
+
+/** Settings > Security: the devices signed in to the panel, each with Sign out. */
+function devicesRow(devices: NonNullable<PanelData['devices']>): string {
+  const when = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const rows = devices
+    .map(
+      (x) => `<div class="addfact"><span class="meta"><b>${esc(x.label)}</b>${x.current ? ' (this device)' : ''} · signed in ${when(x.created)} · last used ${when(x.lastUsed)}</span>
+<form method="post" action="/security/device-remove"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">Sign out</button></form></div>`,
+    )
+    .join('');
+  const others = devices.filter((x) => !x.current).length;
+  return `<li class="row"><div><div class="name">Signed-in devices</div>
+<div class="meta">A new phone or computer signs in with the password, then <b>Allow</b> on Max's screen; it then stays signed in for 30 days.</div>
+${rows || '<p class="meta">None.</p>'}
+${others ? '<form method="post" action="/security/device-remove"><input type="hidden" name="id" value="all"><button class="btn secondary" type="submit">Sign out all other devices</button></form>' : ''}</div></li>`;
 }

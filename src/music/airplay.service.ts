@@ -8,9 +8,17 @@ import { LockService } from '../lock/lock.service';
 import { SealedStore } from '../memory/sealed-store';
 
 interface Saved {
-  enabled: boolean;
+  /** off, on until `until` (a set time), or always on. */
+  mode: AirPlayMode;
+  until?: number;
   code: string;
+  /** Before modes: just on/off (read once, then replaced). */
+  enabled?: boolean;
 }
+
+export type AirPlayMode = 'off' | 'timed' | 'always';
+/** How often the time limit is checked. */
+const CHECK_MS = 30_000;
 
 /**
  * AirPlay: Max appears as a speaker called "Max" on iPhones, iPads and Macs, so any app (Apple
@@ -18,15 +26,18 @@ interface Saved {
  * the box itself; Max tells it what to do through /run/max/airplay.json, and it restarts on its own
  * when that changes.
  *
- * Secured with a 4-digit code: the first time a device picks "Max", it asks for the code (shown on
- * the control panel) and remembers it. A new code means every device must enter it again. AirPlay
- * can be switched off on the control panel, and is off while Max is locked (start-up code).
+ * Secured with a 6-digit code: the first time a device picks "Max", it asks for the code (shown on
+ * the control panel) and remembers it. A new code means every device must enter it again.
+ *
+ * Off unless switched on, so a device nearby can't spend hours guessing the code: on for an hour,
+ * four hours, or always (control panel, or "Max, turn on AirPlay for an hour"). When the time is up
+ * it switches off by itself (after the music playing then has stopped). Off while Max is locked.
  */
 @Injectable()
 export class AirPlayService extends EventEmitter implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('AirPlay');
   private readonly store: SealedStore<Saved>;
-  private saved: Saved = { enabled: true, code: newCode() };
+  private saved: Saved = { mode: 'off', code: newCode() };
   /** What's playing over AirPlay, from the receiver's metadata. */
   now?: { title?: string; artist?: string; album?: string; since: number };
   /** The album art of what's playing, when the app sends it (Apple Music does). */
@@ -35,6 +46,7 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
   private reader?: ReadStream;
   private retry?: NodeJS.Timeout;
   private closed = false;
+  private check?: NodeJS.Timeout;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -45,24 +57,33 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
   }
 
   onModuleInit(): void {
-    let fresh = false;
+    let changed = false;
     try {
       const s = this.store.load();
-      if (s?.code && /^\d{4}$/.test(s.code)) this.saved = s;
-      else fresh = true;
+      if (s?.code) this.saved = { mode: s.mode ?? 'off', until: s.until, code: s.code };
+      // From before time limits: off until switched on (it used to be on all the time).
+      if (s && !s.mode) changed = true;
+      // 4-digit codes (10,000 guesses) are replaced by 6-digit ones (a million): devices ask once.
+      if (!s?.code || !/^\d{6}$/.test(s.code)) {
+        this.saved.code = newCode();
+        changed = true;
+        if (s?.code) this.log.log('AirPlay code is now 6 digits: devices will ask for the new one once');
+      }
     } catch {
-      fresh = true;
+      changed = true;
     }
-    if (fresh) this.persist();
+    if (changed) this.persist();
     if (!this.onBox) return;
     this.apply();
     this.lock?.on('change', () => this.apply());
     this.readMetadata();
+    this.check = setInterval(() => this.checkTime(), CHECK_MS);
   }
 
   onModuleDestroy(): void {
     this.closed = true;
     clearTimeout(this.retry);
+    clearInterval(this.check);
     this.reader?.destroy();
   }
 
@@ -70,8 +91,18 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
     return this.cfg.face.onBox;
   }
 
+  /** Switched on (always, or within its time). */
   get enabled(): boolean {
-    return this.saved.enabled;
+    return this.saved.mode === 'always' || (this.saved.mode === 'timed' && (Date.now() < (this.saved.until ?? 0) || this.active));
+  }
+
+  get mode(): AirPlayMode {
+    return this.enabled ? this.saved.mode : 'off';
+  }
+
+  /** When a time-limited AirPlay switches off. */
+  get until(): number | undefined {
+    return this.saved.mode === 'timed' ? this.saved.until : undefined;
   }
 
   get code(): string {
@@ -83,11 +114,30 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
     return Boolean(this.now);
   }
 
-  setEnabled(on: boolean): string {
-    this.saved.enabled = on;
+  /** On for `minutes` (then off by itself), or always (no minutes). */
+  turnOn(minutes?: number): string {
+    const timed = minutes !== undefined && minutes > 0;
+    this.saved = { ...this.saved, mode: timed ? 'timed' : 'always', until: timed ? Date.now() + Math.min(minutes!, 24 * 60) * 60_000 : undefined };
     this.persist();
     this.apply();
-    return on ? 'AirPlay is on: pick "Max" as the speaker on your iPhone, iPad or Mac.' : 'AirPlay is off.';
+    this.log.log(timed ? `AirPlay on for ${minutes} min` : 'AirPlay always on');
+    const until = this.saved.until ? ` until ${clock(this.saved.until)}` : '';
+    return `AirPlay is on${until || ' (until switched off)'}: pick "Max" as the speaker on your iPhone, iPad or Mac.`;
+  }
+
+  turnOff(): string {
+    this.saved = { ...this.saved, mode: 'off', until: undefined };
+    this.persist();
+    this.apply();
+    this.log.log('AirPlay off');
+    return 'AirPlay is off.';
+  }
+
+  /** The time is up: off (if something is still playing, once it has stopped). */
+  private checkTime(): void {
+    if (this.saved.mode !== 'timed' || Date.now() < (this.saved.until ?? 0) || this.active) return;
+    this.log.log('AirPlay time is up: switching off');
+    this.turnOff();
   }
 
   /** A new code: every device has to enter it again. */
@@ -110,10 +160,10 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
     try {
       writeFileSync(
         join(this.cfg.face.runDir, 'airplay.json'),
-        JSON.stringify({ enabled: this.saved.enabled && !locked, name: 'Max', password: this.saved.code }),
+        JSON.stringify({ enabled: this.enabled && !locked, name: 'Max', password: this.saved.code }),
         { mode: 0o600 },
       );
-      if (locked && this.saved.enabled) this.log.log('AirPlay is off until Max is unlocked');
+      if (locked && this.enabled) this.log.log('AirPlay is off until Max is unlocked');
     } catch (err) {
       this.log.warn(`Could not update the AirPlay receiver: ${(err as Error).message}`);
     }
@@ -199,5 +249,7 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
 }
 
 function newCode(): string {
-  return String(randomInt(0, 10_000)).padStart(4, '0');
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
+
+const clock = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: process.env.TZ || 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms);

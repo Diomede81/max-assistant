@@ -11,7 +11,7 @@ export interface PanelData {
     pairing?: { url: string; code: string };
     error?: string;
     radio?: { available: boolean; playing?: string };
-    airplay?: { onBox: boolean; enabled: boolean; code: string; locked: boolean; playing: boolean };
+    airplay?: { onBox: boolean; enabled: boolean; mode?: string; until?: number; code: string; locked: boolean; playing: boolean };
   };
   voice: string;
   routines?: PanelRoutines;
@@ -766,13 +766,16 @@ function radioRow(r: NonNullable<PanelData['music']>['radio']): string {
 function airplayRow(a: NonNullable<PanelData['music']>['airplay']): string {
   if (!a) return '';
   if (!a.onBox) return '<li class="row"><div><div class="name">AirPlay</div><div class="meta">Available on the Max box: it appears as a speaker on iPhones, iPads and Macs.</div></div></li>';
-  const state = !a.enabled ? badge(false, '', 'Off') : a.locked ? badge(false, '', 'Off while Max is locked') : badge(true, a.playing ? 'Playing' : 'On');
+  const until = a.until ? new Date(a.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+  const state = !a.enabled ? badge(false, '', 'Off') : a.locked ? badge(false, '', 'Off while Max is locked') : badge(true, a.playing ? 'Playing' : a.mode === 'timed' ? `On until ${until}` : 'Always on');
+  const btn = (value: string, label: string, primary = false) =>
+    `<form method="post" action="/music/airplay"><input type="hidden" name="for" value="${value}"><button class="btn ${primary ? '' : 'secondary'}" type="submit">${label}</button></form>`;
   return `<li class="row"><div style="width:100%"><div class="name">AirPlay ${state}</div>
 <div class="meta">Max appears as the speaker <b>Max</b> on your iPhone, iPad or Mac, so any app (Apple Music, YouTube Music, podcasts…) can play through him. The first time, the device asks for this code and remembers it:</div>
 <div class="name" style="font-size:28px;letter-spacing:.3em;margin:8px 0">${esc(a.code)}</div>
-<div class="addfact"><form method="post" action="/music/airplay"><input type="hidden" name="enabled" value="${a.enabled ? 'off' : 'on'}"><button class="btn ${a.enabled ? 'secondary' : ''}" type="submit">${a.enabled ? 'Turn AirPlay off' : 'Turn AirPlay on'}</button></form>
+<div class="addfact wrap">${a.enabled ? btn('off', 'Turn off', true) : ''}${btn('60', a.enabled && a.mode === 'timed' ? 'On for 1 more hour' : 'On for 1 hour', !a.enabled)}${btn('240', 'On for 4 hours')}${a.mode !== 'always' ? btn('always', 'Always on') : ''}
 <form method="post" action="/music/airplay-code" onsubmit="return confirm('Every phone and computer will have to enter the new code. Continue?')"><button class="btn secondary" type="submit">New code</button></form></div>
-<p class="meta">A new code makes every device ask again (use it if someone you don't want has the code). AirPlay is switched off while Max is locked.</p></div></li>`;
+<p class="meta">Off unless you switch it on, so nobody nearby can spend hours guessing the code. When the time is up it switches off by itself (after the music then playing has stopped). Or say "Max, turn on AirPlay for an hour". It's also off while Max is locked. A new code makes every device ask again.</p></div></li>`;
 }
 
 function trainsSection(t: NonNullable<PanelData['trains']>): string {

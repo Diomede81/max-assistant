@@ -296,7 +296,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let wifiBackUntil = 0;
   function renderSetup() {
     const w = info.wifi;
-    const show = info.state === 'setup' && w && Date.now() > wifiBackUntil;
+    // Locked: the keypad comes first; the network's password and QR code show once the code is entered.
+    const show = info.state === 'setup' && w && Date.now() > wifiBackUntil && !info.locked;
     setupEl.hidden = !show;
     if (!show) return;
     const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -510,7 +511,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   }
   function renderLock() {
     if (lkFor === 'guest' && (info.mode !== 'guest' || info.locked)) lkFor = ''; // left guest mode another way, or locked
-    const show = (Boolean(info.locked) || lkFor === 'guest') && info.state !== 'setup';
+    const show = Boolean(info.locked) || (lkFor === 'guest' && info.state !== 'setup');
     lockEl.hidden = !show;
     if (!show) { lkCode = ''; lkNote = ''; return; }
     lkTitle.textContent = lkFor === 'guest' ? '👋 Code to leave guest mode' : '🔒 Enter your code';

@@ -2,8 +2,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
 # - Sound goes straight to the Pi's PipeWire (the mic board), no sound bridge needed.
 # - Max shares /run/max with the box's WiFi setup service (QR code on the face).
-# - The control panel is reachable from your home network at http://max.local:8099,
-#   so set PANEL_PASSWORD in .env.
+# - The control panel is reachable from your home network at http://max.local:8099; it always asks for a
+#   password there (chosen on the first visit with a code shown on Max's screen, or PANEL_PASSWORD in .env).
 services:
   max:
     environment:

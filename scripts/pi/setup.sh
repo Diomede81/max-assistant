@@ -223,6 +223,9 @@ if [ ! -f .env ]; then
   MAX_SKIP_START=1
 fi
 set_env() { grep -q "^$1=" .env && sed -i "s|^$1=.*|$1=$2|" .env || echo "$1=$2" >> .env; }
+# .env holds every API key and password: readable by its owner only.
+chown "$USER_NAME:$USER_NAME" .env
+chmod 600 .env
 set_env MAX_UID "$USER_ID"
 set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"

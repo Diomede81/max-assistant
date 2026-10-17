@@ -12,6 +12,9 @@ x-logging: &logging
     max-size: "5m"
     max-file: "3"
 
+# The voice services (and Kokoro / Ollama) only answer on this computer by default: Max reaches them inside
+# Docker by name. To let another machine use them (e.g. Home Assistant using this Whisper/Piper), set
+# VOICE_SERVICES_BIND=0.0.0.0 in .env: anyone on your network can then use them.
 services:
   max:
     logging: *logging
@@ -48,7 +51,7 @@ services:
     # WAKEWORD_TRIGGER_LEVEL=2 needs two hits in a row: fewer false wakes, slightly slower.
     command: --custom-model-dir /custom --threshold ${WAKEWORD_THRESHOLD:-0.5} --trigger-level ${WAKEWORD_TRIGGER_LEVEL:-1}
     volumes: ["./wakewords:/custom"]
-    ports: ["10400:10400"]
+    ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:10400:10400"]
 
   whisper:
     logging: *logging
@@ -57,7 +60,7 @@ services:
     # base-int8 is a good CPU default; use small-int8 for accuracy, tiny-int8 for speed.
     command: --model base-int8 --language en
     volumes: ["./data/whisper:/data"]
-    ports: ["10300:10300"]
+    ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:10300:10300"]
 
   piper:
     logging: *logging
@@ -66,7 +69,7 @@ services:
     # British male voice; browse others at https://rhasspy.github.io/piper-samples/
     command: --voice en_GB-alan-medium
     volumes: ["./data/piper:/data"]
-    ports: ["10200:10200"]
+    ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:10200:10200"]
 
   # Max's own Spotify speaker (Spotify Premium). Enable with:  docker compose --profile max --profile music up -d
   # Sign in once from the control panel. Shows up as "Max" in the Spotify app. See docs/MUSIC.md.
@@ -88,7 +91,7 @@ services:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     profiles: ["kokoro"]
     restart: unless-stopped
-    ports: ["8880:8880"]
+    ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:8880:8880"]
 
   ollama:
     logging: *logging
@@ -96,7 +99,7 @@ services:
     profiles: ["local-llm"]
     restart: unless-stopped
     volumes: ["./data/ollama:/root/.ollama"]
-    ports: ["11434:11434"]
+    ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:11434:11434"]
     # Uncomment for an NVIDIA GPU (needs nvidia-container-toolkit):
     # deploy:
     #   resources:

@@ -75,6 +75,9 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
 - **Date and time**: "What's the date?", "What time is it?"
+- **WhatsApp**: "Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way"
+  (only to people you allow on the control panel, and after your "yes"). Links like WhatsApp Web. See
+  [docs/WHATSAPP.md](docs/WHATSAPP.md).
 - **Trains (UK)**: "When's the next train to Waterloo?" (live times, delays, platforms) and "get me to Manchester
   by 10 tomorrow" (journeys with changes, plus a QR code on the screen to book on Trainline). See
   **[docs/TRAINS.md](docs/TRAINS.md)**.

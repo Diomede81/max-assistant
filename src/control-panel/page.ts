@@ -3,6 +3,7 @@ import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 import { SPEAKER_TONES } from '../device/device.service';
+import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 
 export interface PanelData {
   music?: {
@@ -38,6 +39,7 @@ export interface PanelData {
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
   trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
+  whatsapp?: WhatsAppStatus;
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
@@ -404,7 +406,7 @@ const QUICK = ['overview', 'myday', 'projects'];
 /** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
 const DRAWER: [string, [string, string, string][]][] = [
   ['Max', [['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
-  ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
+  ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
   ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
 ];
 
@@ -641,6 +643,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
 <div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
+${d.whatsapp ? whatsappSection(d.whatsapp) : ''}
 ${d.trains ? trainsSection(d.trains) : ''}
 <section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
@@ -776,6 +779,40 @@ function airplayRow(a: NonNullable<PanelData['music']>['airplay']): string {
 <div class="addfact wrap">${a.enabled ? btn('off', 'Turn off', true) : ''}${btn('60', a.enabled && a.mode === 'timed' ? 'On for 1 more hour' : 'On for 1 hour', !a.enabled)}${btn('240', 'On for 4 hours')}${a.mode !== 'always' ? btn('always', 'Always on') : ''}
 <form method="post" action="/music/airplay-code" onsubmit="return confirm('Every phone and computer will have to enter the new code. Continue?')"><button class="btn secondary" type="submit">New code</button></form></div>
 <p class="meta">Off unless you switch it on, so nobody nearby can spend hours guessing the code. When the time is up it switches off by itself (after the music then playing has stopped). Or say "Max, turn on AirPlay for an hour". It's also off while Max is locked. A new code makes every device ask again.</p></div></li>`;
+}
+
+/** Connections > WhatsApp: link a phone (QR code), and the people Max may send messages to. */
+function whatsappSection(w: WhatsAppStatus): string {
+  const state =
+    w.state === 'connected' ? badge(true, `Linked${w.phone ? ` · ${esc(w.phone)}` : ''}`)
+    : w.state === 'linking' ? '<span class="badge">Waiting for the scan</span>'
+    : w.state === 'connecting' ? '<span class="badge">Connecting…</span>'
+    : '<span class="badge off">Not linked</span>';
+  const link =
+    w.state === 'linking'
+      ? `<div id="waQr" style="max-width:260px;background:#fff;padding:10px;border-radius:12px;margin:10px 0">${w.qrSvg ?? ''}</div>
+<p class="meta">On your phone: <b>WhatsApp → Settings → Linked devices → Link a device</b>, then scan this code. It changes every few seconds; this page keeps it up to date.</p>
+<script>(function(){var t=setInterval(function(){fetch('/whatsapp/status').then(function(r){return r.json()}).then(function(s){if(s.state!=='linking'){clearInterval(t);location.href='/#whatsapp';return}if(s.qrSvg)document.getElementById('waQr').innerHTML=s.qrSvg}).catch(function(){})},3000)})()</script>`
+      : w.state === 'off'
+        ? '<form method="post" action="/whatsapp/link"><button class="btn" type="submit">Link a phone</button></form>'
+        : `<form method="post" action="/whatsapp/unlink" onsubmit="return confirm('Unlink WhatsApp? Max will forget the login and the messages he kept.')"><button class="btn secondary" type="submit">Unlink</button></form>`;
+  const people = w.allowed
+    .map(
+      (a) => `<div class="addfact"><span class="meta"><b>${esc(a.name)}</b> · ${esc(a.shown)}</span>
+<form method="post" action="/whatsapp/disallow"><input type="hidden" name="number" value="${esc(a.number)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
+    )
+    .join('');
+  return `<section id="whatsapp"><h2>WhatsApp</h2><ul><li class="row"><div style="flex:1"><div class="name">Your WhatsApp ${state}</div>
+<div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web: he reads your chats and keeps the last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
+${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
+${link}</div></li>
+<li class="row"><div style="flex:1"><div class="name">Who Max may send messages to</div>
+<div class="meta">Max only sends to the people on this list, and only after reading the message back and hearing your "yes". He can't add people himself.</div>
+${people || '<p class="meta">Nobody yet: Max can read your messages but not send any.</p>'}
+<form class="addfact" method="post" action="/whatsapp/allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add</button></form>
+</div></li></ul>
+<p class="meta">This uses WhatsApp's linked-devices feature through unofficial software (not a WhatsApp product). WhatsApp unlinks devices when the phone has been offline for about 14 days: link again then. You can also unlink Max from the phone (Linked devices).</p>
+</section>`;
 }
 
 function trainsSection(t: NonNullable<PanelData['trains']>): string {

@@ -12,6 +12,7 @@ import { ScreenToolsService } from './screen-tools.service';
 import { LockService } from '../lock/lock.service';
 import { MusicService } from '../music/music.service';
 import { ConversationControl } from './conversation-control';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WebService } from '../web/web.service';
 import { TrainsService } from '../trains/trains.service';
 import { RoutinesService } from '../routines/routines.service';
@@ -75,6 +76,7 @@ export class ToolRouterService {
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly trains?: TrainsService,
     @Optional() private readonly control?: ConversationControl,
+    @Optional() private readonly whatsapp?: WhatsAppService,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -114,7 +116,13 @@ export class ToolRouterService {
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
-    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...ha, ...external];
+    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...ha, ...external];
+  }
+
+  /** The user's own WhatsApp: never in guest mode (visitors shouldn't read or send anyone's messages). */
+  private get whatsappTools(): ChatCompletionTool[] {
+    if (!this.whatsapp || this.modes.mode === 'guest') return [];
+    return this.whatsapp.tools.filter((t) => t.type !== 'function' || !this.isLockedWorkApp(t.function.name)).map((t) => (t.type === 'function' && t.function.name === 'whatsapp_send' ? withConfirmParam(t, 'read back who it goes to and the message') : t));
   }
 
   get homeAssistantConnected(): boolean {
@@ -127,7 +135,7 @@ export class ToolRouterService {
    * Assistant locks, doors, the garage, gates and the alarm.
    */
   needsConfirmation(name: string, args: Record<string, unknown> = {}): boolean {
-    if (name === 'device_power') return true;
+    if (name === 'device_power' || name === 'whatsapp_send') return true;
     if (name === 'software_update') return args.action === 'install';
     if (name === 'forget') return args.all === true;
     const server = this.mcp.serverFor(name);
@@ -136,7 +144,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.screenTools?.has(name) || this.music?.has(name)) return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -250,6 +258,10 @@ export class ToolRouterService {
           ? 'Personal apps are locked in work mode. The user can say "personal mode" to unlock them.'
           : 'Work apps are locked outside work mode. The user can say "work mode" to unlock them.';
       }
+      if (this.whatsapp?.has(name) && this.modes.mode === 'guest') return 'Not done: WhatsApp isn\'t available in guest mode.';
+      if (this.whatsapp?.has(name) && this.isLockedWorkApp(name)) {
+        return this.modes.mode === 'work' ? 'WhatsApp is locked in work mode (a personal app). The user can say "personal mode".' : 'WhatsApp is locked outside work mode.';
+      }
       if (this.needsConfirmation(name, args)) {
         if (this.modes.mode === 'guest' && (name === 'software_update' || (!server && this.isHaSensitive(name, args)))) {
           return 'Not done: in guest mode, updates, locks, doors, the garage, gates and the alarm can\'t be controlled by voice.';
@@ -279,6 +291,10 @@ export class ToolRouterService {
       }
       if (this.updates?.has(name)) return await this.updates.call(name, args);
       if (this.screenTools?.has(name)) return await this.screenTools.call(name, args);
+      if (this.whatsapp?.has(name)) {
+        if (name === 'whatsapp_messages') this.externalContentAt = Date.now(); // other people's words
+        return await this.whatsapp.call(name, args);
+      }
       if (this.music?.has(name)) return this.musicStarted(name, args, await this.music.call(name, args));
       if (!server) return await this.ha.call(name, args);
       this.externalContentAt = Date.now();

@@ -84,10 +84,13 @@ pauses Spotify, and asking Spotify for something stops the radio.
 On the Max box, Max appears as an AirPlay speaker called **Max**, so any app (Apple Music, YouTube Music,
 Amazon Music, podcasts, Safari...) can play through him: in the app's speaker / AirPlay menu, pick **Max**.
 
-- **Protected by a 4-digit code.** The first time a device picks Max, it asks for the code, then
-  remembers it. The code is on the control panel (**Connections → Music**), never said out loud.
-  **New code** there makes every device ask again (use it if someone you don't want has it).
-- **Turn AirPlay off / on** on the control panel. It's also off while Max is locked (start-up code).
+- **Protected by a 6-digit code.** The first time a device picks Max, it asks for the code, then
+  remembers it. The code is on the control panel (**☰ Menu → Music & AirPlay**, and on Home), never said
+  out loud. **New code** there makes every device ask again (use it if someone you don't want has it).
+- **Off unless you switch it on**, so a device nearby can't spend hours guessing the code: **On for 1 hour**,
+  **On for 4 hours** or **Always on** on the control panel, or say "Max, turn on AirPlay for an hour" /
+  "turn off AirPlay". When the time is up it switches off by itself, once the music then playing has
+  stopped. It's also off while Max is locked (start-up code).
 - While Max talks, the AirPlay music turns down like any other music. Pause and skip from the phone;
   "what's playing?" works by voice.
 - The music card on the screen shows the song, the artist and the **album cover** when the app sends it

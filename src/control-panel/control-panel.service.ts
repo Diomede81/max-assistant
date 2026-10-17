@@ -151,7 +151,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
     if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
       const f = await readForm(req);
-      const msg = url.pathname === '/music/airplay-code' ? this.airplay.renewCode() : this.airplay.setEnabled(f.get('enabled') === 'on');
+      const on = f.get('for') ?? 'off'; // minutes, 'always' or 'off'
+      const msg = url.pathname === '/music/airplay-code'
+        ? this.airplay.renewCode()
+        : on === 'off' ? this.airplay.turnOff() : this.airplay.turnOn(on === 'always' ? undefined : Number(on) || 60);
       return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#music`);
     }
     if (req.method === 'POST' && url.pathname === '/music/check') {
@@ -550,7 +553,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         pairing: this.music.pairing,
         error: this.music.lastError,
         radio: this.radio && { available: this.radio.available, playing: this.radio.playing ? this.radio.current?.station.name : undefined },
-        airplay: this.airplay && { onBox: this.airplay.onBox, enabled: this.airplay.enabled, code: this.airplay.code, locked: Boolean(this.lock?.locked), playing: this.airplay.active },
+        airplay: this.airplay && { onBox: this.airplay.onBox, enabled: this.airplay.enabled, mode: this.airplay.mode, until: this.airplay.until, code: this.airplay.code, locked: Boolean(this.lock?.locked), playing: this.airplay.active },
       },
       voice:
         this.cfg.voiceMode === 'realtime'

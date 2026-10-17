@@ -142,6 +142,26 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
       });
     }
     if (spotify || radio || this.airplay?.enabled) out.push(this.toolList[1]);
+    if (this.airplay?.onBox) {
+      out.push({
+        type: 'function',
+        function: {
+          name: 'airplay',
+          description:
+            'Switch AirPlay (Max as a speaker for iPhones, iPads and Macs) on or off. "turn on AirPlay" = on for 60 minutes ' +
+            'unless the user says how long; "always" only if they say so. status: on or off, and until when. Never say the code: ' +
+            "it's on the control panel (Music & AirPlay).",
+          parameters: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['on', 'off', 'status'] },
+              minutes: { type: 'integer', description: 'How long it stays on (default 60). 0 = always on (only if the user asks).' },
+            },
+            required: ['action'],
+          },
+        },
+      });
+    }
     return out;
   }
 
@@ -184,10 +204,17 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   has(name: string): boolean {
-    return name === 'play_music' || name === 'music_control' || name === 'play_radio';
+    return name === 'play_music' || name === 'music_control' || name === 'play_radio' || name === 'airplay';
   }
 
   async call(name: string, args: Record<string, unknown>): Promise<string> {
+    if (name === 'airplay' && this.airplay) {
+      const a = this.airplay;
+      if (args.action === 'off') return a.turnOff();
+      if (args.action === 'on') return a.turnOn(args.minutes === 0 ? undefined : typeof args.minutes === 'number' ? args.minutes : 60);
+      if (!a.enabled) return 'AirPlay is off.';
+      return a.until ? `AirPlay is on until ${new Date(a.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'Europe/London' })}.` : 'AirPlay is always on.';
+    }
     if (name === 'play_radio') {
       if (this.state === 'ready') await this.api('POST', '/player/pause').catch(() => undefined); // one source at a time
       try {

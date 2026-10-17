@@ -68,7 +68,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 ## Using the box
 
 - **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi. The first time, it asks you to
-  choose a password and to type the code Max shows on his screen.
+  choose a password and to type the code Max shows on his screen. On other devices: the password, then tap **Allow**
+  on Max's screen; each device then stays signed in for 30 days.
 - **Boot screen:** while the box starts (and shuts down) it shows Max's face on a dark screen instead of
   raspberries and scrolling text. To use **your own logo**:
   1. Make a **PNG** picture, ideally square, about **400 × 400 pixels**, with the important part inside a

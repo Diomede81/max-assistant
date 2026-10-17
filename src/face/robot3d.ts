@@ -238,12 +238,12 @@ export const ROBOT3D_JS = String.raw`
     const T = R3.THREE, h = R3.head;
     const breathe = Math.sin(now / 1300);
     h.rotation.y = P.lx * 0.34 + Math.sin(now / 3900) * 0.025;
-    h.rotation.x = P.ly * 0.24 + P.mo * 0.06 + (state === 'sleeping' ? 0.22 : 0);
+    h.rotation.x = P.ly * 0.24 + P.mo * 0.06 + P.nod * 0.2 + (state === 'sleeping' ? 0.22 : 0);
     h.rotation.z = (-P.tilt * Math.PI) / 180;
     // While a card shows, the head moves up and shrinks (like the classic face).
     const sc = (1 - cmp * 0.68) * (1 + breathe * 0.006);
     h.scale.set(sc, sc, sc);
-    h.position.y = breathe * 0.012 + cmp * VIEW_HALF * 0.72;
+    h.position.y = breathe * 0.012 + P.hop * 0.05 + cmp * VIEW_HALF * 0.72;
     const c = new T.Color().setRGB(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, T.SRGBColorSpace);
     R3.glow.emissive.copy(c);
     R3.tipGlow.emissive.copy(c);

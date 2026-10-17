@@ -171,6 +171,8 @@ cancellation, so "Hey Max" works while he talks or plays music) and a speaker, i
   at night or in guest mode. Optional **captions** show what he heard and what he's saying.
 - **Glance and photo frame:** weather, next meeting and to-dos around his face while idle; your own pictures
   in the evening.
+- **Dances to the music:** while music plays (Spotify, radio or AirPlay) his face moves to the beat:
+  bouncing to dance and pop, headbanging to rock, swaying to jazz and classical, nodding to the rest.
 - **Start-up code:** an optional 6-digit code to type on the screen each time the box starts. Until then
   Max won't answer, act or show anything personal, and AirPlay is off.
 - **Greeting and jingle:** "Hey Max" is answered with "Hello, how can I help?" (your choice of words, or

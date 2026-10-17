@@ -155,6 +155,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let info = { state: 'idle', mode: 'personal', timers: [], offline: false, emotion: 'neutral' };
   let mouth = { o: 0, w: 0, r: 0, s: 0 };
   let connected = demo, lastMsg = Date.now(), lastMouth = 0;
+  // Dancing to the music: the last beat heard (performance.now()), the loudness, and when they came.
+  const groove = { e: 0, at: -1e9, beatAt: -1e9, beats: 0 };
   let W = 0, H = 0, R = 0, cx = 0, cy = 0, dpr = 1;
 
   function resize() {
@@ -177,6 +179,13 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
       lastMsg = lastMouth = Date.now();
+    });
+    // The beat of the music playing (about 20 a second while it plays): how loud, and whether a beat just landed.
+    es.addEventListener('groove', (e) => {
+      const d = JSON.parse(e.data);
+      groove.e = d.e; groove.at = performance.now();
+      if (d.b) { groove.beatAt = groove.at; groove.beats++; }
+      lastMsg = Date.now();
     });
     es.onerror = () => { connected = false; };
   }
@@ -215,6 +224,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
     actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
   SCENES.push(['speaking', 'neutral', 'Card email'], ['idle', 'neutral', 'Locked']);
+  SCENES.push(['idle', 'neutral', 'Dancing pop'], ['idle', 'neutral', 'Dancing rock'], ['idle', 'neutral', 'Dancing jazz'], ['idle', 'neutral', 'Dancing']);
   SCENES.push(['idle', 'neutral', 'Glance work']);
   DEMO_CARDS['Card email'] = { id: 'd10', kind: 'list', icon: '✉️', title: 'Email', subtitle: 'From Anna Rossi · 09:42', big: 'Milan launch: venue confirmed', until: FOREVER,
     body: 'Anna confirms the venue for the Milan launch on 12 November and has signed the contract. She needs your final guest list by Friday, and asks whether you want the evening or the afternoon slot.' };
@@ -260,6 +270,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       };
       if (label === 'Locked') info.locked = { triesLeft: 5 };
       if (label === 'Glance work') info.mode = 'work';
+      if (label.startsWith('Dancing')) {
+        info.music = { title: 'Song', artist: 'Artist' };
+        info.groove = { mood: { 'Dancing pop': 'party', 'Dancing rock': 'rock', 'Dancing jazz': 'chill' }[label] || 'groove' };
+      }
       setTimeout(() => { renderCard(); renderCaption(); renderFrame(); renderLock(); }, 0); // after the card code below is set up
       renderSetup();
     };
@@ -762,6 +776,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     if (state === 'listening') { e.lidT = Math.min(e.lidT, 0.03); e.eye *= 1.06; e.pupil += 0.15; e.browY += 7; e.tilt += 6; }
     if (state === 'sleeping') Object.assign(e, { lidT: 1, lidA: -0.05, lidB: 0.12, browY: -6, browA: -0.05, browL: 0, smile: 0.3, open: 0, round: 0, cheek: 0.2, tilt: 5 });
     if (state === 'speaking') e.browY += m.o * 7;
+    const gv = dance(now, state, e);
     const lidT = Math.min(1, e.lidT + (1 - e.lidT) * blink);
 
     const K = 170, Z = 0.62; // expression springs: soft with a little bounce
@@ -777,9 +792,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       mw: spring('mw', m.w, dt, 1100, 0.8), mr: spring('mr', state === 'speaking' ? m.r : e.round, dt, 1100, 0.8),
       ms: spring('ms', m.s, dt, 1100, 0.8),
       bright: spring('bright', state === 'sleeping' ? 0.5 : offline ? 0.8 : 1, dt, 20, 1),
-      ring: spring('ring', state === 'listening' ? 0.65 + 0.25 * Math.sin(now / 260) : state === 'thinking' ? 0.45 : state === 'speaking' ? 0.25 + m.o * 0.5 : state === 'sleeping' ? 0.06 : 0.14, dt, 120, 0.9),
+      nod: spring('nod', gv.nod, dt, 260, 0.45), hop: spring('hop', gv.hop, dt, 320, 0.4),
+      ring: gv.ring + spring('ring', state === 'listening' ? 0.65 + 0.25 * Math.sin(now / 260) : state === 'thinking' ? 0.45 : state === 'speaking' ? 0.25 + m.o * 0.5 : state === 'sleeping' ? 0.06 : 0.14, dt, 120, 0.9),
     };
-    const target = (state === 'idle' || state === 'speaking' || state === 'listening') && TINT[emotion] ? TINT[emotion] : COLORS[state] || COLORS.idle;
+    const target = gv.col || ((state === 'idle' || state === 'speaking' || state === 'listening') && TINT[emotion] ? TINT[emotion] : COLORS[state] || COLORS.idle);
     col = col.map((c, i) => c + (target[i] - c) * Math.min(1, dt * 4));
     const rgb = (a, mix) => {
       const c = mix ? col.map((v) => v + (255 - v) * mix) : col;
@@ -808,7 +824,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       renderRobot(P, now, cmp, state, col);
     } else {
       g.save();
-      g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s * fk);
+      g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5 + P.nod * 16 - P.hop * 14) * s * fk);
       g.rotate((P.tilt * Math.PI) / 180);
       g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
       g.globalAlpha = P.bright;
@@ -835,8 +851,62 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       }
       g.globalAlpha = 1;
     }
+    if (cmp < 0.5) drawNotes(now, s, rgb);
     drawChrome(now, s, rgb, state, cmp);
     requestAnimationFrame(frame);
+  }
+
+  // ---------- dancing to the music ----------
+  // Beats a minute when there's no beat to hear (a laptop without the sound system, or a quiet intro).
+  const DANCE_BPM = { party: 122, rock: 138, chill: 76, groove: 100 };
+  const DANCE_COL = { rock: [255, 130, 95], chill: [165, 150, 255], groove: [120, 240, 205] };
+  const DANCE_FACE = {
+    party: { lidT: 0.02, lidB: 0.4, browY: 12, smile: 1, cheek: 1, eye: 1.05, pupil: 0.72, open: 0.12 },
+    rock: { lidT: 0.24, lidB: 0.2, browY: -6, browA: 0.18, smile: 0.45, cheek: 0.3, eye: 1, pupil: 0.5, open: 0 },
+    chill: { lidT: 0.42, lidB: 0.3, browY: 3, browA: -0.04, smile: 0.55, cheek: 0.5, eye: 0.98, pupil: 0.55, open: 0 },
+    groove: { lidT: 0.06, lidB: 0.36, browY: 8, smile: 0.85, cheek: 0.8, eye: 1.02, pupil: 0.64, open: 0.05 },
+  };
+  let lastBeatSeen = -1e9, beatSide = 1;
+  const notes = [];
+  /** While music plays (and he's not busy talking or listening): his expression, the head moves and colour for the beat. */
+  function dance(now, state, e) {
+    const mood = info.groove && info.music && !info.locked && (state === 'idle' || state === 'sleeping') ? info.groove.mood : '';
+    if (!mood) return { nod: 0, hop: 0, ring: 0, col: null };
+    const beatMs = 60000 / (DANCE_BPM[mood] || 100);
+    // No beat heard for a while (or no sound system): keep time by himself.
+    if (now - groove.at > 1500 && now - groove.beatAt > beatMs) { groove.beatAt = now; groove.beats++; groove.e = 0.5; }
+    if (groove.beatAt !== lastBeatSeen) {
+      lastBeatSeen = groove.beatAt; beatSide = -beatSide;
+      if (groove.beats % 2 === 0 && notes.length < 6) notes.push({ at: now, x: (Math.random() - 0.5) * 1.3, d: Math.random() < 0.5 ? -1 : 1, c: Math.random() < 0.5 ? '♪' : '♫' });
+    }
+    Object.assign(e, DANCE_FACE[mood]);
+    const pulse = Math.exp(-(now - groove.beatAt) / 150); // 1 on the beat, fading
+    const out = { nod: 0, hop: 0, ring: groove.e * 0.25 + pulse * 0.3, col: DANCE_COL[mood] || null };
+    if (mood === 'party') {
+      // bouncing, tipping side to side on each beat, colours cycling
+      out.hop = pulse; e.tilt = beatSide * 7;
+      const h = (now / 40) % 360, k = (n) => (n + h / 30) % 12, f = (n) => 0.5 - 0.5 * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+      out.col = [f(0), f(8), f(4)].map((v) => 110 + v * 145);
+    } else if (mood === 'rock') {
+      out.nod = pulse * 1.1; e.tilt = beatSide * 3; // headbanging
+    } else if (mood === 'chill') {
+      e.tilt = Math.sin((now / (beatMs * 2)) * Math.PI) * 8; out.nod = pulse * 0.25; out.ring *= 0.6; // swaying
+    } else {
+      out.nod = pulse * 0.55; e.tilt = beatSide * 3.5; // nodding along
+    }
+    return out;
+  }
+  /** Little notes floating up around him while he dances. */
+  function drawNotes(now, s, rgb) {
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const n = notes[i], t = (now - n.at) / 1800;
+      if (t >= 1) { notes.splice(i, 1); continue; }
+      g.globalAlpha = Math.sin(t * Math.PI) * 0.8;
+      g.fillStyle = rgb(1, 0.3);
+      g.font = '600 ' + Math.round((30 + t * 14) * s) + 'px system-ui, sans-serif';
+      g.fillText(n.c, cx + (n.x * 230 + n.d * Math.sin(t * 6) * 18) * s, cy + (150 - t * 330) * s);
+    }
+    g.globalAlpha = 1;
   }
 
 ${ROBOT3D_JS}

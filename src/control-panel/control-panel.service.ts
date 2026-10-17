@@ -526,6 +526,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         glance: f.get('glance') === 'on',
         frame: f.get('frame') === 'on',
         captions: f.get('captions') === 'on',
+        dance: f.get('dance') === 'on',
         notifyBriefing: f.get('notifyBriefing') === 'on',
         notifyEmail: f.get('notifyEmail') === 'on',
         notifyTodos: f.get('notifyTodos') === 'on',

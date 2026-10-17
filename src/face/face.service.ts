@@ -20,6 +20,7 @@ import { BuiltinActionsService } from '../actions/builtin-actions.service';
 import { ScreenToolsService } from '../actions/screen-tools.service';
 import { LockService } from '../lock/lock.service';
 import { AmbientService, FaceStyle, Glance } from './ambient.service';
+import { GrooveFrame, GrooveListener, GrooveMood, moodFor, moodForTempo } from './groove';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -66,6 +67,8 @@ export interface FaceInfo {
   dimAfterSec?: number;
   /** The box's power button was pressed (when): the screen asks "Turn off / Restart?". */
   powerAsk?: number;
+  /** Music is playing and Max dances to it, in this style (the beat comes as 'groove' events). */
+  groove?: { mood: GrooveMood };
 }
 
 /** How long a power button press stays "asked" (a screen that reconnects within it still asks). */
@@ -104,6 +107,9 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   private audioEndsAt = 0;
   private timers: NodeJS.Timeout[] = [];
   private music?: { title: string; artist: string };
+  /** The style of what's playing, from its genre, station or title (undefined: told from the tempo). */
+  private musicMood?: GrooveMood;
+  private readonly groove = new GrooveListener();
   private wifi?: WifiStatus & { qrSvg?: string };
   private lastInfo = '';
 
@@ -128,6 +134,10 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.timers.push(setInterval(() => void this.tickInfo(), INFO_MS));
     this.lock?.on('change', () => void this.tickInfo());
     this.timers.push(setInterval(() => void this.pollMusic(), MUSIC_MS));
+    // The beat of the music, for the face to dance to (not while he talks over it, nor while locked).
+    this.groove.on('frame', (f: GrooveFrame) => {
+      if (!this.speaking && !this.lock?.status()) this.emit('groove', f);
+    });
     // Cards from anywhere in Max (showCard in ./screen), and the ones the face makes itself.
     screen.on('card', (card: Card, handlers: CardHandlers) => this.showCard(card, handlers));
     screen.on('dismiss', (id: string) => this.dismissCard(id));
@@ -171,6 +181,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   onModuleDestroy(): void {
     for (const t of this.timers) clearInterval(t);
+    this.groove.stop();
   }
 
   // ---------- Inputs from the rest of Max ----------
@@ -293,19 +304,22 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     // Locked (start-up code): the clock, timers and the keypad only; nothing personal.
     // The WiFi setup network's password and QR code only after the code is entered (they let anyone repoint the box).
     const wifi = info.wifi ? { ...info.wifi, password: undefined, qrSvg: undefined } : undefined;
-    return { ...info, locked, wifi, reminder: undefined, music: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
+    return { ...info, locked, wifi, reminder: undefined, music: undefined, groove: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
   }
 
   private fullInfo(): FaceInfo {
     const offline = this.wifi?.state === 'setup' || this.wifi?.state === 'connecting';
     let state: FaceState = this.wifi && this.wifi.state !== 'connected' ? 'setup' : this.speaking ? 'speaking' : this.base;
-    if (state === 'idle' && this.inSleepHours()) state = 'sleeping';
+    const dancing = Boolean(this.music && this.ambient?.settings.dance !== false);
+    // Music on in his sleep hours: someone's up, so is he.
+    if (state === 'idle' && this.inSleepHours() && !dancing) state = 'sleeping';
     return {
       state,
       mode: this.modes?.mode ?? 'personal',
       timers: (this.timerService?.list() ?? []).filter((t) => !t.reminder).map((t) => ({ label: describeTimer(t), endsAt: t.endsAt, total: t.durationSeconds * 1000 })),
       reminder: this.nextReminder(),
       music: this.music,
+      groove: dancing ? { mood: this.musicMood ?? moodForTempo(this.groove.bpm) } : undefined,
       wifi: this.wifi,
       offline,
       emotion: this.emotion,
@@ -388,7 +402,11 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   private async pollMusic(): Promise<void> {
     const before = this.music?.title;
-    this.music = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
+    const now = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
+    this.music = now && { title: now.title, artist: now.artist };
+    this.musicMood = now ? moodFor(`${now.genre ?? ''} ${now.artist} ${now.title}`) : undefined;
+    if (this.music && this.ambient?.settings.dance !== false) this.groove.start();
+    else this.groove.stop();
     // A new song: show the music card for a moment.
     if (this.music && this.music.title !== before) await this.musicCard(MUSIC_CARD_MS);
     else if (this.card?.id === 'music' && Date.now() < this.card.until) await this.musicCard(this.card.until - Date.now());

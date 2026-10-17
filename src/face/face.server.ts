@@ -11,6 +11,7 @@ import { renderFace } from './face.page';
 import { AmbientService } from './ambient.service';
 import { LockService } from '../lock/lock.service';
 import { AirPlayService } from '../music/airplay.service';
+import type { GrooveFrame } from './groove';
 import { ModesService } from '../memory/modes.service';
 
 /** The 3D face's library (three.js), served from Max's own files: the screen needs no internet for it. */
@@ -67,6 +68,7 @@ export class FaceServer implements OnModuleInit, OnModuleDestroy {
     this.face.on('info', (info: FaceInfo) => this.broadcast('info', info));
     const r = (v: number) => Math.round(v * 100) / 100;
     this.face.on('level', (m: Mouth) => this.broadcast('level', { o: r(m.o), w: r(m.w), r: r(m.r), s: r(m.s) }));
+    this.face.on('groove', (f: GrooveFrame) => this.broadcast('groove', f));
     this.heartbeat = setInterval(() => this.broadcast('info', this.face.info()), 15_000);
   }
 

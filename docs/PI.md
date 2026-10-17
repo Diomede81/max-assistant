@@ -120,6 +120,13 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
   - **Captions** (off unless you switch them on in **Settings → Screen** on the control panel): what Max
     heard you say and what he's saying, under the face.
+- **Dancing to the music** (on unless you switch it off in **Settings → Screen**): while music plays, Max
+  listens to the speaker's own output for the beat (nothing is recorded: it only becomes a loudness and a
+  beat) and moves to it in the style of the music, told from the genre (AirPlay), the station's tags and
+  name (radio), or else the tempo (fast is a party, slow is chill): bouncing with changing colours to dance,
+  pop and hip hop, headbanging to rock and metal, swaying with sleepy eyes to jazz, soul and classical,
+  nodding along to the rest. Little notes float up around him. He stops to talk or listen, and keeps time
+  by himself if he can't hear the beat (a laptop without the box's sound system).
 - **Glance (while Max is idle):** the weather at the top (for the home location set on the control panel,
   from Open-Meteo: free, no key), and under the clock your next meeting and a line like "2 critical ·
   1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather); each to-do

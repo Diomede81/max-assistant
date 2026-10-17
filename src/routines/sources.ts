@@ -1,11 +1,11 @@
-import { fetchPublic } from '../net/public-url';
-
 /**
  * Collecting headlines from a website for the news briefing, cheapest way first:
  *  1. the site's news feed (RSS or Atom): free, clean titles, dates and summaries;
  *  2. the headlines linked from the page itself (plain download);
  *  3. Firecrawl (handled by the caller) for sites that only show content to a real browser.
  */
+
+import { fetchPublic } from '../net/public-url';
 
 export interface Candidate {
   title: string;

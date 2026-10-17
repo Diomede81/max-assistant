@@ -91,7 +91,7 @@ export interface AppConfig {
   /** Default home location (the control panel's setting wins): town/area and ISO country code. */
   location: { place: string; country: string };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
-  controlPanel: { port: number; host: string; publicUrl: string; password: string };
+  controlPanel: { port: number; host: string; publicUrl: string; password: string; allowedHosts: string[] };
   /** Max's identity, story and personality (editable on the control panel). */
   soul: { file: string };
   memory: {
@@ -276,6 +276,8 @@ export function loadConfig(): AppConfig {
       host: env.CONTROL_PANEL_HOST || '127.0.0.1',
       publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
       password: env.PANEL_PASSWORD ?? '',
+      // Extra names the panel answers to (e.g. a reverse proxy's), comma-separated.
+      allowedHosts: (env.CONTROL_PANEL_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
     },
     soul: { file: env.SOUL_FILE || join(env.MEMORY_DIR || 'data', 'soul.md') },
     memory: {

@@ -544,9 +544,11 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** What's playing right now, for the face screen (undefined when stopped or paused). */
-  async nowPlaying(): Promise<{ title: string; artist: string } | undefined> {
+  async nowPlaying(): Promise<{ title: string; artist: string; genre?: string } | undefined> {
     const p = this.radio?.playing || this.airplay?.active ? await this.player() : undefined;
-    if (p) return { title: p.title, artist: p.artist };
+    // The style of music, where it's known (the face dances to it): the station's tags, or the song's genre.
+    const genre = this.radio?.playing ? this.radio.current?.station.tags : this.airplay?.now?.genre;
+    if (p) return { title: p.title, artist: p.artist, genre };
     if (this.state !== 'ready') return undefined;
     const s = await this.status().catch(() => undefined);
     if (!s || s.stopped || s.paused || !s.track) return undefined;

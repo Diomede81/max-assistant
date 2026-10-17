@@ -28,7 +28,7 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
   private readonly store: SealedStore<Saved>;
   private saved: Saved = { enabled: true, code: newCode() };
   /** What's playing over AirPlay, from the receiver's metadata. */
-  now?: { title?: string; artist?: string; album?: string; since: number };
+  now?: { title?: string; artist?: string; album?: string; genre?: string; since: number };
   /** The album art of what's playing, when the app sends it (Apple Music does). */
   cover?: { data: Buffer; type: string; id: number; at: number };
   private coverIds = 0;
@@ -187,6 +187,9 @@ export class AirPlayService extends EventEmitter implements OnModuleInit, OnModu
         break;
       case 'asal':
         if (this.now) this.now.album = text || undefined;
+        break;
+      case 'asgn':
+        if (this.now) this.now.genre = text || undefined;
         break;
     }
   }

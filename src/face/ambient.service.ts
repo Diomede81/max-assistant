@@ -51,6 +51,8 @@ export interface AmbientSettings {
   /** Dim the screen after this many quiet seconds (0 = never), down to this brightness (%). */
   dimAfterSec: number;
   dimLevel: number;
+  /** Max dances to the music while it plays (to the beat, in the style of the music). */
+  dance: boolean;
 }
 
 const CAL_MS = 20 * 60_000;
@@ -68,7 +70,7 @@ const PHOTO_EXT: Record<string, string> = { ffd8ff: 'jpg', '89504e': 'png', '524
 export class AmbientService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Ambient');
   private readonly store: SealedStore<AmbientSettings>;
-  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true, faceStyle: 'robot', dimAfterSec: 10, dimLevel: 20 };
+  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true, faceStyle: 'robot', dimAfterSec: 10, dimLevel: 20, dance: true };
   private events: { list: CalEvent[]; at: number; mode: string } = { list: [], at: 0, mode: '' };
   private timer?: NodeJS.Timeout;
   private readonly photoDir: string;

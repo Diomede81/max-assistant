@@ -170,7 +170,7 @@ export class RealtimeConversationService {
     let turns = 0;
     let closed = false;
     const startMode = this.modes?.mode;
-    this.control?.consumeEnd(); // nothing left over from a previous conversation
+    this.control?.reset(); // nothing left over from a previous conversation
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
@@ -238,6 +238,8 @@ export class RealtimeConversationService {
     });
     // "Stop" / "that's all" from the user, or end_conversation from the model: go quiet and end.
     let stopReason: string | undefined;
+    /** Music just started: end once he's said so (finished speaking). */
+    let endAfterReply = false;
     const hush = (why: string) => {
       stopReason ??= why;
       this.face?.conversationEnded(); // the card shown for this conversation goes; his face comes back
@@ -282,6 +284,7 @@ export class RealtimeConversationService {
       }
       turns++;
       busy = false;
+      if (this.control?.consumeEndAfterReply()) endAfterReply = true;
       this.face?.setState('listening');
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
@@ -324,6 +327,7 @@ export class RealtimeConversationService {
         let why: string | undefined;
         if (closed) why = 'connection closed';
         else if (stopReason) why = stopReason;
+        else if (endAfterReply && !busy && !speaking() && now >= lastActivity) why = 'music started: quiet so you can listen';
         // Switched mode: end once he's confirmed it, so the next conversation starts in the new
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;

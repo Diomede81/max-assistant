@@ -11,6 +11,7 @@ import { BuiltinActionsService } from './builtin-actions.service';
 import { ScreenToolsService } from './screen-tools.service';
 import { LockService } from '../lock/lock.service';
 import { MusicService } from '../music/music.service';
+import { ConversationControl } from './conversation-control';
 import { WebService } from '../web/web.service';
 import { TrainsService } from '../trains/trains.service';
 import { RoutinesService } from '../routines/routines.service';
@@ -73,6 +74,7 @@ export class ToolRouterService {
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly trains?: TrainsService,
+    @Optional() private readonly control?: ConversationControl,
   ) {}
 
   /** Work apps (WORK_APPS) are only available in work mode. */
@@ -277,13 +279,24 @@ export class ToolRouterService {
       }
       if (this.updates?.has(name)) return await this.updates.call(name, args);
       if (this.screenTools?.has(name)) return await this.screenTools.call(name, args);
-      if (this.music?.has(name)) return await this.music.call(name, args);
+      if (this.music?.has(name)) return this.musicStarted(name, args, await this.music.call(name, args));
       if (!server) return await this.ha.call(name, args);
       this.externalContentAt = Date.now();
       return await server.call(name, args);
     } catch (err) {
       return `Error: ${(err as Error).message}`;
     }
+  }
+
+  /**
+   * Music just started (radio, Spotify, or resumed): Max confirms it in a few words and the
+   * conversation ends by itself, so the user can listen without having to say "stop".
+   */
+  private musicStarted(name: string, args: Record<string, unknown>, out: string): string {
+    const starts = name === 'play_radio' || name === 'play_music' || (name === 'music_control' && args.action === 'resume');
+    if (!starts || !/^(now playing|playing|resumed)\b/i.test(out) || !this.control) return out;
+    this.control.requestEndAfterReply();
+    return `${out} Confirm it in a few words (e.g. "Here's Radio 2"), with no question: the conversation ends after your reply so the user can listen.`;
   }
 }
 

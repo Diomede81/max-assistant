@@ -18,6 +18,7 @@ import { UpdatesService } from '../updates/updates.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
+import { detail } from '../log-content';
 import { ConfirmationGate } from './confirmation';
 
 /** Emitted around every action: 'start' and 'end' (for the face and spoken "checking…" cues). */
@@ -236,7 +237,7 @@ export class ToolRouterService {
   }
 
   private async run(name: string, args: Record<string, unknown>): Promise<string> {
-    this.log.log(`tool ${name} ${JSON.stringify(args)}`);
+    this.log.log(`tool ${name} ${detail(args)}`);
     if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
       args = { ...args, [EXTERNAL_FLAG]: true };
     }

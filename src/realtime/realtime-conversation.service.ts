@@ -21,6 +21,7 @@ import { ModesService } from '../memory/modes.service';
 import { isStopRequest } from '../conversation/stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { LiveVoiceService } from './live-voice.service';
+import { said } from '../log-content';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -288,7 +289,7 @@ export class RealtimeConversationService {
     client.on('user-words', (t: string) => this.tools.heard(t));
     client.on('user-transcript', (t: string) => {
       this.tools.heard(t);
-      this.log.log(`You: "${t}"`);
+      this.log.log(`You: ${said(t)}`);
       transcript.push({ who: 'user', text: t });
       this.face?.heard(t);
       if (isStopRequest(t)) hush(`you said "${t}"`);
@@ -300,7 +301,7 @@ export class RealtimeConversationService {
     });
     client.on('assistant-transcript', (t: string) => {
       for (const s of sentences.flush()) this.face?.said(s);
-      this.log.log(`Max: "${t}"`);
+      this.log.log(`Max: ${said(t)}`);
       transcript.push({ who: 'max', text: t });
     });
     client.on('error', (err: Error) => {

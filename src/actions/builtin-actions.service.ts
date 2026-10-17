@@ -114,8 +114,10 @@ export class BuiltinActionsService implements OnModuleInit {
         ? [
             tool(
               'remember',
-              'Save a lasting fact to long-term memory: people, preferences, routines, important dates, work projects. ' +
-                'One short self-contained sentence with real names and dates, e.g. "Sofia\'s birthday is 14 March".',
+              'Save something to long-term memory ONLY when the user explicitly asks ("remember that…", "don\'t forget…", "make a note…"). ' +
+                'Details mentioned in passing are filed automatically after the conversation: never call this for them, nor for ' +
+                'questions the user asked (trains, weather, places). One short self-contained sentence with real names and dates, ' +
+                'e.g. "Sofia\'s birthday is 14 March".',
               {
                 fact: { type: 'string', description: 'The fact to remember' },
                 vault: {

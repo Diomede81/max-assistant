@@ -4,7 +4,7 @@ import { Card, CardHandlers, screen } from './screen';
 import { eventLines, extractEvents } from './events';
 import { extractEmails } from './emails';
 import { EventEmitter } from 'node:events';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -64,7 +64,12 @@ export interface FaceInfo {
   faceStyle?: FaceStyle;
   /** Dim the screen after this many quiet seconds (0 = never). */
   dimAfterSec?: number;
+  /** The box's power button was pressed (when): the screen asks "Turn off / Restart?". */
+  powerAsk?: number;
 }
+
+/** How long a power button press stays "asked" (a screen that reconnects within it still asks). */
+const POWER_ASK_MS = 30_000;
 
 const FRAME_MS = 50;
 /** How long a "couldn't finish" note stays on the face. */
@@ -311,8 +316,35 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       canLock: this.lock?.enabled || undefined,
       faceStyle: this.ambient?.settings.faceStyle ?? 'robot',
       dimAfterSec: this.ambient?.settings.dimAfterSec ?? 10,
+      powerAsk: this.powerAsk && Date.now() - this.powerAsk < POWER_ASK_MS ? this.powerAsk : undefined,
     };
   }
+
+  /**
+   * A short press on the box's power button: max-power-button.py leaves a note in /run/max; it's
+   * picked up here (and removed) and the screen asks "Turn off / Restart?".
+   */
+  private readPowerButton(): void {
+    if (!this.cfg.face.onBox) return;
+    const note = join(this.cfg.face.runDir, 'power-button');
+    let stamp: string;
+    try {
+      stamp = readFileSync(note, 'utf8').trim();
+    } catch {
+      return; // no press
+    }
+    try {
+      unlinkSync(note);
+    } catch {
+      // can't remove it: the press is still only asked about once (same note)
+    }
+    if (stamp === this.powerAskNote) return;
+    this.powerAskNote = stamp;
+    this.powerAsk = Date.now();
+    this.log.log('Power button pressed: asking on the screen');
+  }
+  private powerAsk?: number;
+  private powerAskNote = '';
 
   private tickLevel(): void {
     const now = Date.now();
@@ -343,6 +375,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   private async tickInfo(): Promise<void> {
     await this.readWifi();
+    this.readPowerButton();
     const info = this.info();
     const key = JSON.stringify({ ...info, timers: info.timers.map((t) => t.label) });
     if (key !== this.lastInfo) {

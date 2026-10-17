@@ -406,6 +406,7 @@ export class ConversationService implements OnApplicationBootstrap {
     this.historyMode = mode;
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });
+    this.toolRouter?.heard(text); // the answer to any "Shall I go ahead?"
     this.face?.heard(text);
     const historyStart = this.history.length;
 

@@ -203,6 +203,7 @@ export class RealtimeConversationService {
     };
 
     client.on('speech-started', () => {
+      this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
       userSpeaking = true;
       lastActivity = Date.now();
@@ -284,7 +285,10 @@ export class RealtimeConversationService {
       this.face?.setState('listening');
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
+    // What the user said, as it comes in: the answer to "Shall I go ahead?" is checked against it.
+    client.on('user-words', (t: string) => this.tools.heard(t));
     client.on('user-transcript', (t: string) => {
+      this.tools.heard(t);
       this.log.log(`You: ${said(t)}`);
       transcript.push({ who: 'user', text: t });
       this.face?.heard(t);

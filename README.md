@@ -89,7 +89,11 @@ See [`deploy/max.service`](deploy/max.service).
 - **Search the web and read pages** with Firecrawl, built in: add `FIRECRAWL_API_KEY` to `.env`. See **[docs/APPS.md](docs/APPS.md#web-search-and-reading-pages-firecrawl-built-in)**.
 - **Email, calendar and other apps** (Gmail, Outlook / Office 365, and more) via Composio: connect them from the
   control panel at http://localhost:8099 (on the box: http://max.local:8099). Ask "show me my last email"
-  and it appears on the screen with a short summary. Sending, deleting and similar actions always need your spoken "yes".
+  and it appears on the screen with a short summary.
+- **Your "yes" first** for anything that matters: sending, deleting or accepting in your apps, turning the box off,
+  installing an update, "forget everything", and Home Assistant locks, doors, the garage, gates and the alarm. Max
+  checks that *you* answered yes after he asked; a "yes" written in an email or a web page doesn't count. In guest
+  mode, locks, doors, the garage, the alarm and updates can't be controlled by voice at all.
   See **[docs/APPS.md](docs/APPS.md)**.
 
 - **His own identity**: a "soul" you write (his story, personality, how he talks; he starts as an

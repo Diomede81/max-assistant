@@ -194,14 +194,20 @@ say "Installing turn off / restart and screen brightness (screen menu, voice, co
 install -D -m 755 "$REPO/scripts/pi/max-power.sh" /usr/local/lib/max/max-power.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-power.path" /etc/systemd/system/max-power.path
 install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/max-power.service
-# The Pi 5's own power button: a short press turns the box off safely (pressed again, it starts).
+# The Pi 5's own power button: max-power-button.service asks on the screen for a short press and turns
+# the box off when it's held for 5 s. While it runs it holds the button (systemd-inhibit); if it ever
+# stops, the system's own setting below applies: a short press turns the box off safely.
 mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+install -D -m 755 "$REPO/scripts/pi/max-power-button.py" /usr/local/lib/max/max-power-button.py
+install -m 644 "$REPO/scripts/pi/systemd/max-power-button.service" /etc/systemd/system/max-power-button.service
 install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service
 systemctl daemon-reload
 systemctl enable --now max-power.path max-brightness.path
+systemctl enable max-power-button.service
+systemctl restart max-power-button.service || true
 
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d

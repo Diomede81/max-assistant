@@ -156,7 +156,9 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     After choosing, you have 5 seconds to cancel. When the screen goes dark it's safe to unplug.
   - Or say **"Max, turn off"** / **"Max, restart"** (he asks you to confirm), or use **Settings → Device**
     on the control panel.
-  - Or press the **power button on the Raspberry Pi** once.
+  - Or press the **power button on the Raspberry Pi** once: the screen asks **Turn off**, **Restart** or **Back to
+    Max** (then the usual 5 seconds to cancel). **Hold the button for 5 seconds** to turn the box off straight away
+    (still a clean shutdown), e.g. if the screen isn't responding.
   - **To turn it on again:** press the Pi's power button (or unplug and plug the power back in).
 - **Changing WiFi:** if the box can't reach a known WiFi network for a minute, or you choose **WiFi
   setup** in the screen's menu, Max says so and shows a QR code. Scan it with your phone: it joins Max's temporary

@@ -156,7 +156,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let mouth = { o: 0, w: 0, r: 0, s: 0 };
   let connected = demo, lastMsg = Date.now(), lastMouth = 0;
   // Dancing to the music: the last beat heard (performance.now()), the loudness, and when they came.
-  const groove = { e: 0, at: -1e9, beatAt: -1e9, beats: 0 };
+  const groove = { e: 0, at: -1e9, beatAt: -1e9, heardAt: -1e9, beats: 0 };
   let W = 0, H = 0, R = 0, cx = 0, cy = 0, dpr = 1;
 
   function resize() {
@@ -184,7 +184,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     es.addEventListener('groove', (e) => {
       const d = JSON.parse(e.data);
       groove.e = d.e; groove.at = performance.now();
-      if (d.b) { groove.beatAt = groove.at; groove.beats++; }
+      if (d.b) { groove.beatAt = groove.heardAt = groove.at; groove.beats++; }
       lastMsg = Date.now();
     });
     es.onerror = () => { connected = false; };
@@ -873,8 +873,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     const mood = info.groove && info.music && !info.locked && (state === 'idle' || state === 'sleeping') ? info.groove.mood : '';
     if (!mood) return { nod: 0, hop: 0, ring: 0, col: null };
     const beatMs = 60000 / (DANCE_BPM[mood] || 100);
-    // No beat heard for a while (or no sound system): keep time by himself.
-    if (now - groove.at > 1500 && now - groove.beatAt > beatMs) { groove.beatAt = now; groove.beats++; groove.e = 0.5; }
+    // No beat heard for a while (a quiet intro, music he can't hear, or no sound system): keep time by himself.
+    if (now - groove.heardAt > 1500 && now - groove.beatAt > beatMs) { groove.beatAt = now; groove.beats++; if (now - groove.at > 1500) groove.e = 0.5; }
     if (groove.beatAt !== lastBeatSeen) {
       lastBeatSeen = groove.beatAt; beatSide = -beatSide;
       if (groove.beats % 2 === 0 && notes.length < 6) notes.push({ at: now, x: (Math.random() - 0.5) * 1.3, d: Math.random() < 0.5 ? -1 : 1, c: Math.random() < 0.5 ? '♪' : '♫' });

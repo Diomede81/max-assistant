@@ -1,3 +1,5 @@
+import { removeBlocks, stripTags } from '../text/markup';
+
 export interface MailItem {
   id: string;
   subject: string;
@@ -76,9 +78,7 @@ function body(o: Record<string, unknown>): string | undefined {
     const v = o[k];
     const raw = typeof v === 'string' ? v : v && typeof v === 'object' ? (v as Record<string, unknown>).content : undefined;
     if (typeof raw !== 'string') continue;
-    const t = raw
-      .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
+    const t = stripTags(removeBlocks(raw.slice(0, 200_000), ['style', 'script']))
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/https?:\/\/\S+/g, '')
@@ -92,6 +92,6 @@ function body(o: Record<string, unknown>): string | undefined {
 function snippet(o: Record<string, unknown>): string | undefined {
   const raw = SNIPPET.map((k) => o[k]).find((x) => typeof x === 'string' && x.trim()) as string | undefined;
   if (!raw) return undefined;
-  const t = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = stripTags(raw.slice(0, 20_000)).replace(/\s+/g, ' ').trim();
   return t ? t.slice(0, 240) : undefined;
 }

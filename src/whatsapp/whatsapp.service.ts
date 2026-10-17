@@ -40,6 +40,8 @@ export interface WhatsAppStatus {
   allowed: { name: string; number: string; shown: string }[];
   /** A problem to show on the panel (e.g. "signed out from the phone"). */
   note?: string;
+  /** What Max has received since he started (for the panel: "is anything arriving?"). */
+  received?: { messages: number; unreadable: number; lastAt?: number; chats: number; kept: number; recent: { name: string; messages: number; lastAt: number }[] };
 }
 
 const KEEP_DAYS = 7;
@@ -47,6 +49,7 @@ const PER_CHAT = 60;
 const MAX_CHATS = 300;
 const TEXT_MAX = 600;
 const SAVE_MS = 3000;
+const AUTH_SAVE_MS = 800;
 const LINK_TIMEOUT_MS = 3 * 60_000;
 const CARD_MS = 90_000;
 
@@ -62,8 +65,16 @@ function quietLogger(log: Logger): Parameters<Baileys['makeWASocket']>[0]['logge
     debug: () => undefined,
     info: () => undefined,
     warn: (o: unknown, m?: string) => log.debug(`WhatsApp library: ${m ?? (typeof o === 'string' ? o : '')}`),
-    error: (o: unknown, m?: string) => log.debug(`WhatsApp library error: ${m ?? (typeof o === 'string' ? o : '')}`),
+    // its errors (e.g. "failed to decrypt message") in Max's log, at most one a minute: the description only, never message content
+    error: (o: unknown, m?: string) => {
+      const what = (m ?? (typeof o === 'string' ? o : 'error')).slice(0, 120);
+      const err = o && typeof o === 'object' && 'err' in o ? String((o as { err?: { message?: string } }).err?.message ?? '').slice(0, 120) : '';
+      if (Date.now() - lastError < 60_000) return;
+      lastError = Date.now();
+      log.warn(`WhatsApp library: ${what}${err ? ` (${err})` : ''}`);
+    },
   };
+  let lastError = 0;
   return l;
 }
 
@@ -136,10 +147,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (linked) void this.connect().catch((err) => this.retryLater(err));
   }
 
-  onModuleDestroy(): void {
+  /** Shutting down (e.g. an update): the login's latest keys are written before Max exits, or later messages can't be decrypted. */
+  async onModuleDestroy(): Promise<void> {
     this.stopping = true;
-    this.flush();
     this.sock?.end(undefined);
+    await this.flush();
   }
 
   // ---------- Control panel ----------
@@ -151,6 +163,23 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       phone: this.phone ? showNumber(this.phone) : undefined,
       allowed: this.allowed.map((a) => ({ ...a, shown: showNumber(a.number) })),
       note: this.note,
+      received: this.state === 'connected' || this.authLinked ? this.receivedSummary() : undefined,
+    };
+  }
+
+  private stats = { messages: 0, unreadable: 0, lastAt: 0 };
+  private unreadableLogged = 0;
+
+  private receivedSummary(): NonNullable<WhatsAppStatus['received']> {
+    const last = (c: Chat) => c.msgs[c.msgs.length - 1]?.at ?? 0;
+    const chats = Object.values(this.chats).sort((a, b) => last(b) - last(a));
+    return {
+      messages: this.stats.messages,
+      unreadable: this.stats.unreadable,
+      lastAt: this.stats.lastAt || undefined,
+      chats: chats.length,
+      kept: chats.reduce((n, c) => n + c.msgs.length, 0),
+      recent: chats.slice(0, 8).map((c) => ({ name: c.name, messages: c.msgs.length, lastAt: last(c) })),
     };
   }
 
@@ -351,7 +380,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private recent(): string {
     const last = (c: Chat) => c.msgs[c.msgs.length - 1]?.at ?? 0;
     const names = Object.values(this.chats).sort((a, b) => last(b) - last(a)).slice(0, 8).map((c) => c.name);
-    return names.length ? ` Recent chats: ${names.join(', ')}. If one of these is the person, read that one.` : ' No messages at all yet: WhatsApp may still be sending them to Max (it can take a few minutes after linking).';
+    if (names.length) return ` Recent chats: ${names.join(', ')}. If one of these is the person, read that one.`;
+    const st = this.stats;
+    return st.unreadable
+      ? ` No readable messages: ${st.unreadable} of ${st.messages} received couldn't be decrypted. Tell the user to unlink and link WhatsApp again on the control panel.`
+      : ' No messages have reached Max since he started. If the user has had messages since, tell them to check Connections → WhatsApp on the control panel (and link again if it says so).';
   }
 
   private card(subtitle: string, lines: CardLine[]): void {
@@ -493,7 +526,23 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     sock.ev.on('groups.upsert', (gs) => gs.forEach((g) => this.setGroupName(g.id, g.subject)));
     sock.ev.on('groups.update', (gs) => gs.forEach((g) => g.id && g.subject && this.setGroupName(g.id, g.subject)));
     sock.ev.on('messages.upsert', ({ messages }) => {
-      for (const m of messages) this.keep(m, false);
+      let kept = 0;
+      for (const m of messages) {
+        if (!m.key.fromMe && m.key.remoteJid && !m.key.remoteJid.endsWith('@broadcast') && !m.key.remoteJid.endsWith('@newsletter')) {
+          this.stats.messages++;
+          this.stats.lastAt = Date.now();
+          // a message WhatsApp's encryption couldn't open: counted, and its reason logged (no content)
+          if (m.messageStubType === B.proto.WebMessageInfo.StubType.CIPHERTEXT) {
+            this.stats.unreadable++;
+            if (Date.now() - this.unreadableLogged > 10 * 60_000) {
+              this.unreadableLogged = Date.now();
+              this.log.warn(`WhatsApp: a message couldn't be decrypted (${String(m.messageStubParameters?.[0] ?? 'no reason').slice(0, 100)}); ${this.stats.unreadable} so far`);
+            }
+          }
+        }
+        if (this.keep(m, false)) kept++;
+      }
+      if (kept) this.log.log(`WhatsApp: ${kept} new message${kept === 1 ? '' : 's'} kept`);
       this.saveMessages();
     });
   }
@@ -596,14 +645,15 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (this.chats[id]) this.chats[id].name = subject;
   }
 
-  private keep(m: WAMessage, old: boolean): void {
+  /** Keeps a message (true) or skips it (status updates, reactions, system messages, unreadable ones). */
+  private keep(m: WAMessage, old: boolean): boolean {
     const B = this.lib!;
     const raw = m.key.remoteJid ? bare(m.key.remoteJid) : '';
-    if (!raw || raw === 'status@broadcast' || raw.endsWith('@newsletter') || raw.endsWith('@broadcast')) return;
+    if (!raw || raw === 'status@broadcast' || raw.endsWith('@newsletter') || raw.endsWith('@broadcast')) return false;
     const text = messageText(B, m);
-    if (!text) return;
+    if (!text) return false;
     const at = Number(m.messageTimestamp ?? 0) * 1000 || Date.now();
-    if (Date.now() - at > KEEP_DAYS * 86_400_000) return;
+    if (Date.now() - at > KEEP_DAYS * 86_400_000) return false;
     const group = raw.endsWith('@g.us');
     if (raw.endsWith('@lid')) {
       if (m.key.remoteJidAlt) this.learn(raw, m.key.remoteJidAlt);
@@ -622,13 +672,14 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     }
     if (old) chat.seen = Math.max(chat.seen, at);
     const id = m.key.id ?? `${at}`;
-    if (chat.msgs.some((x) => x.id === id)) return;
+    if (chat.msgs.some((x) => x.id === id)) return false;
     const from = m.key.fromMe ? 'You' : group ? m.pushName || this.names[bare(m.key.participant ?? '')] || 'Someone' : chat.name;
     chat.msgs.push({ id, at, from, mine: Boolean(m.key.fromMe), text: text.slice(0, TEXT_MAX) });
     chat.msgs.sort((a, b) => a.at - b.at);
     if (chat.msgs.length > PER_CHAT) chat.msgs.splice(0, chat.msgs.length - PER_CHAT);
     // your own reply means you've seen the chat
     if (m.key.fromMe) chat.seen = Math.max(chat.seen, at);
+    return true;
   }
 
   /** Drops old messages and the quietest chats beyond the limits. */
@@ -649,37 +700,42 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
   private saveAuth(): void {
     clearTimeout(this.saveAuthTimer);
-    this.saveAuthTimer = setTimeout(() => this.writeAuth(), SAVE_MS);
+    // the encryption keys change as messages come and go: written within a second
+    this.saveAuthTimer = setTimeout(() => void this.writeAuth(), AUTH_SAVE_MS);
   }
 
-  private writeAuth(): void {
-    if (!this.auth || !this.lib) return;
-    this.authStore.save({ data: JSON.stringify(this.auth, this.lib.BufferJSON.replacer) }).catch((err) => this.log.warn(`Could not save the WhatsApp login: ${(err as Error).message}`));
+  private writeAuth(): Promise<void> {
+    this.saveAuthTimer = undefined;
+    if (!this.auth || !this.lib) return Promise.resolve();
+    return this.authStore.save({ data: JSON.stringify(this.auth, this.lib.BufferJSON.replacer) }).catch((err) => this.log.warn(`Could not save the WhatsApp login: ${(err as Error).message}`));
   }
 
   private saveMessages(): void {
     clearTimeout(this.saveMsgTimer);
-    this.saveMsgTimer = setTimeout(() => this.writeMessages(), SAVE_MS);
+    this.saveMsgTimer = setTimeout(() => void this.writeMessages(), SAVE_MS);
   }
 
-  private writeMessages(): void {
+  private writeMessages(): Promise<void> {
+    this.saveMsgTimer = undefined;
     this.prune();
-    this.msgStore.save({ chats: this.chats, names: this.names, lids: this.lids }).catch((err) => this.log.warn(`Could not save WhatsApp messages: ${(err as Error).message}`));
+    return this.msgStore.save({ chats: this.chats, names: this.names, lids: this.lids }).catch((err) => this.log.warn(`Could not save WhatsApp messages: ${(err as Error).message}`));
   }
 
   private saveSettings(): void {
     this.settingsStore.save({ allowed: this.allowed }).catch((err) => this.log.warn(`Could not save the WhatsApp list: ${(err as Error).message}`));
   }
 
-  private flush(): void {
+  private async flush(): Promise<void> {
+    const pending: Promise<void>[] = [];
     if (this.saveAuthTimer) {
       clearTimeout(this.saveAuthTimer);
-      this.writeAuth();
+      pending.push(this.writeAuth());
     }
     if (this.saveMsgTimer) {
       clearTimeout(this.saveMsgTimer);
-      this.writeMessages();
+      pending.push(this.writeMessages());
     }
+    await Promise.all(pending);
   }
 }
 

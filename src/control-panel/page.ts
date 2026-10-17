@@ -805,6 +805,7 @@ function whatsappSection(w: WhatsAppStatus): string {
   return `<section id="whatsapp"><h2>WhatsApp</h2><ul><li class="row"><div style="flex:1"><div class="name">Your WhatsApp ${state}</div>
 <div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web: he reads your chats and keeps the last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
 ${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
+${w.received ? receivedRow(w.received) : ''}
 ${link}</div></li>
 <li class="row"><div style="flex:1"><div class="name">Who Max may send messages to</div>
 <div class="meta">Max only sends to the people on this list, and only after reading the message back and hearing your "yes". He can't add people himself.</div>
@@ -813,6 +814,14 @@ ${people || '<p class="meta">Nobody yet: Max can read your messages but not send
 </div></li></ul>
 <p class="meta">This uses WhatsApp's linked-devices feature through unofficial software (not a WhatsApp product). WhatsApp unlinks devices when the phone has been offline for about 14 days: link again then. You can also unlink Max from the phone (Linked devices).</p>
 </section>`;
+}
+
+/** What has reached Max (no message text): shows at a glance whether messages arrive, and whether they can be read. */
+function receivedRow(r: NonNullable<WhatsAppStatus['received']>): string {
+  const t = (ms?: number) => (ms ? new Date(ms).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+  const recent = r.recent.map((c) => `${esc(c.name)} (${c.messages}, ${t(c.lastAt)})`).join(' · ');
+  return `<p class="meta"><b>Since Max started:</b> ${r.messages} message${r.messages === 1 ? '' : 's'} received${r.lastAt ? `, the last at ${t(r.lastAt)}` : ''}${r.unreadable ? ` · <b>${r.unreadable} couldn't be decrypted</b> (if this keeps growing, Unlink and link again)` : ''}.<br>
+<b>Kept on the box:</b> ${r.kept} message${r.kept === 1 ? '' : 's'} in ${r.chats} chat${r.chats === 1 ? '' : 's'} (last 7 days, text only).${recent ? `<br><b>Latest chats:</b> ${recent}` : ''}</p>`;
 }
 
 function trainsSection(t: NonNullable<PanelData['trains']>): string {

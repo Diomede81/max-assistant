@@ -13,6 +13,12 @@ Max can check National Rail's live trains and plan journeys, and put both on his
 
 Max never books or pays himself, and doesn't guess ticket prices: Trainline shows them.
 
+**Where the times come from:** "the next train(s)" between two stations, within the next two hours, comes
+**live from National Rail** (every train in order, with delays and platforms: the same data Trainline uses).
+Later journeys, and ones with changes, come from **Google Maps' timetable** (planned times); Max lists them in
+order, asking Google again so no train in between is skipped. Journey times always count from the train leaving
+to arriving. Max only ever says train times the train service gave him.
+
 **Home station:** the "from" when you don't say one. Set it on the control panel (**Connections → Trains**), e.g.
 *Twickenham*, or `HOME_STATION=Twickenham` in `.env`.
 

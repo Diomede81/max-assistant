@@ -282,7 +282,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** One request, then follow-ups without the wake word, until nobody speaks. */
   private async conversation(): Promise<void> {
     this.transcript = [];
-    this.control?.consumeEnd(); // nothing left over from a previous conversation
+    this.control?.reset(); // nothing left over from a previous conversation
     try {
       await this.conversationTurns();
     } finally {
@@ -308,6 +308,10 @@ export class ConversationService implements OnApplicationBootstrap {
         if (outcome === 'ended') {
           this.log.log('Conversation ended by Max (told to stop, or the speech was not meant for him)');
           this.face?.conversationEnded();
+          return;
+        }
+        if (outcome === 'music') {
+          this.log.log('Music started: conversation ended so you can listen');
           return;
         }
         if (outcome === 'interrupted') {
@@ -391,7 +395,7 @@ export class ConversationService implements OnApplicationBootstrap {
     return { value: text, endOfSpeech: tEnd };
   }
 
-  private async respond(text: string, tEndOfSpeech: number): Promise<'done' | 'ended' | 'interrupted'> {
+  private async respond(text: string, tEndOfSpeech: number): Promise<'done' | 'ended' | 'music' | 'interrupted'> {
     this.state = 'respond';
     this.face?.setState('thinking');
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
@@ -470,6 +474,8 @@ export class ConversationService implements OnApplicationBootstrap {
     this.lastTurnAt = Date.now();
     this.trimHistory();
     if (this.control?.consumeEnd()) return 'ended';
+    // Music just started: he's said so, now quiet so you can listen.
+    if (this.control?.consumeEndAfterReply() && !interrupted) return 'music';
     return interrupted ? 'interrupted' : 'done';
   }
 

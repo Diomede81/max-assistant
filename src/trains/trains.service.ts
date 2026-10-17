@@ -6,6 +6,7 @@ import { SealedStore } from '../memory/sealed-store';
 import { showCard } from '../face/screen';
 import type { CardLine } from '../face/screen';
 import { Station, STATIONS } from './stations';
+import { stripTags } from '../text/markup';
 
 /**
  * Live departure boards (Rail Data Marketplace). The product's address differs between its
@@ -416,7 +417,7 @@ function get(o: unknown, key: string): unknown {
 
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : v ? [v] : []);
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-const clean = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const clean = (s: string) => stripTags(s.slice(0, 20_000)).replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const tz = () => process.env.TZ || 'Europe/London';
 const hm = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz(), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms);
 const dayName = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz(), weekday: 'long', day: 'numeric', month: 'long' }).format(ms);

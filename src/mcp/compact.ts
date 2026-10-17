@@ -1,3 +1,8 @@
+import { hasTags, removeBlocks, stripTags } from '../text/markup';
+
+/** Markup longer than this is cut before tidying (emails can be megabytes of HTML). */
+const MAX_HTML = 400_000;
+
 /**
  * Makes an app's answer (usually JSON from Microsoft Graph, Gmail...) small enough for the AI
  * without losing the content. A raw Outlook event is 3-8k characters (HTML invitation, attendee
@@ -75,7 +80,7 @@ function clean(v: unknown, cap: number, key = ''): unknown {
     return flattenSingle(out);
   }
   if (typeof v === 'string') {
-    let s = /<\/?[a-z][\s\S]*>/i.test(v) ? htmlToText(v) : v.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    let s = hasTags(v) ? htmlToText(v) : v.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     const max = cap === 0 ? 100 : cap;
     if (LONG_TEXT.test(key) && s.length > max) s = `${s.slice(0, max)}…`;
     return s;
@@ -110,10 +115,9 @@ function hasList(v: unknown): boolean {
 }
 
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style|head)\b[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
+  // Very long markup is cut first (the AI only gets a few thousand characters of it anyway).
+  const kept = removeBlocks(html.slice(0, MAX_HTML), ['script', 'style', 'head']).replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, '\n');
+  return stripTags(kept)
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')

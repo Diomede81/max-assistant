@@ -1,3 +1,5 @@
+import { blocks, inner, removeBlocks, splitBlock, stripTags } from '../text/markup';
+
 /**
  * Collecting headlines from a website for the news briefing, cheapest way first:
  *  1. the site's news feed (RSS or Atom): free, clean titles, dates and summaries;
@@ -17,6 +19,8 @@ export interface Candidate {
 const FETCH_TIMEOUT_MS = 12_000;
 const UA = 'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MaxAssistant';
 const MAX_PER_SOURCE = 30;
+/** A page or feed is read up to this size, as it downloads (a huge or endless answer is cut off). */
+const MAX_PAGE_BYTES = 1_500_000;
 
 export function normaliseUrl(input: string): string | undefined {
   const s = input.trim();
@@ -44,10 +48,11 @@ async function download(url: string): Promise<{ type: string; body: string; url:
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return { type: res.headers.get('content-type') ?? '', body: (await res.text()).slice(0, 3_000_000), url: res.url || url };
+  return { type: res.headers.get('content-type') ?? '', body: await readCapped(res, MAX_PAGE_BYTES), url: res.url || url };
 }
 
-const isFeed = (type: string, body: string) => /xml|rss|atom/i.test(type) || /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<(rss|feed|rdf:RDF)\b/i.test(body);
+// Only the start of the page is looked at (the pattern repeats over comments: bounded, it can't run long).
+const isFeed = (type: string, body: string) => /xml|rss|atom/i.test(type) || /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<(rss|feed|rdf:RDF)\b/i.test(body.slice(0, 4000));
 
 /** Feed first, then the page's own headline links. `minFromPage`: fewer than this from the page counts as failure. */
 export async function headlinesFrom(url: string, minFromPage = 6, guessFeeds = false): Promise<{ items: Candidate[]; via: 'feed' | 'page'; feedUrl?: string; title?: string } | undefined> {
@@ -73,7 +78,7 @@ export async function headlinesFrom(url: string, minFromPage = 6, guessFeeds = f
 /** <link rel="alternate" type="application/rss+xml" href="..."> in a page. */
 export function feedLinks(html: string, base: string): string[] {
   const out: string[] = [];
-  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+  for (const m of html.matchAll(/<link\b[^>]{0,1000}>/gi)) {
     const tag = m[0];
     if (!/rel=["']?alternate/i.test(tag) || !/type=["']?application\/(rss|atom)\+xml/i.test(tag)) continue;
     const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
@@ -89,11 +94,13 @@ export function feedLinks(html: string, base: string): string[] {
 }
 
 export function parseFeed(xml: string, source: string): Candidate[] {
-  const blocks = [...xml.matchAll(/<(item|entry)\b[\s\S]*?<\/\1>/gi)].map((m) => m[0]);
   const items: Candidate[] = [];
-  for (const b of blocks) {
+  for (const b of blocks(xml, ['item', 'entry'], MAX_PER_SOURCE * 3)) {
     const title = text(tag(b, 'title'));
-    const link = text(tag(b, 'link')) || /<link\b[^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["']/i.exec(b)?.[1] || /<link\b[^>]*href=["']([^"']+)["']/i.exec(b)?.[1] || text(tag(b, 'guid'));
+    // Atom: <link rel="alternate" href="...">, looked for in the link tags themselves (bounded, not across the item).
+    const linkTags = b.match(/<link\b[^>]{0,500}>/gi) ?? [];
+    const attr = (t: string | undefined) => (t ? /href=["']([^"']+)["']/i.exec(t)?.[1] : undefined);
+    const link = text(tag(b, 'link')) || attr(linkTags.find((t) => /rel=["']alternate["']/i.test(t))) || attr(linkTags[0]) || text(tag(b, 'guid'));
     if (!title || !/^https?:\/\//.test(link ?? '')) continue;
     const when = text(tag(b, 'pubDate') || tag(b, 'published') || tag(b, 'updated') || tag(b, 'dc:date'));
     const parsed = when ? Date.parse(when) : NaN;
@@ -114,13 +121,16 @@ export function linksFromHtml(html: string, base: string, source: string): Candi
   const baseHost = host(base);
   const seen = new Set<string>();
   const items: Candidate[] = [];
-  const body = html.replace(/<(script|style|nav|footer|header)\b[\s\S]*?<\/\1>/gi, ' ');
-  for (const m of body.matchAll(/<a\b[^>]*href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-    const title = text(m[2]);
+  const body = removeBlocks(html, ['script', 'style', 'nav', 'footer', 'header']);
+  for (const a of blocks(body, ['a'], 2000)) {
+    const { open, body: inside } = splitBlock(a);
+    const href = /href=["']([^"'#]+)["']/i.exec(open)?.[1];
+    if (!href) continue;
+    const title = text(inside);
     if (title.split(' ').length < 4 || title.length > 200) continue;
     let url: string;
     try {
-      url = new URL(decode(m[1]), base).toString();
+      url = new URL(decode(href), base).toString();
     } catch {
       continue;
     }
@@ -154,34 +164,54 @@ export function linksFromMarkdown(md: string, base: string, source: string): Can
 /** The readable text of an article page, without Firecrawl (rough: paragraphs only). */
 export async function articleText(url: string): Promise<string> {
   const page = await download(url);
-  const paras = [...page.body.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
-    .map((m) => text(m[1]))
+  const paras = blocks(removeBlocks(page.body, ['script', 'style']), ['p'], 400)
+    .map((p) => text(splitBlock(p).body))
     .filter((p) => p.split(' ').length > 8);
   return paras.join('\n').slice(0, 6000);
 }
 
 function tag(xml: string, name: string): string {
-  const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i').exec(xml);
-  return m ? m[1] : '';
+  return inner(xml, name);
 }
 
 /** Markup -> plain text: CDATA, tags and entities removed, spaces tidied. */
 function text(s: string): string {
   return decode(
-    s
-      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-      .replace(/<[^>]+>/g, ' '),
+    // CDATA markers dropped (keeping what's inside), then tags.
+    stripTags(s.split('<![CDATA[').join('').split(']]>').join('')),
   )
-    .replace(/<[^>]+>/g, ' ') // tags that were entity-encoded inside CDATA
+    .replace(/<[^>]{0,300}>/g, ' ') // tags that were entity-encoded inside CDATA
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function decode(s: string): string {
   return s
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d{1,7});/g, (_, n) => codePoint(Number(n)))
+    .replace(/&#x([0-9a-f]{1,6});/gi, (_, n) => codePoint(parseInt(n, 16)))
     .replace(/&(amp|lt|gt|quot|apos|nbsp|rsquo|lsquo|rdquo|ldquo|ndash|mdash|hellip);/g, (_, e) =>
       ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', ndash: '–', mdash: '—', hellip: '…' })[e as string] ?? '',
     );
+}
+
+/** A character from its number; nothing for numbers that aren't one (e.g. &#99999999;). */
+const codePoint = (n: number) => (Number.isInteger(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '');
+
+/** The response's text, reading at most `max` bytes (stops the download there). */
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (size < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      size += value.length;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return Buffer.concat(parts).subarray(0, max).toString('utf8');
 }

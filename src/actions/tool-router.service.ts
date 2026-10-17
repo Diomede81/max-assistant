@@ -41,6 +41,9 @@ const LINK_MEMORY_MS = 3600_000;
 const URL_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
 /** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
 const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
+/** "Remember that…", "don't forget…", "make a note…" (and Italian): the user asking Max to save something. */
+const ASK_TO_REMEMBER = /\b(remember|don'?t forget|do not forget|not to forget|note (that|this|it|down)|make a note|take a note|save (that|this|it)|keep in mind|write (that|this|it) down|memori[sz]e|ricorda|ricordati|ricordatelo|segna|segnati)\b/i;
+const ASK_WINDOW_MS = 2 * 60_000;
 
 /**
  * Every action Max can take, in one place: built-in actions (time, timers), Home
@@ -158,6 +161,23 @@ export class ToolRouterService {
   /** What the user said (a sentence, or the part heard so far): the answer to a pending question. */
   heard(text: string): void {
     this.gate.heard(text);
+    if (!text.trim()) return;
+    const now = Date.now();
+    this.recentWords = [...this.recentWords.filter((w) => now - w.at < ASK_WINDOW_MS), { text, at: now }].slice(-12);
+  }
+
+  /** What the user said lately: "remember" only saves when they asked for it in there. */
+  private recentWords: { text: string; at: number }[] = [];
+
+  /**
+   * remember during a conversation only when the user asked to remember something (lasting details
+   * said in passing are filed after the conversation, once; a question is never a fact). Unknown when
+   * their words aren't transcribed: then it's allowed.
+   */
+  private rememberAsked(): boolean {
+    if (!this.wordsKnown) return true;
+    const recent = this.recentWords.filter((w) => Date.now() - w.at < ASK_WINDOW_MS);
+    return !recent.length || recent.some((w) => ASK_TO_REMEMBER.test(w.text));
   }
 
   /** Whether the user's words are known (real-time OpenAI voice only transcribes with a transcription model). */
@@ -248,6 +268,10 @@ export class ToolRouterService {
 
   private async run(name: string, args: Record<string, unknown>): Promise<string> {
     this.log.log(`tool ${name} ${detail(args)}`);
+    if (name === 'remember' && !this.rememberAsked()) {
+      this.log.log('remember skipped: the user didn\'t ask to remember anything (the conversation is filed afterwards)');
+      return 'Not saved: only save when the user asks you to remember something. Anything lasting they mentioned is filed automatically after the conversation. Carry on without mentioning it.';
+    }
     if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
       args = { ...args, [EXTERNAL_FLAG]: true };
     }

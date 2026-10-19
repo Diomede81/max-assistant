@@ -4,7 +4,21 @@ import { MemoryService } from '../memory/memory.service';
 import type { Mode } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 
-export type AboutKey = 'name' | 'callMe' | 'birthday' | 'home' | 'work' | 'likes' | 'avoid' | 'health' | 'notes';
+export type AboutKey =
+  | 'name'
+  | 'callMe'
+  | 'birthday'
+  | 'origin'
+  | 'languages'
+  | 'home'
+  | 'family'
+  | 'people'
+  | 'work'
+  | 'education'
+  | 'likes'
+  | 'avoid'
+  | 'health'
+  | 'notes';
 
 export interface AboutField {
   key: AboutKey;
@@ -28,8 +42,13 @@ export const ABOUT_FIELDS: AboutField[] = [
   { key: 'name', ai: 'Name', label: 'Your name', hint: 'e.g. Luca Licata', kind: 'line', max: 80, modes: ALL },
   { key: 'callMe', label: 'What Max calls you', hint: 'e.g. Luca (empty: your first name)', kind: 'line', max: 40, modes: PW },
   { key: 'birthday', ai: 'Birthday', label: 'Birthday', hint: '', kind: 'date', max: 10, modes: P },
+  { key: 'origin', ai: 'Where they are from', label: 'Where you were born and grew up', hint: 'e.g. born in Palermo, grew up in Milan, in London since 2010', kind: 'text', max: 300, modes: PW },
+  { key: 'languages', ai: 'Languages', label: 'Languages you speak', hint: 'e.g. Italian and English', kind: 'line', max: 120, modes: PW },
   { key: 'home', ai: 'Lives with', label: 'Who you live with', hint: 'e.g. my partner Anna, our daughter Sofia (7) and Milo the cat', kind: 'text', max: 400, modes: P },
+  { key: 'family', ai: 'Family', label: 'Family', hint: 'e.g. my parents Rosa and Pino live in Palermo; my sister Chiara (35) is in Rome', kind: 'text', max: 500, modes: P },
+  { key: 'people', ai: 'Important people', label: 'Important people', hint: 'e.g. Marco, my business partner at Acme; Giulia, my best friend since school', kind: 'text', max: 600, modes: PW },
   { key: 'work', ai: 'Work', label: 'Your work', hint: 'e.g. product manager at Acme, mostly from home on Mondays and Fridays', kind: 'text', max: 400, modes: PW },
+  { key: 'education', ai: 'Schools and studies', label: 'Schools and studies', hint: 'e.g. Liceo Scientifico in Palermo; Economics at Bocconi, Milan (2003)', kind: 'text', max: 400, modes: PW },
   { key: 'likes', ai: 'Likes and interests', label: 'Likes and interests', hint: 'e.g. Juventus, cooking, sci-fi films, cycling at weekends', kind: 'text', max: 500, modes: P },
   { key: 'avoid', ai: 'Avoid', label: 'What Max should avoid', hint: "e.g. don't call me mate; no spoilers", kind: 'text', max: 400, modes: PW },
   { key: 'health', ai: 'Health and food', label: 'Health and food', hint: 'e.g. vegetarian, allergic to nuts', kind: 'text', max: 300, modes: P },
@@ -107,8 +126,11 @@ export class AboutService implements OnModuleInit {
     }
     return (
       `About the person you support, in their own words (use it naturally; don't recite it). ` +
+      `It's theirs to share with you in this mode, so answer from it freely when they ask, work details and the people listed ` +
+      `included: the rules about locked vaults and modes are about your stored memories, not this page. ` +
       `${call ? `Call them ${call}. ` : ''}When they tell you something new about themselves that belongs here (their name, ` +
-      `birthday, who they live with, work, likes, what to avoid, health or food), save it with the about_you action.\n${lines.join('\n')}`
+      `birthday, where they're from, family, the important people in their life, work, studies, likes, what to avoid, ` +
+      `health or food), save it with the about_you action.\n${lines.join('\n')}`
     );
   }
 }

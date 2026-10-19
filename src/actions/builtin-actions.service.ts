@@ -52,10 +52,11 @@ export class BuiltinActionsService implements OnModuleInit {
             tool(
               'about_you',
               'Save something the user told you about THEMSELVES to their "About you" page: their name, what to call them, ' +
-                'birthday, who they live with, work, likes, what you should avoid, health or food, or anything else about them. ' +
-                'Only what they said themselves in this conversation; for other people or general facts use remember.',
+                'birthday, where they are from, languages, who they live with, family, the important people in their life (as they describe them), ' +
+                'work, schools and studies, likes, what you should avoid, health or food, or anything else about them. ' +
+                'Only what they said themselves in this conversation; for anything else use remember.',
               {
-                field: { type: 'string', enum: ABOUT_FIELDS.map((f) => f.key), description: 'Which part: name, callMe (what you call them), birthday, home (who they live with), work, likes, avoid, health, notes' },
+                field: { type: 'string', enum: ABOUT_FIELDS.map((f) => f.key), description: 'Which part: name, callMe (what you call them), birthday, origin (where born and grew up), languages, home (who they live with), family, people (important people), work, education (schools and studies), likes, avoid, health, notes' },
                 value: { type: 'string', description: 'The full new text for that part (keep what was already there that still holds). Birthday as YYYY-MM-DD.' },
               },
               ['field', 'value'],

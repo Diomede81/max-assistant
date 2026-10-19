@@ -46,6 +46,8 @@ export interface PanelData {
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
+  /** About you: the person Max supports. */
+  about?: { fields: { key: string; label: string; hint: string; kind: string; max: number; modes: string[]; value: string }[] };
   composio: {
     configured: boolean;
     error?: string;
@@ -177,6 +179,25 @@ ${l.canReset
     : '<p class="meta">Forgot the code? Set <code>PANEL_PASSWORD</code> to be able to remove it from this page, or delete <code>data/startup-code.json</code> on the box.</p>'}`
     : `<form class="addfact" method="post" action="/lock/set">${code('code', 'New 6-digit code')}${code('repeat', 'Repeat it')}<button class="btn" type="submit">Turn on</button></form>`}
 </div></li>`;
+}
+
+const SEEN: Record<string, string> = { 'personal,work,guest': 'Every mode (guests only hear your name)', 'personal,work': 'Personal and work mode', personal: 'Personal mode only' };
+
+function aboutSection(a: NonNullable<PanelData['about']>): string {
+  const name = a.fields.find((f) => f.key === 'name')?.value;
+  const rows = a.fields
+    .map((f) => {
+      const id = `about-${f.key}`;
+      const input =
+        f.kind === 'text'
+          ? `<textarea id="${id}" name="${f.key}" rows="2" maxlength="${f.max}" placeholder="${esc(f.hint)}">${esc(f.value)}</textarea>`
+          : `<input id="${id}" name="${f.key}" ${f.kind === 'date' ? 'type="date"' : `maxlength="${f.max}"`} value="${esc(f.value)}" placeholder="${esc(f.hint)}">`;
+      return `<div class="afield"><label for="${id}">${esc(f.label)}</label>${input}<div class="meta">Max knows this in: ${SEEN[f.modes.join(',')] ?? f.modes.join(', ')}</div></div>`;
+    })
+    .join('');
+  return `<section id="about-you"><h2>About you</h2>
+<p class="meta">Who Max supports. ${name ? `He knows you as <b>${esc(name)}</b>.` : '<b>Max doesn\'t know your name yet.</b>'} Fill in as much or as little as you like: he reads it at the start of every conversation and uses it naturally. You can also just tell him ("Max, my birthday is 14 March"). Each mode sees only its part, and it's kept encrypted with his memory.</p>
+<form class="about" method="post" action="/about">${rows}<button class="btn" type="submit">Save</button></form></section>`;
 }
 
 function locationSection(l: NonNullable<PanelData['location']>): string {
@@ -408,7 +429,7 @@ const QUICK = ['overview', 'devices', 'myday', 'projects'];
 
 /** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
 const DRAWER: [string, [string, string, string][]][] = [
-  ['Max', [['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
+  ['Max', [['#about-you', 'About you', 'memory'], ['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
   ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
   ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
 ];
@@ -511,6 +532,7 @@ function overview(d: PanelData): string {
     tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
     music ? tile('#music', 'Spotify', music, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
     m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
+    d.about ? tile('#about-you', 'About you', d.about.fields.find((f) => f.key === 'name')?.value ? esc(d.about.fields.find((f) => f.key === 'name')!.value) : badge(false, '', 'Not set'), 'Who Max supports: your name, family, likes') : '',
     d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
     d.location ? tile('#location', 'Home location', d.location.place ? esc(d.location.place) : badge(false, '', 'Not set'), 'For local answers and search results') : '',
   ].join('');
@@ -590,6 +612,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 ${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
+.about .afield{margin:0 0 14px}.about label{display:block;font-weight:600;margin:0 0 4px}.about input{display:block;width:100%;max-width:420px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}.about textarea{box-sizing:border-box}.about .meta{margin-top:3px;font-size:13px}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.group{padding:14px 0 2px}.group h3{margin:0}.group+.row{border-top:0}.add{margin:12px 0 0}
@@ -638,7 +661,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 
 <div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
 
-<div class="pane" id="tab-memory">${d.memory ? memorySection(d.memory) : ''}</div>
+<div class="pane" id="tab-memory">${d.about ? aboutSection(d.about) : ''}${d.memory ? memorySection(d.memory) : ''}</div>
 
 ${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}</div>` : ''}
 

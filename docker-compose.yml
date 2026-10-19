@@ -3,6 +3,7 @@
 #   docker compose --profile max up -d --build voice services + Max in a container
 #   docker compose run --rm max node dist/tools/chat.js     type to Max (no audio needed)
 #   add --profile local-llm for Ollama
+#   add --profile home (and HA_LOCAL=1 in .env) to try Max's own Home Assistant and his Devices tab
 # Running Max in Docker on a Mac/Windows laptop needs a sound bridge: see docs/DOCKER.md.
 # Keep container logs small: on a Raspberry Pi running from an SD card, endless log writes are
 # what wears the card out. 3 files x 5 MB per service is plenty for troubleshooting.
@@ -33,6 +34,8 @@ services:
       FACE_HOST: 0.0.0.0
       # Max's Spotify speaker (the "spotify" service below); ignored when it isn't running.
       SPOTIFY_API_URL: http://spotify:3678
+      # Max's own Home Assistant (the "homeassistant" service below), used when HA_LOCAL=1 in .env.
+      HA_LOCAL_URL: http://homeassistant:8123
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: [openwakeword, whisper, piper]
     # Control panel (connect Office 365, WhatsApp...): http://localhost:8099, this computer only
@@ -40,6 +43,22 @@ services:
     ports: ["127.0.0.1:8099:8099", "127.0.0.1:8098:8098"]
     # max-data holds Max's memory (facts + conversation notes); kept across restarts/rebuilds.
     volumes: ["./config:/app/config:ro", "max-data:/app/data"]
+
+  # Max's own Home Assistant, to try his Devices tab on a laptop:
+  #   set HA_LOCAL=1 in .env, then  docker compose --profile max --profile home up -d --build
+  # Max sets it up himself; devices are on the control panel's Devices tab, the full Home Assistant is at
+  # http://localhost:8123. On a laptop it can't search your WiFi for devices: add them by brand (and their
+  # address where asked). Its data is kept in ./data/home-assistant. The Max box runs it differently
+  # (docker-compose.pi.yml).
+  homeassistant:
+    logging: *logging
+    image: ghcr.io/home-assistant/home-assistant:stable
+    profiles: ["home"]
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/London}
+    volumes: ["./data/home-assistant:/config"]
+    ports: ["127.0.0.1:8123:8123"]
 
   openwakeword:
     logging: *logging

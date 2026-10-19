@@ -15,6 +15,7 @@ import { DeviceService, STEP } from '../device/device.service';
 import { CardLine, showCard } from '../face/screen';
 import { dueText, localToday } from '../memory/projects.service';
 import { timeZone } from './clock';
+import { ABOUT_FIELDS, AboutKey, AboutService } from '../about/about.service';
 
 type Handler = (args: Record<string, unknown>) => string | Promise<string>;
 
@@ -41,10 +42,26 @@ export class BuiltinActionsService implements OnModuleInit {
     private readonly modes: ModesService,
     private readonly projects: ProjectsService,
     private readonly todos: TodoService,
+    @Optional() private readonly about?: AboutService,
   ) {
     // Project tasks falling due are announced like timer reminders.
     projects.on('reminder', (text: string) => timers.announce(text));
     this.tools = [
+      ...(about
+        ? [
+            tool(
+              'about_you',
+              'Save something the user told you about THEMSELVES to their "About you" page: their name, what to call them, ' +
+                'birthday, who they live with, work, likes, what you should avoid, health or food, or anything else about them. ' +
+                'Only what they said themselves in this conversation; for other people or general facts use remember.',
+              {
+                field: { type: 'string', enum: ABOUT_FIELDS.map((f) => f.key), description: 'Which part: name, callMe (what you call them), birthday, home (who they live with), work, likes, avoid, health, notes' },
+                value: { type: 'string', description: 'The full new text for that part (keep what was already there that still holds). Birthday as YYYY-MM-DD.' },
+              },
+              ['field', 'value'],
+            ),
+          ]
+        : []),
       tool('get_current_datetime', 'Get the current local date, day of the week and time.', {}),
       tool(
         'end_conversation',
@@ -204,6 +221,7 @@ export class BuiltinActionsService implements OnModuleInit {
     ];
 
     this.handlers = {
+      about_you: (a: Record<string, unknown>) => this.aboutYou(a),
       ...(memory.enabled
         ? {
             remember: async (a: Record<string, unknown>) => {
@@ -324,6 +342,20 @@ export class BuiltinActionsService implements OnModuleInit {
         return `No single match. Running: ${running.map(describe).join(', ')}. Ask the user which one to cancel.`;
       },
     };
+  }
+
+  /** about_you: what the user said about themselves goes on their "About you" page. */
+  private async aboutYou(a: Record<string, unknown>): Promise<string> {
+    if (!this.about) return 'Not available.';
+    // Only the user's own words: never something read in an email or on a web page during this conversation.
+    if (a[EXTERNAL_FLAG] === true) return 'Not saved: this conversation read outside content, so ask the user to confirm it on the control panel (About you).';
+    const mode = this.modes.mode;
+    if (mode === 'guest') return "Not saved: guest mode is on, so this may not be the person you support.";
+    const field = ABOUT_FIELDS.find((f) => f.key === a.field);
+    if (!field) return 'Unknown part of "About you".';
+    if (!field.modes.includes(mode)) return `"${field.label}" is personal: it can be saved in personal mode.`;
+    const msg = await this.about.save({ [field.key as AboutKey]: str(a.value) ?? '' });
+    return msg.startsWith('Saved') ? `Saved "${field.label}" on their About you page.` : msg;
   }
 
   private projectAction(a: Record<string, unknown>): string {

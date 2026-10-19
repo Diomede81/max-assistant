@@ -30,8 +30,13 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     profiles: ["home"]
-    restart: unless-stopped
+    # Always running: starts with the box even if it was stopped by hand (Max also asks for it when he starts).
+    restart: always
     network_mode: host
+    ports: !reset []
+    # Full use of the Pi's Bluetooth (without these Home Assistant runs it in "degraded mode"): resetting the
+    # adapter when it stops answering, and the raw device data that keeps Bluetooth devices up to date.
+    cap_add: [NET_ADMIN, NET_RAW]
     logging:
       driver: json-file
       options: { max-size: "5m", max-file: "3" }

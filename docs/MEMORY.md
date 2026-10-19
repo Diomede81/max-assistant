@@ -26,6 +26,23 @@ Inside each vault:
   as about a dozen monthly summaries per vault, all still searchable, with names, decisions, dates and
   open items kept. (Uses the text AI model; `MEMORY_DIGESTS=off` turns it off.)
 
+## About you
+
+One page about the person Max supports: control panel → Menu → **About you** (or the **About you** tile on
+Home). Fill in as much or as little as you like:
+
+| Part | Max knows it in |
+| --- | --- |
+| Your name | every mode (in guest mode he only knows your name, and keeps the rest to himself) |
+| What Max calls you, your work, what Max should avoid | personal and work mode |
+| Birthday, who you live with, likes and interests, health and food, anything else | personal mode only |
+
+Max reads it at the start of every conversation and uses it naturally. You can also just tell him: "Max,
+my birthday is 14 March", "call me Luca", "I've gone vegetarian". He saves it on the page himself, but
+only what you say about yourself in personal or work mode, never in guest mode, and never something he read
+in an email or on a web page. Until he knows your name, he asks for it once. It's kept encrypted with
+his memory.
+
 ## How Max uses it
 
 Every conversation starts with a small **core** (the most important facts, what's coming up, the last

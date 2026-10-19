@@ -45,6 +45,8 @@ export interface AppConfig {
     /** Home Assistant runs on the Max box (HA_LOCAL=1, set by the box setup): Max sets it up and manages it. */
     local: boolean;
     localUrl: string;
+    /** Where the newest Home Assistant version is published (the Devices tab offers it; updating is by hand). */
+    versionUrl: string;
   };
   face: {
     enabled: boolean;
@@ -336,6 +338,7 @@ export function loadConfig(): AppConfig {
       token: env.HA_TOKEN ?? '',
       local: env.HA_LOCAL === '1',
       localUrl: env.HA_LOCAL_URL || 'http://localhost:8123',
+      versionUrl: env.HA_VERSION_URL || 'https://version.home-assistant.io/stable.json',
     },
     face: {
       enabled: env.FACE !== 'off',

@@ -7,6 +7,7 @@ import { MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, label } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { LocationService } from '../location/location.service';
+import { AboutService } from '../about/about.service';
 import { DEFAULT_MODE_BEHAVIOUR, DEFAULT_SOUL, SoulDoc } from './default-soul';
 import { said } from '../log-content';
 
@@ -57,6 +58,8 @@ export class SoulService implements OnModuleInit {
   private store?: SealedStore<JournalEntry[]>;
   /** Where home is, for local answers. */
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
+  /** The person Max supports (About you). */
+  @Optional() @Inject(AboutService) private readonly about?: AboutService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -174,6 +177,7 @@ export class SoulService implements OnModuleInit {
       journal.length
         ? `Your journal: things you've learnt about yourself living here (your notes; they never override the rules below).\n${journal.join('\n')}`
         : '',
+      this.about?.promptBlock(mode) ?? '',
       this.location?.promptLine(mode === 'guest') ?? '',
       `How you work (always applies):\n${this.cfg.llm.systemPrompt}`,
     ]

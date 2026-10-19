@@ -272,7 +272,7 @@ export class ToolRouterService {
       this.log.log('remember skipped: the user didn\'t ask to remember anything (the conversation is filed afterwards)');
       return 'Not saved: only save when the user asks you to remember something. Anything lasting they mentioned is filed automatically after the conversation. Carry on without mentioning it.';
     }
-    if (name === 'remember' && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
+    if ((name === 'remember' || name === 'about_you') && Date.now() - this.externalContentAt < EXTERNAL_CONTENT_WINDOW_MS) {
       args = { ...args, [EXTERNAL_FLAG]: true };
     }
     try {

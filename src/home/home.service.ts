@@ -44,6 +44,28 @@ export interface HomeOverview {
   devices: HomeDevice[];
   /** Devices Home Assistant found on the network, ready to add. */
   found: { flowId: string; name: string; integration: string; attention?: boolean }[];
+  /** A newer Home Assistant (updating is by hand), or the progress of an update. */
+  update?: HomeUpdate;
+}
+
+export interface HomeUpdate {
+  installed?: string;
+  /** Set when it's newer than the installed one. */
+  latest?: string;
+  /** Update now works here (on the Max box); elsewhere the page shows the commands instead. */
+  canInstall: boolean;
+  /** The box's progress after Update now. */
+  progress?: { state: 'updating' | 'done' | 'failed'; message: string };
+}
+
+/** True when version a (e.g. "2026.11.1") is newer than b. */
+function newerThan(a: string, b: string): boolean {
+  const pa = a.split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = b.split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  }
+  return false;
 }
 
 export interface FlowField {
@@ -76,6 +98,20 @@ interface Saved {
 }
 
 const CLIENT_ID = 'http://max.local/';
+/** Thrown when Home Assistant turns a username and password down (as opposed to not answering). */
+class WrongLogin extends Error {
+  constructor() {
+    super('wrong username or password');
+  }
+}
+
+/** A password that's easy to read and type: no look-alike characters (0/O, 1/l/I), in groups of four. */
+function newPassword(): string {
+  const letters = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(16);
+  const chars = [...bytes].map((b) => letters[b % letters.length]);
+  return [0, 4, 8, 12].map((i) => chars.slice(i, i + 4).join('')).join('-');
+}
 const TOGGLE = new Set(['light', 'switch', 'fan', 'input_boolean', 'humidifier', 'siren']);
 const SHOWN = new Set([...TOGGLE, 'cover', 'valve', 'lock', 'climate', 'media_player', 'vacuum', 'water_heater', 'button', 'sensor', 'binary_sensor', 'scene']);
 const NOT_SET_UP_HERE = new Set(['helper', 'entity', 'system', 'hardware', 'virtual']);
@@ -97,6 +133,11 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   private retry?: NodeJS.Timeout;
   private readyResolve!: () => void;
   private readonly readyPromise = new Promise<void>((r) => (this.readyResolve = r));
+  private installed?: string;
+  private latest?: { at: number; version?: string };
+  private latestCheck?: Promise<string | undefined>;
+  private lastStartAsk = 0;
+  private watch?: NodeJS.Timeout;
   private catalog?: { at: number; list: { domain: string; name: string; local: boolean }[] };
   private readonly names = new Map<string, string>();
 
@@ -117,13 +158,30 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!this.enabled) return;
+    // Whenever Max starts, Home Assistant starts too (the box's max-home service; nothing if it's running).
+    this.askBox('start');
+    this.lastStartAsk = Date.now();
     this.stateNow = 'starting';
     this.saved = this.load();
     void this.setUp();
+    // Stopped later (by hand, or it crashed for good)? Ask for it again: Home Assistant should always be running.
+    this.watch = setInterval(() => {
+      if (this.stateNow !== 'ready' || !this.cfg.face.onBox) return;
+      fetch(`${this.base}/api/`, { signal: AbortSignal.timeout(10_000) }).catch(() => this.startAgain());
+    }, 5 * 60_000);
+    this.watch.unref();
+  }
+
+  /** Asks the box to start Home Assistant, at most every 5 minutes. */
+  private startAgain(): void {
+    if (Date.now() - this.lastStartAsk < 5 * 60_000) return;
+    this.lastStartAsk = Date.now();
+    this.askBox('start');
   }
 
   onModuleDestroy(): void {
     clearTimeout(this.retry);
+    clearInterval(this.watch);
     this.socket?.close();
   }
 
@@ -139,11 +197,25 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       if (!(this.saved.token && (await this.tokenWorks(this.saved.token)))) {
         const steps = await this.json<{ step: string; done: boolean }[]>('GET', '/api/onboarding');
         if (!steps.find((s) => s.step === 'user')?.done) await this.onboard(steps);
-        else if (this.saved.username && this.saved.password) await this.signIn(this.saved.username, this.saved.password);
         else {
-          this.stateNow = 'needs-login';
-          this.message = 'This Home Assistant already has an account: sign in once so Max can manage it.';
-          return;
+          let signedIn = false;
+          if (this.saved.username && this.saved.password) {
+            try {
+              await this.signIn(this.saved.username, this.saved.password);
+              signedIn = true;
+            } catch (err) {
+              if (!(err instanceof WrongLogin)) throw err;
+              // Home Assistant got its account another way (e.g. its own welcome screens): the login Max kept is
+              // out of date, so forget it and ask.
+              this.saved = {};
+              this.save();
+            }
+          }
+          if (!signedIn) {
+            this.stateNow = 'needs-login';
+            this.message = 'This Home Assistant already has an account: sign in once so Max can manage it.';
+            return;
+          }
         }
       }
       await this.ensureMcp();
@@ -156,13 +228,15 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.stateNow = 'starting';
       this.message = `Waiting for Home Assistant to start (${(err as Error).message})`;
+      // Not answering for a while: make sure it's running.
+      this.startAgain();
       this.retry = setTimeout(() => void this.setUp(), 15_000);
     }
   }
 
   /** First start: creates the owner account and finishes Home Assistant's welcome steps. */
   private async onboard(steps: { step: string; done: boolean }[]): Promise<void> {
-    const password = randomBytes(12).toString('base64url');
+    const password = newPassword();
     const created = await this.json<{ auth_code: string }>('POST', '/api/onboarding/users', {
       client_id: CLIENT_ID,
       name: 'Max',
@@ -191,6 +265,8 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       await this.signIn(username.trim(), password);
       this.saved = { ...this.saved, username: username.trim(), password };
       this.save();
+      this.stateNow = 'starting';
+      this.message = 'Signed in: Max is connecting to Home Assistant…';
       void this.setUp();
       return 'Signed in: Max is setting up the connection.';
     } catch (err) {
@@ -209,8 +285,24 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       username,
       password,
     });
-    if (done.type !== 'create_entry' || !done.result) throw new Error('wrong username or password');
+    if (done.type !== 'create_entry' || !done.result) throw new WrongLogin();
     await this.keepToken(await this.exchange(done.result));
+  }
+
+  /**
+   * Gives Max's own Home Assistant account ("max") a new password, e.g. when the one shown doesn't work.
+   * Only for the account Max made: an account someone else made keeps its password.
+   */
+  async resetPassword(): Promise<string> {
+    if (this.stateNow !== 'ready') return "Home Assistant isn't ready yet.";
+    const me = await this.ws().call<{ id: string }>('auth/current_user');
+    const users = await this.ws().call<{ id: string; username: string | null }[]>('config/auth/list');
+    if (users.find((u) => u.id === me.id)?.username !== 'max') return "Max didn't make this Home Assistant's account, so he can't change its password.";
+    const password = newPassword();
+    await this.ws().call('config/auth_provider/homeassistant/admin_change_password', { user_id: me.id, password });
+    this.saved = { ...this.saved, username: 'max', password };
+    this.save();
+    return 'New password made: press Show to see it.';
   }
 
   private async exchange(code: string): Promise<string> {
@@ -290,9 +382,89 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   // ---------- the Devices page ----------
 
   async overview(): Promise<HomeOverview> {
-    const url = this.publicUrl();
-    const base: HomeOverview = { state: this.stateNow, message: this.message, url, areas: [], devices: [], found: [] };
+    const base: HomeOverview = { state: this.stateNow, message: this.message, url: this.publicUrl(), areas: [], devices: [], found: [], update: await this.updateInfo() };
     if (this.stateNow !== 'ready') return base;
+    try {
+      return await this.devicesOverview(base);
+    } catch (err) {
+      return { ...base, message: `Home Assistant isn't answering right now (${(err as Error).message}). If it's restarting, this takes a minute or two.` };
+    }
+  }
+
+  // ---------- Home Assistant updates (by hand: the Devices tab offers them) ----------
+
+  /** Asks the box (max-home service) to start or update Home Assistant. Only on the Max box. */
+  private askBox(what: 'start' | 'update'): boolean {
+    if (!this.cfg.face.onBox) return false;
+    try {
+      // "start" never replaces a request already waiting (an update, say).
+      writeFileSync(join(this.cfg.face.runDir, 'home-request'), what, { flag: what === 'start' ? 'wx' : 'w' });
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return true;
+      this.log.warn(`Couldn't ask the box to ${what} Home Assistant: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  async requestUpdate(): Promise<string> {
+    if (!this.enabled) return 'Home Assistant on the box is off.';
+    if (!this.cfg.face.onBox) return 'Update now only works on the Max box: use the commands shown here.';
+    if (this.progress()?.state === 'updating') return 'Home Assistant is already updating.';
+    if (!this.askBox('update')) return "Couldn't ask the box to update Home Assistant.";
+    return 'Updating Home Assistant. It restarts by itself, so your devices are unavailable for a few minutes.';
+  }
+
+  private async updateInfo(): Promise<HomeUpdate | undefined> {
+    const progress = this.progress();
+    if (this.stateNow === 'ready') {
+      try {
+        this.installed = (await this.json<{ version?: string }>('GET', '/api/config', undefined, this.saved.token)).version;
+      } catch {
+        /* restarting: keep the last one known */
+      }
+    }
+    const latest = await this.latestVersion();
+    const newer = Boolean(this.installed && latest && newerThan(latest, this.installed));
+    if (!newer && !progress) return undefined;
+    return { installed: this.installed, latest: newer ? latest : undefined, canInstall: this.cfg.face.onBox, progress };
+  }
+
+  /** The newest Home Assistant release, checked every 6 hours (every hour while it can't be reached). */
+  private latestVersion(): Promise<string | undefined> {
+    const fresh = this.latest && Date.now() - this.latest.at < (this.latest.version ? 6 : 1) * 3_600_000;
+    if (fresh) return Promise.resolve(this.latest!.version);
+    this.latestCheck ??= (async () => {
+      let version: string | undefined;
+      try {
+        const res = await fetch(this.cfg.ha.versionUrl, { signal: AbortSignal.timeout(10_000) });
+        const body = (await res.json()) as { homeassistant?: { default?: unknown } };
+        if (typeof body.homeassistant?.default === 'string') version = body.homeassistant.default;
+      } catch {
+        /* no internet right now */
+      }
+      this.latest = { at: Date.now(), version };
+      this.latestCheck = undefined;
+      return version;
+    })();
+    return this.latestCheck;
+  }
+
+  /** What the box reported after Update now: shown while it runs, and for 15 minutes after. */
+  private progress(): HomeUpdate['progress'] {
+    if (!this.cfg.face.onBox) return undefined;
+    try {
+      const p = JSON.parse(readFileSync(join(this.cfg.face.runDir, 'home.json'), 'utf8')) as { state?: string; message?: string; at?: number };
+      const age = Date.now() - (p.at ?? 0);
+      if (p.state === 'updating' && age < 60 * 60_000) return { state: 'updating', message: String(p.message ?? '') };
+      if ((p.state === 'done' || p.state === 'failed') && age < 15 * 60_000) return { state: p.state, message: String(p.message ?? '') };
+    } catch {
+      /* no update yet */
+    }
+    return undefined;
+  }
+
+  private async devicesOverview(base: HomeOverview): Promise<HomeOverview> {
     const ws = this.ws();
     type Area = { area_id: string; name: string };
     type Device = { id: string; name: string | null; name_by_user: string | null; area_id: string | null; manufacturer: string | null; disabled_by: string | null; entry_type: string | null };

@@ -20,6 +20,7 @@ export function describeActivity(name: string): Activity | undefined {
   const n = name.toUpperCase();
   if (name === 'recall') return { icon: '🧠', label: 'Checking my memory' };
   if (name === 'remember' || name === 'forget') return { icon: '🧠', label: 'Updating my memory' };
+  if (name === 'about_you') return { icon: '🙂', label: 'Noting that about you' };
   if (name === 'project') return { icon: '📁', label: 'Checking your projects' };
   if (name === 'todo' || name === 'task') return { icon: '✅', label: 'Updating your to-do list' };
   if (name === 'my_day') return { icon: '☀️', label: 'Looking at your day' };

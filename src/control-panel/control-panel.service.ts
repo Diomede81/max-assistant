@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
 import { COUNTRIES, LocationService } from '../location/location.service';
+import { ABOUT_FIELDS, About, AboutService } from '../about/about.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService, Side } from '../composio/composio.service';
@@ -43,6 +44,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
+  @Optional() @Inject(AboutService) private readonly about?: AboutService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
@@ -283,6 +285,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
+    if (req.method === 'POST' && url.pathname === '/about' && this.about) {
+      const f = await readForm(req);
+      const values: About = {};
+      for (const field of ABOUT_FIELDS) if (f.has(field.key)) values[field.key] = f.get(field.key) ?? '';
+      const msg = await this.about.save(values);
+      return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#about-you`);
+    }
     if (req.method === 'POST' && url.pathname === '/location' && this.location) {
       const f = await readForm(req);
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
@@ -586,6 +595,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       web: this.web?.status,
       trains: this.trains?.status,
       whatsapp: await this.whatsapp?.status(),
+      about: this.about && { fields: ABOUT_FIELDS.map((f) => ({ ...f, value: this.about!.about[f.key] ?? '' })) },
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       routines: this.routines && this.memory.enabled
         ? {
@@ -723,6 +733,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value)) });
         if (p === '/home/allow') return this.json(res, { message: await home.allowMax(f.get('device') ?? '', f.get('on') === '1') });
         if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
+        if (p === '/home/update') return this.json(res, { message: await home.requestUpdate() });
+        if (p === '/home/password') return this.json(res, { message: await home.resetPassword() });
         if (p === '/home/login') return this.json(res, { message: await home.login(f.get('username') ?? '', f.get('password') ?? '') });
         if (p === '/home/flow/start') return this.json(res, await home.startFlow(f.get('domain') ?? ''));
         if (p === '/home/flow/next') {

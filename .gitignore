@@ -11,3 +11,4 @@ spotify/lockfile
 spotify/*.tmp
 __pycache__/
 wake-coach/
+.idea/

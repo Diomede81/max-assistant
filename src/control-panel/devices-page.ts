@@ -7,6 +7,7 @@
 export function devicesPane(): string {
   return `<section id="devices"><h2>Devices</h2>
 <p class="meta" id="hStatus">Loading…</p>
+<div id="hUpdate" class="hnote" hidden></div>
 <form id="hLogin" class="stack" hidden><p class="meta">Sign in with your Home Assistant account once, so Max can manage it.</p>
 <input name="username" placeholder="Home Assistant username" autocomplete="username" required>
 <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
@@ -29,7 +30,8 @@ export function devicesPane(): string {
 <script>${SCRIPT}</script>`;
 }
 
-export const DEVICES_CSS = `
+export const DEVICES_CSS = `.hnote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}.hnote code{font-size:13px;word-break:break-all}
+
 .hrooms{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}.hrooms button{font:inherit;font-weight:600;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
 .hrooms button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
@@ -64,7 +66,7 @@ const SCRIPT = String.raw`
   var md = function (t) {
     return esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/\n/g, '<br>');
   };
-  var data = null, room = '', editing = '', busy = false, advDrawn = '';
+  var data = null, room = '', editing = '', busy = false, advDrawn = '', updDrawn = '';
   var post = function (path, body) {
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) })
       .then(function (r) { return r.json(); });
@@ -91,9 +93,22 @@ const SCRIPT = String.raw`
   function render() {
     var d = data;
     var used = d.areas.filter(function (a) { return d.devices.some(function (x) { return x.areaId === a.id; }); }).length;
-    var st = { off: 'Home Assistant on the box is off.', starting: d.message || 'Home Assistant is starting… (a minute or two after the box starts)', 'needs-login': d.message, ready: d.devices.length + ' device' + (d.devices.length === 1 ? '' : 's') + (used ? ' in ' + used + ' room' + (used === 1 ? '' : 's') : '') };
+    var st = { off: 'Home Assistant on the box is off.', starting: d.message || 'Home Assistant is starting… (a minute or two after the box starts)', 'needs-login': d.message, ready: d.message || d.devices.length + ' device' + (d.devices.length === 1 ? '' : 's') + (used ? ' in ' + used + ' room' + (used === 1 ? '' : 's') : '') };
     $('hStatus').textContent = st[d.state] || '';
     $('hLogin').hidden = d.state !== 'needs-login';
+    // Home Assistant updates: offered here, installed only when you press Update now
+    var u = d.update, uh = '', updating = Boolean(u && u.progress && u.progress.state === 'updating');
+    if (updating) uh = '<p><b>Updating Home Assistant:</b> ' + esc(u.progress.message) + '…</p>';
+    else if (u && u.progress) uh = '<p>' + (u.progress.state === 'failed' ? '<b>Update didn\'t finish:</b> ' : '') + esc(u.progress.message) + '</p>';
+    if (u && u.latest && !updating) {
+      uh += '<p><b>Home Assistant ' + esc(u.latest) + ' is available</b>' + (u.installed ? ' (you have ' + esc(u.installed) + ')' : '') +
+        '. <a href="https://github.com/home-assistant/core/releases" target="_blank" rel="noopener">What\'s new</a></p>' +
+        (u.canInstall ? '<p><button class="btn" type="button" data-ha-update>Update now</button> <span class="meta">Your devices are unavailable for a few minutes while it restarts.</span></p>'
+          : '<p class="meta">To update, run in the project folder: <code>docker compose pull homeassistant &amp;&amp; docker compose up -d homeassistant</code></p>');
+    }
+    uh += '<p class="meta" id="hUpdateMsg" role="status"></p>';
+    if (uh !== updDrawn) { $('hUpdate').innerHTML = uh; updDrawn = uh; }
+    $('hUpdate').hidden = !(u && (u.latest || u.progress));
     var ready = d.state === 'ready';
     $('devices-add').hidden = !ready;
     // rooms
@@ -218,6 +233,7 @@ const SCRIPT = String.raw`
     if (t.dataset.ignore) { post('/home/ignore', { flow: t.dataset.ignore }).then(load); return; }
     if (t.dataset.domain) { start(t.dataset.domain); return; }
     if (t.id === 'hCopyPw' && data && data.login) { copy(data.login.password); return; }
+    if (t.hasAttribute('data-ha-update')) { if (!confirm('Update Home Assistant now? It restarts, so your devices are unavailable for a few minutes.')) return; t.disabled = true; post('/home/update', {}).then(function (r) { updDrawn = ''; load().then(function () { var m = $('hUpdateMsg'); if (m) m.textContent = r.message; }); }); return; }
     if (t.id === 'hNewPw') { if (!confirm('Make a new password for this account? The old one stops working.')) return; post('/home/password', {}).then(function (r) { advDrawn = ''; load().then(function () { var m = $('hPwMsg'); if (m) m.textContent = r.message; }); }); return; }
     if (t.id === 'hShowPw' && data && data.login) { var pw = $('hPw'); var hidden = pw.textContent.indexOf('•') === 0; pw.textContent = hidden ? data.login.password : '••••••••'; t.textContent = hidden ? 'Hide' : 'Show'; return; }
     if (t.hasAttribute('data-flow-cancel')) { closeFlow(true); return; }

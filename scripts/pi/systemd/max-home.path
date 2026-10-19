@@ -1,0 +1,9 @@
+[Unit]
+Description=Max: Home Assistant requests (start it with Max, Update now on the Devices tab)
+
+[Path]
+PathExists=/run/max/home-request
+Unit=max-home.service
+
+[Install]
+WantedBy=multi-user.target

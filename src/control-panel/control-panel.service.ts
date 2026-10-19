@@ -723,6 +723,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value)) });
         if (p === '/home/allow') return this.json(res, { message: await home.allowMax(f.get('device') ?? '', f.get('on') === '1') });
         if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
+        if (p === '/home/update') return this.json(res, { message: await home.requestUpdate() });
         if (p === '/home/password') return this.json(res, { message: await home.resetPassword() });
         if (p === '/home/login') return this.json(res, { message: await home.login(f.get('username') ?? '', f.get('password') ?? '') });
         if (p === '/home/flow/start') return this.json(res, await home.startFlow(f.get('domain') ?? ''));

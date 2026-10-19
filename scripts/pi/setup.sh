@@ -51,12 +51,18 @@ if [ -z "$SCREEN" ]; then
 fi
 
 # Home Assistant on the box: Max sets it up and runs it, and your devices are managed from his control panel.
-# Asked once; automatic updates (no one to answer) keep the saved answer, or leave it off.
+# Asked once; automatic updates (no one to answer) keep the saved answer, or leave it off without saving
+# that, so the next setup run by hand still asks.
 HOME_HA="${MAX_HOME_ASSISTANT:-$(saved MAX_HOME_ASSISTANT)}"
+HOME_HA_SAVE="$HOME_HA"
 if [ -z "$HOME_HA" ]; then
   echo "Run Home Assistant on this box, so Max manages your smart-home devices (no separate Home Assistant needed)?"
-  read -r -p "y or n [y]: " choice </dev/tty || choice=n
-  case "${choice:-y}" in n|N|no|No) HOME_HA=off ;; *) HOME_HA=on ;; esac
+  if read -r -p "y or n [y]: " choice </dev/tty; then
+    case "${choice:-y}" in n|N|no|No) HOME_HA=off ;; *) HOME_HA=on ;; esac
+    HOME_HA_SAVE="$HOME_HA"
+  else
+    HOME_HA=off
+  fi
 fi
 
 # ---------------------------------------------------------------- 1. packages
@@ -299,7 +305,7 @@ MAX_REPO=$REPO
 MAX_SCREEN=$SCREEN
 MAX_DSI_PORT=${DSI_PORT:-$(saved MAX_DSI_PORT)}
 MAX_HOSTNAME=$NAME
-MAX_HOME_ASSISTANT=$HOME_HA
+MAX_HOME_ASSISTANT=$HOME_HA_SAVE
 CONF
 install -D -m 755 "$REPO/scripts/pi/max-update.py" /usr/local/lib/max/max-update.py
 for UNIT in max-update.path max-update.service max-version.service; do
@@ -308,6 +314,14 @@ done
 systemctl daemon-reload
 systemctl enable --now max-update.path
 systemctl enable max-version.service
+# Home Assistant on the box: Max asks for it to be started (every time he starts) and updated (by hand, from
+# the Devices tab). Does nothing while Home Assistant on the box is off.
+install -D -m 755 "$REPO/scripts/pi/max-home.sh" /usr/local/lib/max/max-home.sh
+for UNIT in max-home.path max-home.service; do
+  install -m 644 "$REPO/scripts/pi/systemd/$UNIT" "/etc/systemd/system/$UNIT"
+done
+systemctl daemon-reload
+systemctl enable --now max-home.path
 python3 /usr/local/lib/max/max-update.py version || true
 
 say "Done."

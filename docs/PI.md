@@ -217,8 +217,16 @@ Good to know:
 - Home Assistant's data lives in `/var/lib/max/home-assistant` on the SD card. History is kept for 7 days and
   saved every 30 seconds, to spare the card. When you add an SSD later, this folder is the one to move.
 - Already have a Home Assistant at that folder with your own account? The Devices tab asks you to sign in once.
-- Turning it off: run setup again and answer **n**. Home Assistant stops, but its data stays in the folder, so
-  answering **y** later brings everything back.
+- **Always running:** Home Assistant starts with the box, and Max asks for it whenever he starts. If it stops,
+  Max asks for it again within 5 minutes.
+- **Updates are by hand.** When a new Home Assistant is out, the Devices tab says so, with **What's new** and
+  **Update now**. It takes a few minutes, your devices and settings are kept, and your devices are unavailable
+  while it restarts. Max's own updates never change the Home Assistant version.
+- **Box updated but no Devices tab?** An automatic update can't ask the Home Assistant question, so it leaves
+  it off. Turn it on once, on the box:
+  `cd ~/max-assistant && sudo MAX_HOME_ASSISTANT=on ./scripts/pi/setup.sh`
+- Turning it off: `sudo MAX_HOME_ASSISTANT=off ./scripts/pi/setup.sh`. Home Assistant stops, but its data stays
+  in the folder, so turning it on again later (`MAX_HOME_ASSISTANT=on`) brings everything back.
 
 ## Trying the face on your Mac (before the box arrives)
 

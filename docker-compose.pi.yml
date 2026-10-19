@@ -30,7 +30,8 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     profiles: ["home"]
-    restart: unless-stopped
+    # Always running: starts with the box even if it was stopped by hand (Max also asks for it when he starts).
+    restart: always
     network_mode: host
     ports: !reset []
     logging:

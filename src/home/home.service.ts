@@ -44,6 +44,28 @@ export interface HomeOverview {
   devices: HomeDevice[];
   /** Devices Home Assistant found on the network, ready to add. */
   found: { flowId: string; name: string; integration: string; attention?: boolean }[];
+  /** A newer Home Assistant (updating is by hand), or the progress of an update. */
+  update?: HomeUpdate;
+}
+
+export interface HomeUpdate {
+  installed?: string;
+  /** Set when it's newer than the installed one. */
+  latest?: string;
+  /** Update now works here (on the Max box); elsewhere the page shows the commands instead. */
+  canInstall: boolean;
+  /** The box's progress after Update now. */
+  progress?: { state: 'updating' | 'done' | 'failed'; message: string };
+}
+
+/** True when version a (e.g. "2026.11.1") is newer than b. */
+function newerThan(a: string, b: string): boolean {
+  const pa = a.split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = b.split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  }
+  return false;
 }
 
 export interface FlowField {
@@ -111,6 +133,11 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   private retry?: NodeJS.Timeout;
   private readyResolve!: () => void;
   private readonly readyPromise = new Promise<void>((r) => (this.readyResolve = r));
+  private installed?: string;
+  private latest?: { at: number; version?: string };
+  private latestCheck?: Promise<string | undefined>;
+  private lastStartAsk = 0;
+  private watch?: NodeJS.Timeout;
   private catalog?: { at: number; list: { domain: string; name: string; local: boolean }[] };
   private readonly names = new Map<string, string>();
 
@@ -131,13 +158,30 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!this.enabled) return;
+    // Whenever Max starts, Home Assistant starts too (the box's max-home service; nothing if it's running).
+    this.askBox('start');
+    this.lastStartAsk = Date.now();
     this.stateNow = 'starting';
     this.saved = this.load();
     void this.setUp();
+    // Stopped later (by hand, or it crashed for good)? Ask for it again: Home Assistant should always be running.
+    this.watch = setInterval(() => {
+      if (this.stateNow !== 'ready' || !this.cfg.face.onBox) return;
+      fetch(`${this.base}/api/`, { signal: AbortSignal.timeout(10_000) }).catch(() => this.startAgain());
+    }, 5 * 60_000);
+    this.watch.unref();
+  }
+
+  /** Asks the box to start Home Assistant, at most every 5 minutes. */
+  private startAgain(): void {
+    if (Date.now() - this.lastStartAsk < 5 * 60_000) return;
+    this.lastStartAsk = Date.now();
+    this.askBox('start');
   }
 
   onModuleDestroy(): void {
     clearTimeout(this.retry);
+    clearInterval(this.watch);
     this.socket?.close();
   }
 
@@ -184,6 +228,8 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.stateNow = 'starting';
       this.message = `Waiting for Home Assistant to start (${(err as Error).message})`;
+      // Not answering for a while: make sure it's running.
+      this.startAgain();
       this.retry = setTimeout(() => void this.setUp(), 15_000);
     }
   }
@@ -336,9 +382,89 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   // ---------- the Devices page ----------
 
   async overview(): Promise<HomeOverview> {
-    const url = this.publicUrl();
-    const base: HomeOverview = { state: this.stateNow, message: this.message, url, areas: [], devices: [], found: [] };
+    const base: HomeOverview = { state: this.stateNow, message: this.message, url: this.publicUrl(), areas: [], devices: [], found: [], update: await this.updateInfo() };
     if (this.stateNow !== 'ready') return base;
+    try {
+      return await this.devicesOverview(base);
+    } catch (err) {
+      return { ...base, message: `Home Assistant isn't answering right now (${(err as Error).message}). If it's restarting, this takes a minute or two.` };
+    }
+  }
+
+  // ---------- Home Assistant updates (by hand: the Devices tab offers them) ----------
+
+  /** Asks the box (max-home service) to start or update Home Assistant. Only on the Max box. */
+  private askBox(what: 'start' | 'update'): boolean {
+    if (!this.cfg.face.onBox) return false;
+    try {
+      // "start" never replaces a request already waiting (an update, say).
+      writeFileSync(join(this.cfg.face.runDir, 'home-request'), what, { flag: what === 'start' ? 'wx' : 'w' });
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return true;
+      this.log.warn(`Couldn't ask the box to ${what} Home Assistant: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  async requestUpdate(): Promise<string> {
+    if (!this.enabled) return 'Home Assistant on the box is off.';
+    if (!this.cfg.face.onBox) return 'Update now only works on the Max box: use the commands shown here.';
+    if (this.progress()?.state === 'updating') return 'Home Assistant is already updating.';
+    if (!this.askBox('update')) return "Couldn't ask the box to update Home Assistant.";
+    return 'Updating Home Assistant. It restarts by itself, so your devices are unavailable for a few minutes.';
+  }
+
+  private async updateInfo(): Promise<HomeUpdate | undefined> {
+    const progress = this.progress();
+    if (this.stateNow === 'ready') {
+      try {
+        this.installed = (await this.json<{ version?: string }>('GET', '/api/config', undefined, this.saved.token)).version;
+      } catch {
+        /* restarting: keep the last one known */
+      }
+    }
+    const latest = await this.latestVersion();
+    const newer = Boolean(this.installed && latest && newerThan(latest, this.installed));
+    if (!newer && !progress) return undefined;
+    return { installed: this.installed, latest: newer ? latest : undefined, canInstall: this.cfg.face.onBox, progress };
+  }
+
+  /** The newest Home Assistant release, checked every 6 hours (every hour while it can't be reached). */
+  private latestVersion(): Promise<string | undefined> {
+    const fresh = this.latest && Date.now() - this.latest.at < (this.latest.version ? 6 : 1) * 3_600_000;
+    if (fresh) return Promise.resolve(this.latest!.version);
+    this.latestCheck ??= (async () => {
+      let version: string | undefined;
+      try {
+        const res = await fetch(this.cfg.ha.versionUrl, { signal: AbortSignal.timeout(10_000) });
+        const body = (await res.json()) as { homeassistant?: { default?: unknown } };
+        if (typeof body.homeassistant?.default === 'string') version = body.homeassistant.default;
+      } catch {
+        /* no internet right now */
+      }
+      this.latest = { at: Date.now(), version };
+      this.latestCheck = undefined;
+      return version;
+    })();
+    return this.latestCheck;
+  }
+
+  /** What the box reported after Update now: shown while it runs, and for 15 minutes after. */
+  private progress(): HomeUpdate['progress'] {
+    if (!this.cfg.face.onBox) return undefined;
+    try {
+      const p = JSON.parse(readFileSync(join(this.cfg.face.runDir, 'home.json'), 'utf8')) as { state?: string; message?: string; at?: number };
+      const age = Date.now() - (p.at ?? 0);
+      if (p.state === 'updating' && age < 60 * 60_000) return { state: 'updating', message: String(p.message ?? '') };
+      if ((p.state === 'done' || p.state === 'failed') && age < 15 * 60_000) return { state: p.state, message: String(p.message ?? '') };
+    } catch {
+      /* no update yet */
+    }
+    return undefined;
+  }
+
+  private async devicesOverview(base: HomeOverview): Promise<HomeOverview> {
     const ws = this.ws();
     type Area = { area_id: string; name: string };
     type Device = { id: string; name: string | null; name_by_user: string | null; area_id: string | null; manufacturer: string | null; disabled_by: string | null; entry_type: string | null };

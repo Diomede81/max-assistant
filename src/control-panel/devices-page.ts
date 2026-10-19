@@ -15,13 +15,17 @@ export function devicesPane(): string {
 <p id="hLoginMsg" class="meta" role="alert"></p>
 <button class="btn" type="submit">Sign in</button></form>
 <div id="hRooms" class="hrooms" role="tablist" aria-label="Rooms"></div>
+<div id="hFilter" class="hfilter" hidden><input id="hFind" type="search" placeholder="Find a device" autocomplete="off" aria-label="Find a device">
+<label><input type="checkbox" id="hOnlyCtl"> Only things I can control</label><label><input type="checkbox" id="hShowHidden"> Show hidden</label></div>
 <div id="hDevices" class="hgrid"></div>
+<div id="hParts"></div>
 </section>
-<section id="devices-add"><h2>Add a device</h2>
+<section id="devices-add"><h2>Add devices and services</h2>
 <div id="hFound"></div>
-<p class="meta">Most WiFi devices appear above by themselves once they're on your WiFi. Or search for the brand:</p>
-<input id="hSearch" class="hsearch" type="search" placeholder="Search brands, e.g. Shelly, TP-Link, Philips Hue" autocomplete="off">
+<p class="meta">Most WiFi devices appear above by themselves once they're on your WiFi. Or search for the brand or service (Tado, Shelly, Philips Hue, Sonos…) and answer a few questions:</p>
+<input id="hSearch" class="hsearch" type="search" placeholder="Search brands and services, e.g. Tado, Shelly, Philips Hue" autocomplete="off">
 <ul id="hResults"></ul>
+<div id="hServices"></div>
 </section>
 <section id="devices-advanced"><h2>Advanced</h2>
 <p class="meta">For anything this page doesn't do (automations, energy, history), open the full Home Assistant running on your Max box.</p>
@@ -41,6 +45,9 @@ export const DEVICES_CSS = `#hMsg{background:var(--errbg);color:var(--err);paddi
 .hcard .hbig{font-size:22px;font-weight:700}.hcard .hctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .hcard .hctl button{font:inherit;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--text);cursor:pointer}
 .hcard .hctl button.on{background:var(--accent);border-color:var(--accent);color:#fff}.hcard .hctl button:disabled{opacity:.5;cursor:default}
+.hfilter{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 0 10px}.hfilter input[type=search]{flex:1 1 180px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}.hfilter label{display:flex;gap:6px;align-items:center;font-size:14px}
+.hparts summary{cursor:pointer;font-weight:600;margin:12px 0 6px}.hcard .hmore button{padding:2px 10px;font-size:13px}.hcard .hhid{opacity:.55}.hedit-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin:4px 0}
+.hhead{display:flex;justify-content:space-between;gap:6px;align-items:flex-start}.htools{display:flex;gap:2px;flex:none}.hcard .htools button{border:0;background:none;color:var(--muted);font-size:19px;line-height:1;padding:4px 6px;border-radius:6px;cursor:pointer}.hcard .htools button[aria-pressed=true]{color:#f5a524}.hdrag{cursor:grab;touch-action:none}.hcard.hdragging{opacity:.55;outline:2px dashed var(--accent)}
 .hcard input[type=range]{width:100%}.hcard .hmore{font-size:13px;color:var(--muted)}.hcard .hmore div{display:flex;justify-content:space-between;gap:8px}
 .hcard .hfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:8px;font-size:13px}
 .hcard .hfoot label{display:flex;gap:6px;align-items:center;cursor:pointer}.hcard .hfoot button{font:inherit;font-size:13px;border:0;background:none;color:var(--accent);cursor:pointer;padding:4px}
@@ -65,9 +72,16 @@ const SCRIPT = String.raw`
   var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   // Home Assistant's help texts use a little Markdown: **bold**, [links](url) and line breaks.
   var md = function (t) {
-    return esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/\n/g, '<br>');
+    return esc(t).replace(/\x60{3}([^\x60]+)\x60{3}/g, '<code>$1</code>').replace(/\x60([^\x60]+)\x60/g, '<code>$1</code>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      // bare web addresses (e.g. Tado's sign-in page) become links too
+      .replace(/(^|[\s(])(https:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>').replace(/\n/g, '<br>');
   };
-  var data = null, room = '', editing = '', busy = false, advDrawn = '', updDrawn = '';
+  // Your filters on this page, remembered on this device.
+  var pref = { find: '', onlyCtl: false, showHidden: false, room: null };
+  try { pref = Object.assign(pref, JSON.parse(localStorage.getItem('max-devices-filter') || '{}')); } catch (e) { /* private window */ }
+  function savePref() { try { localStorage.setItem('max-devices-filter', JSON.stringify(pref)); } catch (e) { /* private window */ } }
+  var data = null, room = null, editing = '', busy = false, drag = null, advDrawn = '', updDrawn = '';
   var post = function (path, body) {
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) })
       .then(function (r) { return r.json(); });
@@ -115,11 +129,41 @@ const SCRIPT = String.raw`
     // rooms
     var rooms = d.areas.filter(function (a) { return d.devices.some(function (x) { return x.areaId === a.id; }); });
     var none = d.devices.some(function (x) { return !x.areaId; });
-    var chips = [['', 'All']].concat(rooms.map(function (a) { return [a.id, a.name]; }));
+    var favs = d.favourites || [];
+    // My dashboard opens first once it has something on it (or wherever you were last time).
+    if (room === null) room = pref.room !== null && pref.room !== undefined ? pref.room : favs.length ? '*' : '';
+    var chips = [['*', '★ My dashboard'], ['', 'All']].concat(rooms.map(function (a) { return [a.id, a.name]; }));
     if (none && rooms.length) chips.push(['-', 'No room']);
-    $('hRooms').innerHTML = ready && rooms.length ? chips.map(function (c) { return '<button type="button" data-room="' + esc(c[0]) + '" class="' + (room === c[0] ? 'on' : '') + '">' + esc(c[1]) + '</button>'; }).join('') : '';
-    var shown = d.devices.filter(function (x) { return !room || (room === '-' ? !x.areaId : x.areaId === room); });
-    $('hDevices').innerHTML = ready ? (shown.length ? shown.map(card).join('') : '<p class="meta">No devices yet: add one below.</p>') : '';
+    $('hRooms').innerHTML = ready && d.devices.length ? chips.map(function (c) { return '<button type="button" data-room="' + esc(c[0]) + '" class="' + (room === c[0] ? 'on' : '') + '">' + esc(c[1]) + '</button>'; }).join('') : '';
+    $('hFilter').hidden = !ready || !d.devices.length;
+    var q = pref.find.trim().toLowerCase();
+    // Starred devices first everywhere, in your order; My dashboard shows only them.
+    var pos = function (id) { var i = favs.indexOf(id); return i < 0 ? 1e6 : i; };
+    var shown = d.devices
+      .filter(function (x) { return !room || (room === '*' ? favs.indexOf(x.id) >= 0 : room === '-' ? !x.areaId : x.areaId === room); })
+      .map(function (x, i) { return [x, i]; }).sort(function (a, b) { return pos(a[0].id) - pos(b[0].id) || a[1] - b[1]; }).map(function (p) { return p[0]; })
+      .filter(function (x) { return !q || (x.name + ' ' + (x.area || '')).toLowerCase().indexOf(q) >= 0; })
+      .map(function (x) {
+        var ents = x.entities.filter(function (e) { return (pref.showHidden || !e.hidden) && (!pref.onlyCtl || e.control !== 'none'); });
+        return Object.assign({}, x, { entities: ents });
+      })
+      .filter(function (x) { return x.entities.length || editing === x.id; });
+    var empty = room === '*' && !q ? 'Your dashboard is empty: tap ☆ on any device (under All, or a room) to put it here, then drag ⠿ to put the most useful first.'
+      : d.devices.length ? 'Nothing matches: change the filters above.' : 'No devices yet: add one below.';
+    $('hDevices').innerHTML = ready ? (shown.length ? shown.map(card).join('') : '<p class="meta">' + empty + '</p>') : '';
+    // hardware that only reports its battery and connection (e.g. radiator valves: you control the room)
+    var parts = ready ? (d.parts || []) : [], bad = parts.filter(function (x) { return !x.ok; }).length;
+    $('hParts').innerHTML = parts.length ? '<details class="hparts"' + (bad ? ' open' : '') + '><summary>Batteries and connections: ' + (bad ? bad + ' need' + (bad === 1 ? 's' : '') + ' attention' : 'all fine') + ' (' + parts.length + ')</summary>' +
+      '<p class="meta">Hardware such as radiator valves and bridges: you control the room or device it belongs to above.</p><ul>' +
+      parts.map(function (x) { return '<li class="row"><div><div class="name">' + esc(x.name) + (x.ok ? '' : ' <span class="badge off">Check it</span>') + '</div><div class="meta">' + esc((x.area ? x.area + ' · ' : '') + x.states) + '</div></div></li>'; }).join('') + '</ul></details>' : '';
+    // what's connected (Tado, Shelly...): whether it works, and a way to remove it
+    var sv = ready ? (d.services || []) : [];
+    $('hServices').innerHTML = sv.length ? '<h3 style="margin:16px 0 6px;font-size:15px">Connected</h3><ul>' + sv.map(function (x) {
+      var nm = x.name === x.domain ? (x.title || x.name) : x.name;
+      return '<li class="row"><div><div class="name">' + esc(nm) + (x.title && x.title !== nm ? ' <span class="meta">' + esc(x.title) + '</span>' : '') + ' <span class="badge' + (x.ok ? '' : ' off') + '">' + esc(x.status) + '</span></div>' +
+        (x.removable ? '' : '<div class="meta">How Max talks to Home Assistant</div>') + '</div>' +
+        (x.removable ? '<button class="btn secondary" type="button" data-remove-entry="' + esc(x.id) + '" data-label="' + esc(x.title || x.name) + '">Remove</button>' : '') + '</li>';
+    }).join('') + '</ul>' : '';
     // found on the network
     $('hFound').innerHTML = d.found.length ? '<h3 style="margin:0 0 6px;font-size:15px">Found on your network</h3><ul>' + d.found.map(function (f) {
       return '<li class="row"><div><div class="name">' + esc(f.name) + (f.attention ? ' <span class="badge off">Sign in again</span>' : '') + '</div><div class="meta">' + esc(f.integration) + '</div></div>' +
@@ -136,18 +180,30 @@ const SCRIPT = String.raw`
   }
 
   function card(x) {
-    var main = x.entities.filter(function (e) { return e.control !== 'none'; })[0] || x.entities[0];
-    var rest = x.entities.filter(function (e) { return e !== main; }).slice(0, 4);
+    // The server puts the main control first (the heating before a room's child lock).
+    var main = x.entities[0];
+    var rest = x.entities.slice(1, 6);
     var dead = main && main.unavailable;
-    var h = '<div class="hcard' + (dead ? ' dead' : '') + '" data-dev="' + esc(x.id) + '"><div><div class="hn">' + esc(x.name) + '</div><div class="hr">' + esc(x.area || 'No room') + (dead ? ' · Not responding' : '') + '</div></div>';
+    var star = (data.favourites || []).indexOf(x.id) >= 0;
+    var h = '<div class="hcard' + (dead ? ' dead' : '') + '" data-dev="' + esc(x.id) + '"><div class="hhead"><div><div class="hn">' + esc(x.name) + '</div><div class="hr">' + esc(x.area || 'No room') + (dead ? ' · Not responding' : '') + '</div></div>' +
+      '<div class="htools">' + (room === '*' ? '<button type="button" class="hdrag" data-drag="' + esc(x.id) + '" aria-label="Move ' + esc(x.name) + ' (drag, or use the arrow keys)" title="Drag to move">⠿</button>' : '') +
+      '<button type="button" data-fav="' + esc(x.id) + '" aria-pressed="' + star + '" aria-label="' + (star ? 'Take off My dashboard' : 'Put on My dashboard') + '" title="' + (star ? 'On My dashboard' : 'Put on My dashboard') + '">' + (star ? '★' : '☆') + '</button></div></div>';
     if (editing === x.id) {
+      var all = (data.devices.filter(function (d) { return d.id === x.id; })[0] || x).entities;
       h += '<form data-edit="' + esc(x.id) + '"><input name="name" value="' + esc(x.name) + '" aria-label="Name"><input name="room" value="' + esc(x.area || '') + '" list="hRoomList" placeholder="Room, e.g. Kitchen" aria-label="Room">' +
         '<datalist id="hRoomList">' + data.areas.map(function (a) { return '<option value="' + esc(a.name) + '">'; }).join('') + '</datalist>' +
-        '<div class="hctl"><button type="submit" class="on">Save</button><button type="button" data-cancel-edit>Cancel</button></div></form></div>';
+        '<div class="hctl"><button type="submit" class="on">Save</button><button type="button" data-cancel-edit>Cancel</button></div></form>' +
+        (all.length ? '<p class="meta" style="margin:8px 0 2px">What this card shows (hidden items are hidden in Home Assistant too; hide them all to hide the device):</p>' + all.map(function (e) {
+          return '<div class="hedit-row' + (e.hidden ? ' hhid' : '') + '"><span>' + esc(e.name) + '</span><button type="button" data-hide="' + esc(e.id) + '" data-on="' + (e.hidden ? '0' : '1') + '">' + (e.hidden ? 'Show' : 'Hide') + '</button></div>';
+        }).join('') : '') + '</div>';
       return h;
     }
     if (main) h += control(main, dead);
-    if (rest.length) h += '<div class="hmore">' + rest.map(function (e) { return '<div><span>' + esc(e.name) + '</span><b>' + esc(e.state) + '</b></div>'; }).join('') + '</div>';
+    if (rest.length) h += '<div class="hmore">' + rest.map(function (e) {
+      // a second switch (e.g. a radiator's child lock) gets its own small button
+      var v = e.control === 'toggle' ? '<button type="button" data-act="toggle" data-id="' + esc(e.id) + '"' + (e.on ? ' class="on"' : '') + (e.unavailable ? ' disabled' : '') + '>' + (e.on ? 'On' : 'Off') + '</button>' : '<b>' + esc(e.state) + '</b>';
+      return '<div' + (e.hidden ? ' class="hhid"' : '') + '><span>' + esc(e.name) + '</span>' + v + '</div>';
+    }).join('') + '</div>';
     h += '<div class="hfoot"><label title="Max can control it, or tell you what it shows, when you ask him"><input type="checkbox" data-max="' + esc(x.id) + '"' + (x.max ? ' checked' : '') + '> Max can use</label><button type="button" data-edit-open="' + esc(x.id) + '">Edit</button></div></div>';
     return h;
   }
@@ -213,7 +269,8 @@ const SCRIPT = String.raw`
     } else if (s.kind === 'link') {
       h += '<div class="hacts"><button type="button" class="btn secondary" data-flow-cancel>Cancel</button><a class="btn" href="' + esc(s.url) + '" target="_blank" rel="noopener">Open the sign-in page</a><button type="button" class="btn secondary" data-flow-check>I\'ve signed in</button></div>';
     } else if (s.kind === 'wait') {
-      h += '<p class="meta">Working on it…</p>';
+      if (s.url) h += '<div class="hacts"><a class="btn" href="' + esc(s.url) + '" target="_blank" rel="noopener">Open the sign-in page</a></div>';
+      h += '<p class="meta">Working on it…' + (s.url ? ' This continues by itself once you\'ve signed in.' : '') + '</p>';
       waitTimer = setTimeout(function () { fetch('/api/home/flow?id=' + encodeURIComponent(s.flowId)).then(function (r) { return r.json(); }).then(showStep); }, 2000);
     } else {
       h += '<div class="hacts"><button type="button" class="btn" data-flow-close>' + (s.kind === 'done' ? 'Done' : 'Close') + '</button></div>';
@@ -240,12 +297,25 @@ const SCRIPT = String.raw`
   // ---------- events ----------
   pane.addEventListener('click', function (ev) {
     var t = ev.target.closest('button,[data-room]'); if (!t) return;
-    if (t.dataset.room !== undefined) { room = t.dataset.room; render(); return; }
+    if (t.dataset.room !== undefined) { room = t.dataset.room; pref.room = room; savePref(); render(); return; }
+    if (t.dataset.fav) {
+      var f = (data.favourites || []).slice(), i = f.indexOf(t.dataset.fav);
+      if (i >= 0) f.splice(i, 1); else f.push(t.dataset.fav);
+      data.favourites = f; saveLayout(); render(); return;
+    }
+    if (t.dataset.drag) return;
     if (t.dataset.act) { if (t.dataset.confirm && !confirm(t.dataset.confirm)) return; act(t.dataset.id, t.dataset.act, t.dataset.mode); return; }
     if (t.dataset.editOpen) { editing = t.dataset.editOpen; render(); return; }
     if (t.hasAttribute('data-cancel-edit')) { editing = ''; render(); return; }
     if (t.dataset.found) { busy = true; fetch('/api/home/flow?id=' + encodeURIComponent(t.dataset.found)).then(function (r) { return r.json(); }).then(showStep).finally(function () { busy = false; }); return; }
     if (t.dataset.ignore) { post('/home/ignore', { flow: t.dataset.ignore }).then(load); return; }
+    if (t.dataset.hide) { post('/home/hide', { entity: t.dataset.hide, hide: t.dataset.on }).then(function (r) { say(r.message === 'Hidden.' || r.message === 'Shown again.' ? '' : "That didn't work: " + r.message); load(); }); return; }
+    if (t.dataset.removeEntry) {
+      if (!confirm('Remove ' + t.dataset.label + ' and its devices from Home Assistant? You can add it again later.')) return;
+      t.disabled = true;
+      post('/home/service/remove', { entry: t.dataset.removeEntry }).then(function (r) { say(/^Removed/.test(r.message) ? '' : "That didn't work: " + r.message); load(); });
+      return;
+    }
     if (t.dataset.domain) { start(t.dataset.domain); return; }
     if (t.id === 'hCopyPw' && data && data.login) { copy(data.login.password); return; }
     if (t.hasAttribute('data-ha-update')) { if (!confirm('Update Home Assistant now? It restarts, so your devices are unavailable for a few minutes.')) return; t.disabled = true; post('/home/update', {}).then(function (r) { updDrawn = ''; load().then(function () { var m = $('hUpdateMsg'); if (m) m.textContent = r.message; }); }); return; }
@@ -294,6 +364,46 @@ const SCRIPT = String.raw`
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && flow) closeFlow(true); });
 
   // Live states: refresh every 5 s while this tab is open and you're not typing or editing.
+  // ---------- My dashboard: star cards, drag them into your order (mouse, finger or arrow keys) ----------
+  function saveLayout() { post('/home/layout', { favourites: JSON.stringify(data.favourites || []) }); }
+  function orderFromPage() {
+    var onPage = [].slice.call($('hDevices').querySelectorAll('.hcard')).map(function (c) { return c.dataset.dev; });
+    // starred devices not on the page right now (filtered out, hidden) keep their place at the end
+    data.favourites = onPage.concat((data.favourites || []).filter(function (id) { return onPage.indexOf(id) < 0; }));
+    saveLayout();
+  }
+  var grid = $('hDevices');
+  grid.addEventListener('pointerdown', function (ev) {
+    var hd = ev.target.closest('[data-drag]'); if (!hd) return;
+    ev.preventDefault();
+    drag = hd.closest('.hcard'); busy = true; drag.classList.add('hdragging');
+    try { hd.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
+  });
+  grid.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    var over = document.elementFromPoint(ev.clientX, ev.clientY); over = over && over.closest('.hcard');
+    if (!over || over === drag || over.parentNode !== grid) return;
+    var cards = [].slice.call(grid.children);
+    grid.insertBefore(drag, cards.indexOf(drag) < cards.indexOf(over) ? over.nextSibling : over);
+  });
+  var drop = function () { if (!drag) return; drag.classList.remove('hdragging'); drag = null; busy = false; orderFromPage(); };
+  grid.addEventListener('pointerup', drop);
+  grid.addEventListener('pointercancel', drop);
+  grid.addEventListener('keydown', function (ev) {
+    var hd = ev.target.closest('[data-drag]'); if (!hd) return;
+    var back = ev.key === 'ArrowUp' || ev.key === 'ArrowLeft', fwd = ev.key === 'ArrowDown' || ev.key === 'ArrowRight';
+    if (!back && !fwd) return;
+    ev.preventDefault();
+    var c = hd.closest('.hcard'), sib = back ? c.previousElementSibling : c.nextElementSibling;
+    if (!sib) return;
+    grid.insertBefore(c, back ? sib : sib.nextSibling);
+    orderFromPage(); hd.focus();
+  });
+
+  $('hFind').value = pref.find; $('hOnlyCtl').checked = pref.onlyCtl; $('hShowHidden').checked = pref.showHidden;
+  $('hFind').addEventListener('input', function () { pref.find = this.value; savePref(); if (data) render(); });
+  $('hOnlyCtl').addEventListener('change', function () { pref.onlyCtl = this.checked; savePref(); if (data) render(); });
+  $('hShowHidden').addEventListener('change', function () { pref.showHidden = this.checked; savePref(); if (data) render(); });
   load();
   setInterval(function () {
     if (!pane.classList.contains('on') || document.hidden || editing || flow || busy) return;

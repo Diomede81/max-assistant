@@ -24,6 +24,8 @@ export interface HomeEntity {
   mode?: string;
   step?: number;
   unavailable?: boolean;
+  /** Hidden by you (Edit → Hide): left out unless "Show hidden" is on. */
+  hidden?: boolean;
 }
 
 export interface HomeDevice {
@@ -45,11 +47,17 @@ export interface HomeOverview {
   /** The account Max created for it (shown under "Advanced"). */
   login?: { username: string; password: string };
   areas: { id: string; name: string }[];
+  /** My dashboard: the devices you starred, in your order (they also come first everywhere else). */
+  favourites?: string[];
   devices: HomeDevice[];
   /** Devices Home Assistant found on the network, ready to add. */
   found: { flowId: string; name: string; integration: string; attention?: boolean }[];
   /** A newer Home Assistant (updating is by hand), or the progress of an update. */
   update?: HomeUpdate;
+  /** Hardware that only reports its battery and connection (e.g. radiator valves: the room is what you control). */
+  parts?: { id: string; name: string; area?: string; ok: boolean; states: string }[];
+  /** What's connected to Home Assistant (Tado, Shelly...), and whether it works. */
+  services?: { id: string; domain: string; name: string; title: string; status: string; ok: boolean; removable: boolean }[];
 }
 
 export interface HomeUpdate {
@@ -385,6 +393,28 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
 
   // ---------- the Devices page ----------
 
+  private get layoutFile(): string {
+    return join(this.cfg.memory.dir, 'devices-layout.json');
+  }
+
+  /** My dashboard, kept on the box so every phone and computer shows the same one. */
+  favourites(): string[] {
+    try {
+      const f = (JSON.parse(readFileSync(this.layoutFile, 'utf8')) as { favourites?: unknown }).favourites;
+      return Array.isArray(f) ? f.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  saveFavourites(ids: unknown): string {
+    if (!Array.isArray(ids)) return 'Not saved.';
+    const clean = [...new Set(ids.filter((x): x is string => typeof x === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(x)))].slice(0, 200);
+    mkdirSync(dirname(this.layoutFile), { recursive: true });
+    writeFileSync(this.layoutFile, JSON.stringify({ favourites: clean }, null, 2));
+    return 'Saved.';
+  }
+
   async overview(): Promise<HomeOverview> {
     const base: HomeOverview = { state: this.stateNow, message: this.message, url: this.publicUrl(), areas: [], devices: [], found: [], update: await this.updateInfo() };
     if (this.stateNow !== 'ready') return base;
@@ -471,7 +501,7 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   private async devicesOverview(base: HomeOverview): Promise<HomeOverview> {
     const ws = this.ws();
     type Area = { area_id: string; name: string };
-    type Device = { id: string; name: string | null; name_by_user: string | null; area_id: string | null; manufacturer: string | null; disabled_by: string | null; entry_type: string | null };
+    type Device = { id: string; name: string | null; name_by_user: string | null; area_id: string | null; manufacturer: string | null; model: string | null; disabled_by: string | null; entry_type: string | null };
     type Entry = { entity_id: string; device_id: string | null; area_id: string | null; name: string | null; original_name: string | null; hidden_by: string | null; disabled_by: string | null; entity_category: string | null };
     type State = { entity_id: string; state: string; attributes: Record<string, unknown> };
     const [areas, devices, entries, states, exposed, flows] = await Promise.all([
@@ -486,16 +516,31 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     const stateOf = new Map(states.map((s) => [s.entity_id, s]));
     const byDevice = new Map<string, Entry[]>();
     for (const e of entries) {
-      if (!e.device_id || e.hidden_by || e.disabled_by || e.entity_category) continue;
+      // Hidden by Home Assistant itself: never shown. Hidden by you: only with "Show hidden".
+      if (!e.device_id || (e.hidden_by && e.hidden_by !== 'user') || e.disabled_by || e.entity_category) continue;
       if (!SHOWN.has(e.entity_id.split('.')[0])) continue;
       byDevice.set(e.device_id, [...(byDevice.get(e.device_id) ?? []), e]);
     }
     const list: HomeDevice[] = [];
+    const parts: NonNullable<HomeOverview['parts']> = [];
     for (const d of devices) {
       const ents = byDevice.get(d.id);
       if (!ents?.length || d.disabled_by || d.entry_type === 'service') continue;
-      const name = d.name_by_user || d.name || 'Device';
+      const name = d.name_by_user || friendlyName(d.name, d.model, d.manufacturer) || 'Device';
       const areaId = d.area_id ?? ents.find((e) => e.area_id)?.area_id ?? undefined;
+      // Only a battery and a connection to show: listed under "Batteries and connections", not as a card.
+      if (ents.every((e) => isHealth(stateOf.get(e.entity_id), e.entity_id))) {
+        const st = ents.map((e) => stateOf.get(e.entity_id));
+        const bad = st.some((x) => !x || x.state === 'unavailable' || (x.attributes.device_class === 'battery' && (x.state === 'on' || (Number(x.state) < 20 && x.state !== '' && !isNaN(Number(x.state))))) || (x.attributes.device_class === 'connectivity' && x.state === 'off'));
+        parts.push({
+          id: d.id,
+          name,
+          area: areaId ? areaName.get(areaId) : undefined,
+          ok: !bad,
+          states: ents.map((e) => describe(e.entity_id, e.name || e.original_name || '', name, stateOf.get(e.entity_id)).state).filter(Boolean).join(' · '),
+        });
+        continue;
+      }
       list.push({
         id: d.id,
         name,
@@ -504,8 +549,9 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
         maker: d.manufacturer ?? undefined,
         max: ents.some((e) => exposed.exposed_entities[e.entity_id]?.conversation),
         entities: ents
-          .map((e) => describe(e.entity_id, e.name || e.original_name || '', name, stateOf.get(e.entity_id)))
-          .sort((a, b) => Number(b.control !== 'none') - Number(a.control !== 'none')),
+          .map((e) => ({ ...describe(e.entity_id, e.name || e.original_name || '', name, stateOf.get(e.entity_id)), hidden: e.hidden_by === 'user' || undefined }))
+          // The device's main control first (the heating before a room's child lock), read-only rows last.
+          .sort((a, b) => rankOf(a) - rankOf(b)),
       });
     }
     // Rooms first (alphabetically), then devices without a room.
@@ -525,6 +571,10 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       login: this.saved.username === 'max' && this.saved.password ? { username: 'max', password: this.saved.password } : undefined,
       areas: areas.map((a) => ({ id: a.area_id, name: a.name })).sort((a, b) => a.name.localeCompare(b.name)),
       devices: list,
+      // As saved (a device hidden for now keeps its place); the page skips the ones it doesn't show.
+      favourites: this.favourites(),
+      parts: parts.sort((a, b) => Number(a.ok) - Number(b.ok) || a.name.localeCompare(b.name)),
+      services: await this.services(),
       found,
     };
   }
@@ -624,6 +674,63 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       .slice(0, 30);
   }
 
+  /** Hides one of a device's items in Home Assistant (or shows it again): tidier everywhere, not only here. */
+  async hideEntity(entityId: string, hide: boolean): Promise<string> {
+    if (!/^[a-z_]+\.[a-z0-9_]+$/.test(entityId)) return 'Not found.';
+    await this.ws().call('config/entity_registry/update', { entity_id: entityId, hidden_by: hide ? 'user' : null });
+    return hide ? 'Hidden.' : 'Shown again.';
+  }
+
+  /** What's connected to Home Assistant (brands and services you added), with whether each one works. */
+  private async services(): Promise<NonNullable<HomeOverview['services']>> {
+    type Entry = { entry_id: string; domain: string; title: string; state: string; source?: string; disabled_by: string | null; reason?: string | null };
+    try {
+      await this.integrations(''); // the catalogue: what counts as a brand or service
+      const known = new Set(this.catalog?.list.map((i) => i.domain));
+      const entries = await this.json<Entry[]>('GET', '/api/config/config_entries/entry', undefined, this.token());
+      const status: Record<string, [string, boolean]> = {
+        loaded: ['Working', true],
+        setup_retry: ['Trying to connect', false],
+        setup_error: ['Not working', false],
+        migration_error: ['Not working', false],
+        failed_unload: ['Not working', false],
+        not_loaded: ['Off', false],
+        setup_in_progress: ['Starting', true],
+      };
+      return Promise.all(
+        entries
+          // What you (or Max) added: not the basics Home Assistant sets up by itself (weather, its own voice...).
+          .filter((e) => (known.has(e.domain) && e.source !== 'onboarding' && e.source !== 'system') || e.domain === 'mcp_server')
+          .map(async (e) => {
+            const [label, ok] = e.disabled_by ? (['Turned off', false] as [string, boolean]) : (status[e.state] ?? [e.state.replace(/_/g, ' '), false]);
+            return {
+              id: e.entry_id,
+              domain: e.domain,
+              name: await this.integrationName(e.domain),
+              title: e.title,
+              status: e.reason && !ok ? `${label}: ${e.reason}` : label,
+              ok,
+              // Max's own connection to Home Assistant stays.
+              removable: e.domain !== 'mcp_server',
+            };
+          }),
+      ).then((l) => l.sort((a, b) => Number(a.ok) - Number(b.ok) || a.name.localeCompare(b.name)));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Removes a brand or service from Home Assistant, with its devices. */
+  async removeService(entryId: string): Promise<string> {
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(entryId)) return 'Not found.';
+    const entries = await this.json<{ entry_id: string; domain: string; title: string }[]>('GET', '/api/config/config_entries/entry', undefined, this.token());
+    const entry = entries.find((e) => e.entry_id === entryId);
+    if (!entry) return 'Not found.';
+    if (entry.domain === 'mcp_server') return "That's how Max talks to Home Assistant, so it stays.";
+    await this.json('DELETE', `/api/config/config_entries/entry/${encodeURIComponent(entryId)}`, undefined, this.token());
+    return `Removed ${entry.title || (await this.integrationName(entry.domain))}.`;
+  }
+
   async startFlow(domain: string): Promise<FlowStep> {
     if (!/^[a-z0-9_]+$/.test(domain)) return { kind: 'stopped', integration: domain, title: 'Not found' };
     return this.step(await this.json('POST', '/api/config/config_entries/flow', { handler: domain, show_advanced_options: false }, this.token()));
@@ -686,6 +793,8 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       out.kind = 'wait';
       out.title = `Adding ${integration}…`;
       out.text = t(`progress.${raw.progress_action}`) || 'This can take a minute.';
+      // A sign-in on the brand's own site while this waits (e.g. Tado): offer it as a button too.
+      if (typeof ph.url === 'string' && /^https:\/\//.test(ph.url)) out.url = ph.url;
     } else if (raw.type === 'create_entry') {
       out.kind = 'done';
       out.title = `${raw.title || integration} added`;
@@ -806,6 +915,33 @@ function describe(id: string, ownName: string, deviceName: string, s?: { state: 
   } else if (domain === 'sensor') e.state = `${raw}${a.unit_of_measurement ? ` ${a.unit_of_measurement}` : ''}`;
   else if (domain === 'binary_sensor') e.state = raw === 'on' ? (BINARY_ON[String(a.device_class)] ?? 'On') : raw === 'off' ? (BINARY_OFF[String(a.device_class)] ?? 'Off') : nice(raw);
   return e;
+}
+
+/** Which of a device's items leads its card: the heating before a room's child lock, read-only rows last. */
+const RANK: Record<string, number> = { climate: 0, water_heater: 1, light: 2, cover: 3, valve: 3, lock: 4, fan: 5, media_player: 6, vacuum: 7, switch: 8, input_boolean: 8, scene: 9, button: 10 };
+function rankOf(e: HomeEntity): number {
+  return e.control === 'none' ? 50 : (RANK[e.domain] ?? 20);
+}
+
+/** Only reports how the hardware itself is doing: its battery, connection or signal. */
+function isHealth(s: { state: string; attributes: Record<string, unknown> } | undefined, id: string): boolean {
+  const cls = String(s?.attributes.device_class ?? '');
+  const domain = id.split('.')[0];
+  return (domain === 'binary_sensor' && ['battery', 'connectivity', 'problem', 'update'].includes(cls)) || (domain === 'sensor' && ['battery', 'signal_strength'].includes(cls));
+}
+
+/** Hardware named by its serial number ("VA1234567890"): say what it is instead, keeping the serial. */
+const TADO_MODELS: [RegExp, string][] = [
+  [/^VA/, 'Radiator valve'],
+  [/^RU/, 'Thermostat'],
+  [/^IB/, 'Internet bridge'],
+  [/^SU/, 'Temperature sensor'],
+  [/^(BU|BR|BP)/, 'Boiler connection'],
+];
+function friendlyName(name: string | null, model: string | null, maker: string | null): string | null {
+  if (!name || !model || !/^[A-Z]{2}\d{6,}$/.test(name)) return name;
+  const kind = /tado/i.test(maker ?? '') ? TADO_MODELS.find(([re]) => re.test(model))?.[1] : undefined;
+  return `${kind ?? model} (${name.slice(-4)})`;
 }
 
 const BINARY_ON: Record<string, string> = { door: 'Open', window: 'Open', opening: 'Open', motion: 'Movement', occupancy: 'Someone there', presence: 'Home', moisture: 'Wet', smoke: 'Smoke!', battery: 'Battery low', connectivity: 'Connected', plug: 'Plugged in' };

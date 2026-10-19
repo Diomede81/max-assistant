@@ -733,6 +733,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         const f = await readForm(req);
         const value = f.get('value');
         if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value), value ?? undefined) });
+        if (p === '/home/layout') {
+          let ids: unknown = [];
+          try {
+            ids = JSON.parse(f.get('favourites') ?? '[]');
+          } catch {
+            /* nothing to save */
+          }
+          return this.json(res, { message: home.saveFavourites(ids) });
+        }
+        if (p === '/home/hide') return this.json(res, { message: await home.hideEntity(f.get('entity') ?? '', f.get('hide') === '1') });
+        if (p === '/home/service/remove') return this.json(res, { message: await home.removeService(f.get('entry') ?? '') });
         if (p === '/home/allow') return this.json(res, { message: await home.allowMax(f.get('device') ?? '', f.get('on') === '1') });
         if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
         if (p === '/home/update') return this.json(res, { message: await home.requestUpdate() });

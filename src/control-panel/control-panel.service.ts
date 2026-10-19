@@ -591,7 +591,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         this.cfg.voiceMode === 'realtime'
           ? `${rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'} (${rt.model}, "${rt.voice}")`
           : `Pipeline (${this.cfg.llm.model})`,
-      homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
+      homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error, where: this.ha.where },
       web: this.web?.status,
       trains: this.trains?.status,
       whatsapp: await this.whatsapp?.status(),
@@ -692,6 +692,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       servers: this.mcp.list.map((s) => ({
         name: s.config.name,
         connected: s.connected,
+        // Offers Home Assistant's own actions: another Home Assistant, whose device actions Max leaves out.
+        duplicate: s.openAiTools.some((t) => t.type === 'function' && this.ha.has(t.function.name)),
         ...s.counts,
         error: s.lastError,
       })),
@@ -730,7 +732,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       } else if (req.method === 'POST') {
         const f = await readForm(req);
         const value = f.get('value');
-        if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value)) });
+        if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value), value ?? undefined) });
         if (p === '/home/allow') return this.json(res, { message: await home.allowMax(f.get('device') ?? '', f.get('on') === '1') });
         if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
         if (p === '/home/update') return this.json(res, { message: await home.requestUpdate() });

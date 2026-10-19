@@ -19,6 +19,10 @@ export interface HomeEntity {
   control: 'toggle' | 'cover' | 'lock' | 'press' | 'media' | 'climate' | 'vacuum' | 'none';
   brightness?: number;
   target?: number;
+  /** Heating: its modes (off, heat, auto...), the one it's in, and the temperature step. */
+  modes?: string[];
+  mode?: string;
+  step?: number;
   unavailable?: boolean;
 }
 
@@ -526,8 +530,15 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A tap on the Devices page: turn on/off, open/close, press, change brightness or temperature. */
-  async act(entityId: string, action: string, value?: number): Promise<string> {
+  async act(entityId: string, action: string, value?: number, text?: string): Promise<string> {
     const domain = entityId.split('.')[0];
+    if (action === 'mode') {
+      if (!text || !/^[a-z_]{2,30}$/.test(text) || !/^[a-z_]+\.[a-z0-9_]+$/.test(entityId)) return 'Not something this page can do.';
+      const [service, data] = domain === 'water_heater' ? ['set_operation_mode', { operation_mode: text }] : ['set_hvac_mode', { hvac_mode: text }];
+      if (domain !== 'climate' && domain !== 'water_heater') return 'Not something this page can do.';
+      await this.ws().call('call_service', { domain, service, service_data: data, target: { entity_id: entityId } });
+      return 'Done';
+    }
     const service: Record<string, [string, string, Record<string, unknown>?]> = {
       toggle: [domain, 'toggle'],
       on: [domain, 'turn_on'],
@@ -786,6 +797,10 @@ function describe(id: string, ownName: string, deviceName: string, s?: { state: 
   else if (domain === 'climate' || domain === 'water_heater') {
     e.control = 'climate';
     e.target = typeof a.temperature === 'number' ? a.temperature : undefined;
+    const modes = domain === 'water_heater' ? a.operation_list : a.hvac_modes;
+    if (Array.isArray(modes)) e.modes = modes.filter((m): m is string => typeof m === 'string');
+    e.mode = domain === 'water_heater' && typeof a.operation_mode === 'string' ? a.operation_mode : raw;
+    if (typeof a.target_temp_step === 'number' && a.target_temp_step > 0) e.step = a.target_temp_step;
     const now = a.current_temperature;
     e.state = `${nice(raw)}${typeof now === 'number' ? ` · ${now}°` : ''}`;
   } else if (domain === 'sensor') e.state = `${raw}${a.unit_of_measurement ? ` ${a.unit_of_measurement}` : ''}`;

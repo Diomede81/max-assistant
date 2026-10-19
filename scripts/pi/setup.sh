@@ -260,6 +260,7 @@ grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.lo
 grep -q '^PANEL_PASSWORD=.\+' .env || say "The control panel asks you to choose a password on your first visit (with a code shown on Max's screen)."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
 # Home Assistant on the box: its own container (profile "home"), set up and connected by Max himself.
+OLD_HA_NOTE='# Not used while Home Assistant runs on the box: '
 PROFILES="$( (sed -n 's/^COMPOSE_PROFILES=//p' .env | tr ',' '\n' | grep -vx 'home' | grep -v '^$' | paste -sd, -) || true)"
 if [ "$HOME_HA" = on ]; then
   say "Home Assistant on the box: Max sets it up; your devices are in his control panel (Devices)"
@@ -281,9 +282,13 @@ YAML
   fi
   set_env COMPOSE_PROFILES "${PROFILES:-max},home"
   set_env HA_LOCAL 1
+  # An earlier Home Assistant connection isn't used any more: set it aside (kept as a note, put back if this is
+  # turned off), so there's only ever one Home Assistant.
+  sed -i -E "s/^(HA_MCP_URL|HA_TOKEN)=(.+)$/$OLD_HA_NOTE\1=\2/" .env
 else
   set_env COMPOSE_PROFILES "${PROFILES:-max}"
   grep -q '^HA_LOCAL=1' .env && set_env HA_LOCAL 0
+  sed -i -E "s/^$OLD_HA_NOTE(HA_MCP_URL|HA_TOKEN)=/\1=/" .env
   docker compose -f docker-compose.yml -f docker-compose.pi.yml --profile home rm -sf homeassistant >/dev/null 2>&1 || true
 fi
 # Every "docker compose" command on the box includes the Pi settings (sound, control panel on the

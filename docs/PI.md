@@ -217,6 +217,9 @@ Good to know:
 - Home Assistant's data lives in `/var/lib/max/home-assistant` on the SD card. History is kept for 7 days and
   saved every 30 seconds, to spare the card. When you add an SSD later, this folder is the one to move.
 - Already have a Home Assistant at that folder with your own account? The Devices tab asks you to sign in once.
+- **One Home Assistant only.** While it runs on the box, the setup sets any earlier connection in `.env`
+  (`HA_MCP_URL`, `HA_TOKEN`) aside as a note, and puts it back if you turn this off. If another Home Assistant
+  was added under "Other servers", Max ignores its device actions and the control panel says how to remove it.
 - **Always running:** Home Assistant starts with the box, and Max asks for it whenever he starts. If it stops,
   Max asks for it again within 5 minutes.
 - **Updates are by hand.** When a new Home Assistant is out, the Devices tab says so, with **What's new** and

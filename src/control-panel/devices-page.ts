@@ -64,11 +64,25 @@ const SCRIPT = String.raw`
   var md = function (t) {
     return esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/\n/g, '<br>');
   };
-  var data = null, room = '', editing = '', busy = false;
+  var data = null, room = '', editing = '', busy = false, advDrawn = '';
   var post = function (path, body) {
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) })
       .then(function (r) { return r.json(); });
   };
+
+  // The browser's clipboard only works on https or localhost; on http://max.local fall back to the older way.
+  function copy(text) {
+    var done = function () { $('hPwMsg').textContent = 'Password copied.'; };
+    var fail = function () { $('hPwMsg').textContent = "Couldn't copy: press Show instead."; };
+    if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(done, fail); return; }
+    var box = document.createElement('textarea');
+    box.value = text; box.setAttribute('readonly', ''); box.style.position = 'fixed'; box.style.opacity = '0';
+    document.body.appendChild(box); box.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    box.remove();
+    if (ok) done(); else fail();
+  }
 
   function load() {
     return fetch('/api/home').then(function (r) { return r.json(); }).then(function (d) { data = d; render(); }).catch(function () { $('hStatus').textContent = "Couldn't reach Max."; });
@@ -97,8 +111,12 @@ const SCRIPT = String.raw`
         (f.attention ? '' : '<button class="btn secondary" type="button" data-ignore="' + esc(f.flowId) + '">Not mine</button>') + '</div></li>';
     }).join('') + '</ul>' : '';
     // advanced
-    $('hAdvanced').innerHTML = '<p><a class="btn secondary" href="' + esc(d.url) + '" target="_blank" rel="noopener">Open the full Home Assistant</a></p>' +
-      (d.login ? '<p class="meta">Its account (Max made it for you): username <b>' + esc(d.login.username) + '</b>, password <span class="hpw" id="hPw">••••••••</span> <button type="button" class="btn secondary" id="hShowPw">Show</button></p>' : '');
+    var adv = '<p><a class="btn secondary" href="' + esc(d.url) + '" target="_blank" rel="noopener">Open the full Home Assistant</a></p>' +
+      (d.login ? '<p class="meta">Its account (Max made it for you): username <b>' + esc(d.login.username) + '</b>, password <span class="hpw" id="hPw">••••••••</span> ' +
+        '<button type="button" class="btn secondary" id="hShowPw">Show</button> <button type="button" class="btn secondary" id="hCopyPw">Copy</button> ' +
+        '<button type="button" class="btn secondary" id="hNewPw">New password</button></p><p class="meta" id="hPwMsg" role="status"></p>' : '');
+    // Only redraw when it changed, so a shown password and its messages stay put between refreshes.
+    if (adv !== advDrawn) { $('hAdvanced').innerHTML = adv; advDrawn = adv; }
   }
 
   function card(x) {
@@ -199,6 +217,8 @@ const SCRIPT = String.raw`
     if (t.dataset.found) { busy = true; fetch('/api/home/flow?id=' + encodeURIComponent(t.dataset.found)).then(function (r) { return r.json(); }).then(showStep).finally(function () { busy = false; }); return; }
     if (t.dataset.ignore) { post('/home/ignore', { flow: t.dataset.ignore }).then(load); return; }
     if (t.dataset.domain) { start(t.dataset.domain); return; }
+    if (t.id === 'hCopyPw' && data && data.login) { copy(data.login.password); return; }
+    if (t.id === 'hNewPw') { if (!confirm('Make a new password for this account? The old one stops working.')) return; post('/home/password', {}).then(function (r) { advDrawn = ''; load().then(function () { var m = $('hPwMsg'); if (m) m.textContent = r.message; }); }); return; }
     if (t.id === 'hShowPw' && data && data.login) { var pw = $('hPw'); var hidden = pw.textContent.indexOf('•') === 0; pw.textContent = hidden ? data.login.password : '••••••••'; t.textContent = hidden ? 'Hide' : 'Show'; return; }
     if (t.hasAttribute('data-flow-cancel')) { closeFlow(true); return; }
     if (t.hasAttribute('data-flow-close')) { closeFlow(false); return; }

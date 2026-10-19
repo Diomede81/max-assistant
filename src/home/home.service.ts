@@ -76,6 +76,20 @@ interface Saved {
 }
 
 const CLIENT_ID = 'http://max.local/';
+/** Thrown when Home Assistant turns a username and password down (as opposed to not answering). */
+class WrongLogin extends Error {
+  constructor() {
+    super('wrong username or password');
+  }
+}
+
+/** A password that's easy to read and type: no look-alike characters (0/O, 1/l/I), in groups of four. */
+function newPassword(): string {
+  const letters = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(16);
+  const chars = [...bytes].map((b) => letters[b % letters.length]);
+  return [0, 4, 8, 12].map((i) => chars.slice(i, i + 4).join('')).join('-');
+}
 const TOGGLE = new Set(['light', 'switch', 'fan', 'input_boolean', 'humidifier', 'siren']);
 const SHOWN = new Set([...TOGGLE, 'cover', 'valve', 'lock', 'climate', 'media_player', 'vacuum', 'water_heater', 'button', 'sensor', 'binary_sensor', 'scene']);
 const NOT_SET_UP_HERE = new Set(['helper', 'entity', 'system', 'hardware', 'virtual']);
@@ -139,11 +153,25 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       if (!(this.saved.token && (await this.tokenWorks(this.saved.token)))) {
         const steps = await this.json<{ step: string; done: boolean }[]>('GET', '/api/onboarding');
         if (!steps.find((s) => s.step === 'user')?.done) await this.onboard(steps);
-        else if (this.saved.username && this.saved.password) await this.signIn(this.saved.username, this.saved.password);
         else {
-          this.stateNow = 'needs-login';
-          this.message = 'This Home Assistant already has an account: sign in once so Max can manage it.';
-          return;
+          let signedIn = false;
+          if (this.saved.username && this.saved.password) {
+            try {
+              await this.signIn(this.saved.username, this.saved.password);
+              signedIn = true;
+            } catch (err) {
+              if (!(err instanceof WrongLogin)) throw err;
+              // Home Assistant got its account another way (e.g. its own welcome screens): the login Max kept is
+              // out of date, so forget it and ask.
+              this.saved = {};
+              this.save();
+            }
+          }
+          if (!signedIn) {
+            this.stateNow = 'needs-login';
+            this.message = 'This Home Assistant already has an account: sign in once so Max can manage it.';
+            return;
+          }
         }
       }
       await this.ensureMcp();
@@ -162,7 +190,7 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
 
   /** First start: creates the owner account and finishes Home Assistant's welcome steps. */
   private async onboard(steps: { step: string; done: boolean }[]): Promise<void> {
-    const password = randomBytes(12).toString('base64url');
+    const password = newPassword();
     const created = await this.json<{ auth_code: string }>('POST', '/api/onboarding/users', {
       client_id: CLIENT_ID,
       name: 'Max',
@@ -191,6 +219,8 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       await this.signIn(username.trim(), password);
       this.saved = { ...this.saved, username: username.trim(), password };
       this.save();
+      this.stateNow = 'starting';
+      this.message = 'Signed in: Max is connecting to Home Assistant…';
       void this.setUp();
       return 'Signed in: Max is setting up the connection.';
     } catch (err) {
@@ -209,8 +239,24 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       username,
       password,
     });
-    if (done.type !== 'create_entry' || !done.result) throw new Error('wrong username or password');
+    if (done.type !== 'create_entry' || !done.result) throw new WrongLogin();
     await this.keepToken(await this.exchange(done.result));
+  }
+
+  /**
+   * Gives Max's own Home Assistant account ("max") a new password, e.g. when the one shown doesn't work.
+   * Only for the account Max made: an account someone else made keeps its password.
+   */
+  async resetPassword(): Promise<string> {
+    if (this.stateNow !== 'ready') return "Home Assistant isn't ready yet.";
+    const me = await this.ws().call<{ id: string }>('auth/current_user');
+    const users = await this.ws().call<{ id: string; username: string | null }[]>('config/auth/list');
+    if (users.find((u) => u.id === me.id)?.username !== 'max') return "Max didn't make this Home Assistant's account, so he can't change its password.";
+    const password = newPassword();
+    await this.ws().call('config/auth_provider/homeassistant/admin_change_password', { user_id: me.id, password });
+    this.saved = { ...this.saved, username: 'max', password };
+    this.save();
+    return 'New password made: press Show to see it.';
   }
 
   private async exchange(code: string): Promise<string> {

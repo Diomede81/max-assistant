@@ -81,6 +81,8 @@ See [`deploy/max.service`](deploy/max.service).
 - **Trains (UK)**: "When's the next train to Waterloo?" (live times, delays, platforms) and "get me to Manchester
   by 10 tomorrow" (journeys with changes, plus a QR code on the screen to book on Trainline). See
   **[docs/TRAINS.md](docs/TRAINS.md)**.
+- **Meeting notes**: send Max to your Teams, Zoom or Google Meet meetings as a notetaker and get the transcript
+  of who said what (via Recall.ai). See **[docs/MEETINGS.md](docs/MEETINGS.md)**.
 - **Recipes and how-tos on the screen**: "Show me a recipe for macaroni cheese" puts the ingredients and
   then each step on the screen; say "next step" or tap **Next**.
 - **Timers and reminders**: "Set a pasta timer for 10 minutes", "Remind me in 20 minutes to call Mum",

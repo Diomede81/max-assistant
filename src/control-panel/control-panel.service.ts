@@ -3,6 +3,7 @@ import { MusicService } from '../music/music.service';
 import { WebService } from '../web/web.service';
 import { COUNTRIES, LocationService } from '../location/location.service';
 import { ABOUT_FIELDS, About, AboutService } from '../about/about.service';
+import { MeetingsService } from '../meetings/meetings.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService, Side } from '../composio/composio.service';
@@ -45,6 +46,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(AboutService) private readonly about?: AboutService;
+  @Optional() @Inject(MeetingsService) private readonly meetings?: MeetingsService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
@@ -285,6 +287,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
+    if (this.meetings && (url.pathname.startsWith('/meetings/'))) return this.meetingsRoute(req, res, url);
     if (req.method === 'POST' && url.pathname === '/about' && this.about) {
       const f = await readForm(req);
       const values: About = {};
@@ -595,6 +598,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       web: this.web?.status,
       trains: this.trains?.status,
       whatsapp: await this.whatsapp?.status(),
+      meetings: this.meetings && {
+        enabled: this.meetings.enabled,
+        monthMinutes: this.meetings.monthMinutes(),
+        list: this.meetings.list().map((m) => ({
+          id: m.id,
+          title: m.title,
+          platform: m.platform,
+          at: m.at,
+          state: m.state,
+          status: m.status,
+          minutes: m.startedAt ? Math.max(0, Math.round((Date.parse(m.endedAt ?? new Date().toISOString()) - Date.parse(m.startedAt)) / 60_000)) : undefined,
+          turns: m.transcript?.length ?? 0,
+        })),
+      },
       about: this.about && { fields: ABOUT_FIELDS.map((f) => ({ ...f, value: this.about!.about[f.key] ?? '' })) },
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       routines: this.routines && this.memory.enabled
@@ -714,6 +731,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       d.memory.project = url.searchParams.get('project') ?? undefined;
     }
     if (d.soul && SOUL_DOCS.includes(url.searchParams.get('doc') as SoulDoc)) d.soul.doc = url.searchParams.get('doc') as SoulDoc;
+    const meetingId = url.searchParams.get('meeting');
+    const meeting = meetingId ? this.meetings?.get(meetingId) : undefined;
+    if (d.meetings && meeting) d.meetings.selected = { id: meeting.id, title: meeting.title, platform: meeting.platform, at: meeting.at, status: meeting.status, lines: meeting.transcript ?? [] };
     // Which tab opens first (a #section in the address, e.g. after saving, takes precedence in the browser).
     const q = url.searchParams;
     d.tab = q.get('tab') ?? (q.has('doc') ? 'max' : q.has('project') ? 'projects' : q.has('vault') || q.has('q') ? 'memory' : q.has('connected') ? 'connections' : undefined);
@@ -721,6 +741,46 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The Devices tab (Home Assistant on the box): its data and actions, all answered as JSON. */
+  /** Meetings page: send Max to a meeting, make him leave, rename, delete, download a transcript. */
+  private async meetingsRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const meetings = this.meetings!;
+    const back = (msg: string, ok = true, hash = '#meetings', extra = '') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}${extra}${hash}`);
+    if (req.method === 'GET' && url.pathname === '/meetings/transcript.txt') {
+      const m = meetings.get(url.searchParams.get('id') ?? '');
+      if (!m?.transcript) return back('No transcript for that meeting.', false);
+      const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+      const text = [`${m.title} (${m.platform}, ${new Date(m.at).toLocaleString('en-GB')})`, '', ...m.transcript.map((l) => `[${stamp(l.at)}] ${l.speaker}: ${l.text}`)].join('\n');
+      const name = m.title.replace(/[^\w -]+/g, '').trim().slice(0, 60) || 'meeting';
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}.txt"` }).end(text);
+      return;
+    }
+    if (req.method !== 'POST') return back('Not found.', false);
+    const f = await readForm(req);
+    switch (url.pathname) {
+      case '/meetings/join': {
+        const r = await meetings.join(f.get('link') ?? '', f.get('title') ?? '');
+        return back(r.message, r.ok);
+      }
+      case '/meetings/leave':
+        return back(await meetings.leave(f.get('id') ?? ''));
+      case '/meetings/rename': {
+        const id = f.get('id') ?? '';
+        return back(meetings.rename(id, f.get('title') ?? '') ? 'Renamed.' : 'Not renamed.', true, '#meetings', `&meeting=${encodeURIComponent(id)}`);
+      }
+      case '/meetings/delete':
+        if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, '#meetings', `&meeting=${encodeURIComponent(f.get('id') ?? '')}`);
+        return back(meetings.remove(f.get('id') ?? '') ? 'Meeting deleted.' : 'Meeting not found.');
+      case '/meetings/check':
+        try {
+          return back(await meetings.check());
+        } catch (err) {
+          return back((err as Error).message, false);
+        }
+      default:
+        return back('Not found.', false);
+    }
+  }
+
   private async homeRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const home = this.home!;
     const p = url.pathname;

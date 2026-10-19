@@ -139,7 +139,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); checkPowerButton(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
@@ -494,6 +494,21 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       });
     }).catch(() => menu('<h1>Updates</h1><p>Could not check for updates.</p>' + BACK, { uBack: closeMenu }));
   }
+  // The box's power button: a press shows Turn off / Restart; a second press while that shows turns off
+  // (with the usual few seconds to change your mind). Presses from before the screen loaded don't count.
+  let powerSeen;
+  function checkPowerButton() {
+    const p = info.powerPress || 0;
+    if (powerSeen === undefined || p === powerSeen) { powerSeen = p; return; }
+    powerSeen = p;
+    if (!menuEl.hidden && document.getElementById('pwOff')) return confirmPower('poweroff');
+    menu('<h1>Power</h1><button class="off" id="pwOff">Turn off</button><button id="pwRestart">Restart</button>' +
+      '<button class="quiet" id="pwCancel">Back to Max</button>', {
+      pwOff: () => confirmPower('poweroff'),
+      pwRestart: () => confirmPower('reboot'),
+      pwCancel: closeMenu,
+    });
+  }
   // A few seconds to change your mind, then the box is asked to turn off / restart.
   function confirmPower(action) {
     const off = action === 'poweroff';
@@ -508,7 +523,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       fetch('/power?action=' + action, { method: 'POST' }).then((r) => {
         if (!r.ok) throw new Error();
         menu(off
-          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button on the Raspberry Pi.</p>'
+          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, unplug the power and plug it back in.</p>'
           : '<h1>Restarting…</h1><p>Back in about a minute.</p>', {});
         clearTimeout(menuIdle);
         // If the box hasn't gone down after 30 s, something stopped it: offer the way back.

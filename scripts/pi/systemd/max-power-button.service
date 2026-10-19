@@ -1,8 +1,9 @@
 [Unit]
-Description=Max power button on the 40-pin header (turns the box off safely)
+Description=Max power button on the 40-pin header (asks Max: turn off or restart?)
 After=local-fs.target
 
 [Service]
+Environment=MAX_RUN_DIR=/run/max
 ExecStart=/usr/bin/python3 /usr/local/lib/max/max-power-button.py
 Restart=always
 RestartSec=5

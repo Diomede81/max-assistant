@@ -168,9 +168,11 @@ say "Installing turn off / restart and screen brightness (screen menu, voice, co
 install -D -m 755 "$REPO/scripts/pi/max-power.sh" /usr/local/lib/max/max-power.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-power.path" /etc/systemd/system/max-power.path
 install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/max-power.service
-# The Pi 5's own power button: a short press turns the box off safely (pressed again, it starts).
+# The Pi 5's power key (its own button, or one on its J2 pads): pressed while off, the box starts;
+# pressed while on, max-power-button asks Max to show Turn off / Restart (held 3 s: off straight away),
+# so the system itself ignores the key.
 mkdir -p /etc/systemd/logind.conf.d
-printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=ignore\n' > /etc/systemd/logind.conf.d/max-power-key.conf
 # A power button can also plug onto the 40-pin header with no soldering: GPIO 3 (pin 5) and ground
 # (pin 6). max-power-button watches it and shuts the box down safely. (Not the gpio-shutdown overlay:
 # the desktop ignores a second power key.)

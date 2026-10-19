@@ -51,6 +51,8 @@ export interface FaceInfo {
   updating?: boolean;
   /** The mute button is on: Max can't hear anything. */
   muted?: boolean;
+  /** When the box's power button was last pressed (the face then asks: turn off or restart?). */
+  powerPress?: number;
   /** The card on screen (Max's face shrinks to the top while it shows). */
   card?: Card & { until: number };
   /** Live captions: what Max heard, or what he's saying. */
@@ -289,6 +291,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
       updating: this.updating(),
       muted: this.cfg.face.onBox && existsSync(join(this.cfg.face.runDir, 'muted')),
+      powerPress: this.powerPress(),
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
       caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),
@@ -529,6 +532,16 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       lines: mails.slice(0, 10).map((m) => ({ time: when(m.at).slice(-5) || undefined, text: m.subject, sub: [m.from, m.snippet].filter(Boolean).join(' · ').slice(0, 140) || undefined })),
       ttlMs: DAY_CARD_MS * 2,
     });
+  }
+
+  /** The box's power button (max-power-button.py writes the time of each press to /run/max/power-button). */
+  private powerPress(): number | undefined {
+    if (!this.cfg.face.onBox) return undefined;
+    try {
+      return Number(readFileSync(join(this.cfg.face.runDir, 'power-button'), 'utf8').trim()) || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Whether the box's updater is working (/run/max/update.json, written by max-update.py). */

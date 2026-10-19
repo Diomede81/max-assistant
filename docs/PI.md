@@ -208,6 +208,15 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
 - **Add a device.** Search by brand (Shelly, Tapo, Philips Hue, Sonos…) and answer a few plain questions.
   Devices Home Assistant finds on your WiFi by itself appear under **Found on your network**, ready to add with
   one tap. Brands that only work through their own cloud are marked "Uses the internet".
+- **My dashboard.** Tap ☆ on any card to put it on My dashboard (the first view once it has something), then
+  drag ⠿ to put the most useful first (mouse, finger, or the arrow keys). Starred cards also come first under
+  All and in each room. It's saved on the box, so every phone and computer shows the same one.
+- **Tidy cards.** Find a device by name, tick **Only things I can control** to leave out read-only sensors, or
+  hide an item in a card's **Edit** (hide them all to hide the device; **Show hidden** brings them back).
+  Hardware that only reports a battery and a connection (e.g. Tado radiator valves: you control the room) is
+  listed under **Batteries and connections**, which says when one needs attention.
+- **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
+  each one works, and **Remove**.
 - **Advanced.** For the rare job the Devices tab doesn't cover, the full Home Assistant is at
   <http://max.local:8123>. Its username and password are under **Devices → Advanced** (Show).
 

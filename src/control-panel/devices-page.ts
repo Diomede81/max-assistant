@@ -7,6 +7,7 @@
 export function devicesPane(): string {
   return `<section id="devices"><h2>Devices</h2>
 <p class="meta" id="hStatus">Loading…</p>
+<p id="hMsg" role="status" hidden></p>
 <div id="hUpdate" class="hnote" hidden></div>
 <form id="hLogin" class="stack" hidden><p class="meta">Sign in with your Home Assistant account once, so Max can manage it.</p>
 <input name="username" placeholder="Home Assistant username" autocomplete="username" required>
@@ -30,7 +31,7 @@ export function devicesPane(): string {
 <script>${SCRIPT}</script>`;
 }
 
-export const DEVICES_CSS = `.hnote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}.hnote code{font-size:13px;word-break:break-all}
+export const DEVICES_CSS = `#hMsg{background:var(--errbg);color:var(--err);padding:8px 10px;border-radius:8px}.hnote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}.hnote code{font-size:13px;word-break:break-all}
 
 .hrooms{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}.hrooms button{font:inherit;font-weight:600;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
 .hrooms button.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -163,22 +164,36 @@ const SCRIPT = String.raw`
       case 'press': return '<div class="hctl">' + b(e.domain === 'scene' ? 'scene' : 'press', e.domain === 'scene' ? 'Activate' : 'Press') + '</div>';
       case 'media': return big(e.state) + '<div class="hctl">' + b('play', e.on ? 'Pause' : 'Play', e.on) + '</div>';
       case 'vacuum': return big(e.state) + '<div class="hctl">' + b('start', 'Start') + b('dock', 'Go home') + '</div>';
-      case 'climate': return big(e.state) + '<div class="hctl">' + b('temp-', '−') + '<b>' + (e.target != null ? esc(e.target) + '°' : '–') + '</b>' + b('temp+', '+') + '</div>';
+      case 'climate':
+        return big(e.state) +
+          (e.modes && e.modes.length > 1 ? '<div class="hctl">' + e.modes.map(function (m) { return b('mode', esc(MODE[m] || m.replace(/_/g, ' ')), m === e.mode, ' data-mode="' + esc(m) + '"'); }).join('') + '</div>' : '') +
+          (e.target != null ? '<div class="hctl">' + b('temp-', '−') + '<b>' + esc(e.target) + '°</b>' + b('temp+', '+') + '</div>' : '');
       default: return big(e.state);
     }
   }
 
+  var MODE = { off: 'Off', heat: 'Heat', auto: 'Auto', cool: 'Cool', heat_cool: 'Heat & cool', dry: 'Dry', fan_only: 'Fan', eco: 'Eco', electric: 'Electric', gas: 'Gas', heat_pump: 'Heat pump', performance: 'Boost', high_demand: 'Boost' };
+  var msgTimer = 0;
+  // What Home Assistant said when a tap didn't work (e.g. the device's own service refused it).
+  function say(text) {
+    var m = $('hMsg'); m.textContent = text; m.hidden = !text;
+    clearTimeout(msgTimer); if (text) msgTimer = setTimeout(function () { m.hidden = true; }, 8000);
+  }
   function act(id, action, value) {
     if (action === 'temp-' || action === 'temp+') {
       var ent = null;
       data.devices.forEach(function (x) { x.entities.forEach(function (e) { if (e.id === id) ent = e; }); });
       if (!ent || ent.target == null) return;
-      value = ent.target + (action === 'temp+' ? 0.5 : -0.5);
+      var step = ent.step || 0.5;
+      value = Math.round((ent.target + (action === 'temp+' ? step : -step)) * 10) / 10;
       action = 'temperature';
     }
     var body = { entity: id, action: action };
     if (value != null) body.value = String(value);
-    return post('/home/act', body).then(function () { setTimeout(load, 700); });
+    return post('/home/act', body).then(function (r) {
+      say(r && r.message && r.message !== 'Done' ? "That didn't work: " + r.message : '');
+      setTimeout(load, 700);
+    }, function () { say("That didn't work: Max couldn't reach Home Assistant."); });
   }
 
   // ---------- adding a device: Home Assistant's own steps, as a plain form ----------
@@ -226,7 +241,7 @@ const SCRIPT = String.raw`
   pane.addEventListener('click', function (ev) {
     var t = ev.target.closest('button,[data-room]'); if (!t) return;
     if (t.dataset.room !== undefined) { room = t.dataset.room; render(); return; }
-    if (t.dataset.act) { if (t.dataset.confirm && !confirm(t.dataset.confirm)) return; act(t.dataset.id, t.dataset.act); return; }
+    if (t.dataset.act) { if (t.dataset.confirm && !confirm(t.dataset.confirm)) return; act(t.dataset.id, t.dataset.act, t.dataset.mode); return; }
     if (t.dataset.editOpen) { editing = t.dataset.editOpen; render(); return; }
     if (t.hasAttribute('data-cancel-edit')) { editing = ''; render(); return; }
     if (t.dataset.found) { busy = true; fetch('/api/home/flow?id=' + encodeURIComponent(t.dataset.found)).then(function (r) { return r.json(); }).then(showStep).finally(function () { busy = false; }); return; }

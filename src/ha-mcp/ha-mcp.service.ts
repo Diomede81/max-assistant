@@ -107,6 +107,21 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
     return this.tools;
   }
 
+  /** One of Home Assistant's own actions (these always go to it, never to another server with the same names). */
+  has(name: string): boolean {
+    return this.tools.some((t) => t.type === 'function' && t.function.name === name);
+  }
+
+  /** Where Max reaches Home Assistant, for the control panel. */
+  get where(): string {
+    if (this.cfg.ha.local) return 'Home Assistant on this box (set up and run by Max)';
+    try {
+      return new URL(this.cfg.ha.mcpUrl).host;
+    } catch {
+      return '';
+    }
+  }
+
   async call(name: string, args: Record<string, unknown>): Promise<string> {
     if (!this.client) return 'Home Assistant is not connected.';
     const started = Date.now();

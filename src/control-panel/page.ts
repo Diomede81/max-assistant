@@ -39,7 +39,7 @@ export interface PanelData {
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
   tab?: string;
   notice?: { kind: 'ok' | 'error'; text: string };
-  homeAssistant: { connected: boolean; tools: number; error?: string };
+  homeAssistant: { connected: boolean; tools: number; error?: string; where?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
   trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
   whatsapp?: WhatsAppStatus;
@@ -58,7 +58,7 @@ export interface PanelData {
     otherUser: string[];
     userId: string;
   };
-  servers: { name: string; connected: boolean; offered: number; total: number; error?: string }[];
+  servers: { name: string; connected: boolean; offered: number; total: number; error?: string; duplicate?: boolean }[];
   soul?: { docs: Record<string, string>; doc: string; maxChars: number; journal?: { id: string; at: string; text: string; source: string; mode?: string }[] };
   memory?: {
     mode: string;
@@ -580,7 +580,7 @@ export function renderPanel(d: PanelData): string {
     .filter((s) => s.name !== 'composio')
     .map(
       (s) => `<li class="row"><div><div class="name">${esc(s.name)} ${badge(s.connected)}</div>
-        <div class="meta">${s.connected ? `${s.offered} of ${s.total} actions available to Max` : esc(s.error ?? '')}</div></div></li>`,
+        <div class="meta">${s.connected ? `${s.offered} of ${s.total} actions available to Max` : esc(s.error ?? '')}</div>${s.duplicate ? `<div class="meta"><b>This looks like another Home Assistant.</b> Max ignores its device actions and uses ${esc(d.homeAssistant.where ?? 'the main one')}. To remove it, delete "${esc(s.name)}" from config/mcp-servers.json (or set "enabled": false) and restart Max.</div>` : ''}</div></li>`,
     )
     .join('');
 
@@ -675,7 +675,8 @@ ${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}<
 ${d.whatsapp ? whatsappSection(d.whatsapp) : ''}
 ${d.trains ? trainsSection(d.trains) : ''}
 <section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
-<div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
+<div class="meta">${d.homeAssistant.where ? `${esc(d.homeAssistant.where)} · ` : ''}${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul>
+<p class="meta">Max uses one Home Assistant. ${d.homeDevices?.enabled ? 'It runs on this box: manage your devices on the Devices tab. Any earlier Home Assistant connection is no longer used.' : 'To change it, edit HA_MCP_URL and HA_TOKEN in .env.'}</p></section>
 ${musicSection(d.music)}
 ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
 <p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>

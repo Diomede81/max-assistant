@@ -115,7 +115,8 @@ export class ToolRouterService {
 
   /** Tool definitions in Chat Completions format. */
   get tools(): ChatCompletionTool[] {
-    const external = this.mcp.tools.map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
+    // Home Assistant's own actions win: another server offering the same ones (e.g. a second Home Assistant) is left out.
+    const external = this.mcp.tools.filter((t) => t.type !== 'function' || !this.ha.has(t.function.name)).map((t) => (t.type === 'function' && this.needsConfirmation(t.function.name) ? withConfirmParam(t) : t));
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
@@ -141,7 +142,7 @@ export class ToolRouterService {
     if (name === 'device_power' || name === 'whatsapp_send') return true;
     if (name === 'software_update') return args.action === 'install';
     if (name === 'forget') return args.all === true;
-    const server = this.mcp.serverFor(name);
+    const server = this.ha.has(name) ? undefined : this.mcp.serverFor(name);
     if (server) return RISKY.test(name) || matchesAny(name, server.config.confirmTools);
     return this.isHaSensitive(name, args);
   }
@@ -276,7 +277,7 @@ export class ToolRouterService {
       args = { ...args, [EXTERNAL_FLAG]: true };
     }
     try {
-      const server = this.mcp.serverFor(name);
+      const server = this.ha.has(name) ? undefined : this.mcp.serverFor(name);
       if (server && this.isLockedWorkApp(name, server.config.name)) {
         return this.modes.mode === 'work'
           ? 'Personal apps are locked in work mode. The user can say "personal mode" to unlock them.'

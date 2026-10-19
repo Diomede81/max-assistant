@@ -32,6 +32,7 @@ services:
     profiles: ["home"]
     restart: unless-stopped
     network_mode: host
+    ports: !reset []
     logging:
       driver: json-file
       options: { max-size: "5m", max-file: "3" }

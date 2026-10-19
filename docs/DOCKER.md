@@ -95,6 +95,30 @@ In `.env`, inside Docker the address is the service name:
 On a laptop without an NVIDIA GPU, expect local answers to take a few seconds. It's
 fine for checking that the fallback works, but it's not the real experience.
 
+## Optional: try Max's own Home Assistant and the Devices tab
+
+On the Max box, Home Assistant runs inside the box (see [PI.md](PI.md#home-assistant-on-the-box)). To try the
+same thing on your laptop:
+
+1. In `.env`, add `HA_LOCAL=1`. Max then uses his own Home Assistant instead of `HA_MCP_URL`/`HA_TOKEN`.
+2. Start Max with Home Assistant:
+   ```bash
+   docker compose --profile max --profile home up -d --build
+   ```
+   Running Max with `npm run dev` instead? Start only Home Assistant with `docker compose --profile home up -d`:
+   Max finds it at `http://localhost:8123`.
+3. Open <http://localhost:8099> and go to **Devices**. The first start takes a minute or two while Home Assistant
+   gets ready; Max then creates its account and connects by himself.
+
+What's different from the box:
+
+- **No automatic discovery.** Docker on a Mac can't search your WiFi for devices, so "Found on your network"
+  stays empty. Add devices by brand instead, giving the device's address when asked.
+- **Separate data.** This Home Assistant keeps its data in `./data/home-assistant`, separate from the box's.
+  Delete that folder to start again from scratch.
+- **Full Home Assistant** is at <http://localhost:8123>. Its login is under **Devices → Advanced**.
+- **To go back** to your usual Home Assistant, remove `HA_LOCAL=1` and start without `--profile home`.
+
 ## Troubleshooting
 
 | Symptom | Fix |

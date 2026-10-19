@@ -172,8 +172,9 @@ install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/
 mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
 # A power button can also plug onto the 40-pin header with no soldering: GPIO 3 (pin 5) and ground
-# (pin 6). A press shuts the box down safely, like the Pi's own button (takes effect after a restart).
-grep -q '^dtoverlay=gpio-shutdown' "$CONFIG_TXT" || echo 'dtoverlay=gpio-shutdown' >> "$CONFIG_TXT"
+# (pin 6). max-power-button watches it and shuts the box down safely. (Not the gpio-shutdown overlay:
+# the desktop ignores a second power key.)
+sed -i '/^dtoverlay=gpio-shutdown/d' "$CONFIG_TXT"
 install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service
@@ -182,13 +183,18 @@ systemctl enable --now max-power.path max-brightness.path
 
 # ---------------------------------------------------------------- 5c. mute button
 # The button on top of the box (GPIO 17 and ground) turns the microphone off and on.
-say "Installing the mute button"
+say "Installing the mute and power buttons"
 python3 -c 'import gpiozero' 2>/dev/null || apt-get install -y -q python3-gpiozero python3-lgpio
 install -D -m 755 "$REPO/scripts/pi/max-mute-button.py" /usr/local/lib/max/max-mute-button.py
 install -m 644 "$REPO/scripts/pi/systemd/max-mute-button.service" /etc/systemd/system/max-mute-button.service
 systemctl daemon-reload
 systemctl enable max-mute-button.service
 systemctl restart max-mute-button.service || warn "The mute button service didn't start; see: journalctl -u max-mute-button"
+install -D -m 755 "$REPO/scripts/pi/max-power-button.py" /usr/local/lib/max/max-power-button.py
+install -m 644 "$REPO/scripts/pi/systemd/max-power-button.service" /etc/systemd/system/max-power-button.service
+systemctl daemon-reload
+systemctl enable max-power-button.service
+systemctl restart max-power-button.service || warn "The power button service didn't start; see: journalctl -u max-power-button"
 
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d

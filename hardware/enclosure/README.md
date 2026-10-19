@@ -126,8 +126,8 @@ front panel take a few minutes each to compute because of the grille holes.
    | Mute | light + | pin 13 (GPIO 27) |
    | Mute | light - | pin 14 (ground) |
 
-   - **Power** on pins 5 and 6: a press turns the box off safely. To turn it on again, unplug and
-     replug the power (the Pi starts by itself). Soldered to J2 instead, it works exactly like the
+   - **Power** on pins 5 and 6: a press turns the box off safely (the box's max-power-button service
+     watches the pin). To turn it on again, unplug and replug the power (the Pi starts by itself). Soldered to J2 instead, it works exactly like the
      Pi's own button: press to turn on, press to turn off safely, hold to force off. Its light is on
      while the box is on.
    - **Mute:** each press turns the microphone off or back on. While it is off, the button's light

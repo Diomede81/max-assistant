@@ -1,0 +1,11 @@
+[Unit]
+Description=Max power button on the 40-pin header (turns the box off safely)
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/lib/max/max-power-button.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

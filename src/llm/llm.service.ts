@@ -63,6 +63,10 @@ export class LlmService {
     // A recipe, a how-to or "show me": the first move must be putting it on the screen.
     const forceScreen =
       typeof lastUser?.content === 'string' && wantsScreen(lastUser.content) && this.tools.tools.some((t) => t.type === 'function' && t.function.name === 'show_on_screen');
+    // What was said out loud already, so nothing is said twice; and what the AI said between actions (not spoken:
+    // "I've turned on the heating" after each room would be heard once per room), kept in case nothing follows.
+    const said: string[] = [];
+    let held = '';
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const started = Date.now();
       let stream: Awaited<ReturnType<LlmService['openStream']>>;
@@ -91,7 +95,9 @@ export class LlmService {
         }
         if (delta.content) {
           text += delta.content;
-          yield delta.content;
+          // The first reply streams as it comes ("Let me check your email"); after an action, the reply is held
+          // until it's clear whether more actions follow.
+          if (round === 0) yield delta.content;
         }
         const r = (delta as { reasoning_content?: string }).reasoning_content;
         if (r) reasoning += r;
@@ -116,7 +122,15 @@ export class LlmService {
       if (reasoning && calls.length) Object.assign(assistant, { reasoning_content: reasoning });
       messages.push(assistant);
       history.push(assistant);
-      if (!calls.length) return;
+      if (round === 0) said.push(...sentences(text));
+      else if (calls.length) held = text.trim() ? text : held;
+      if (!calls.length) {
+        if (round > 0) {
+          const fresh = unsaid(text, said);
+          if (fresh) yield fresh;
+        }
+        return;
+      }
 
       // Run all tool calls in parallel: they are independent actions.
       const results = await Promise.all(
@@ -136,6 +150,9 @@ export class LlmService {
         history.push(msg);
       }
     }
+    // Out of rounds while still acting: say the last thing the AI said (once), rather than nothing.
+    const last = unsaid(held, said);
+    if (last) yield last;
   }
 
   private capabilities(): ChatCompletionMessageParam[] {
@@ -205,4 +222,18 @@ export function explainLlmError(err: unknown): { spoken: string; log: string } {
     return { spoken: 'My AI service is taking too long to answer.', log: `timeout: ${msg}. Raise LLM_TIMEOUT_MS or pick a faster model` };
   }
   return { spoken: 'Sorry, I could not reach my brain just now.', log: msg };
+}
+
+/** A reply's sentences, for telling what was already said. */
+function sentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+}
+
+/** The sentences of a reply that weren't said yet (compared ignoring case and punctuation); records them as said. */
+export function unsaid(text: string, said: string[]): string {
+  const key = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const before = new Set(said.map(key));
+  const fresh = sentences(text).filter((x) => !before.has(key(x)));
+  said.push(...fresh);
+  return fresh.join(' ');
 }

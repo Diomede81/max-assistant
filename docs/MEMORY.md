@@ -34,10 +34,12 @@ Home). Fill in as much or as little as you like:
 | Part | Max knows it in |
 | --- | --- |
 | Your name | every mode (in guest mode he only knows your name, and keeps the rest to himself) |
-| What Max calls you, your work, what Max should avoid | personal and work mode |
-| Birthday, who you live with, likes and interests, health and food, anything else | personal mode only |
+| What Max calls you, where you were born and grew up, languages, important people (e.g. your business partner), your work, schools and studies, what Max should avoid | personal and work mode |
+| Birthday, who you live with, family, likes and interests, health and food, anything else | personal mode only |
 
-Max reads it at the start of every conversation and uses it naturally. You can also just tell him: "Max,
+Max reads it at the start of every conversation and uses it naturally, and answers from it whenever you ask
+in a mode that sees it: your work details and business partner in personal mode too (the vault locks are
+about his stored memories, not this page). You can also just tell him: "Max,
 my birthday is 14 March", "call me Luca", "I've gone vegetarian". He saves it on the page himself, but
 only what you say about yourself in personal or work mode, never in guest mode, and never something he read
 in an email or on a web page. Until he knows your name, he asks for it once. It's kept encrypted with

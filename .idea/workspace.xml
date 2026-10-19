@@ -11,6 +11,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="252" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -25,23 +26,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.0469059409911374" />
-      <entry key="MS500" value="2.0901455742998154" />
-      <entry key="S2" value="3.776149477010627" />
-      <entry key="S5" value="4.444205174784066" />
-      <entry key="S10" value="4.709519072946243" />
-      <entry key="S30" value="4.900215121786429" />
-      <entry key="S60" value="4.949727208981713" />
-      <entry key="M2" value="4.974767700258251" />
-      <entry key="M5" value="4.990271691648857" />
-      <entry key="M10" value="5.093453001415864" />
-      <entry key="M15" value="5.6247449394212055" />
-      <entry key="M30" value="9.301481886578841" />
-      <entry key="H1" value="18.030878582049244" />
-      <entry key="H2" value="29.904005955144477" />
-      <entry key="H4" value="40.63108232106967" />
-      <entry key="D1" value="88.38361875120577" />
-      <entry key="W1" value="195.21708895054954" />
+      <entry key="MS100" value="1.7825762504783462" />
+      <entry key="MS500" value="2.645733222979257" />
+      <entry key="S2" value="5.238206714685942" />
+      <entry key="S5" value="10.908100261070274" />
+      <entry key="S10" value="15.653373132105092" />
+      <entry key="S30" value="21.130893720367304" />
+      <entry key="S60" value="26.60908757101159" />
+      <entry key="M2" value="36.81722497934388" />
+      <entry key="M5" value="51.17550240949147" />
+      <entry key="M10" value="58.68998144246511" />
+      <entry key="M15" value="62.030320851081335" />
+      <entry key="M30" value="68.56797538338238" />
+      <entry key="H1" value="78.75392094736252" />
+      <entry key="H2" value="91.4973753274077" />
+      <entry key="H4" value="102.80757238260756" />
+      <entry key="D1" value="151.15886742413815" />
+      <entry key="W1" value="258.15715898606913" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -52,34 +53,34 @@
       <entry key="S30" value="0.0" />
       <entry key="S60" value="0.0" />
       <entry key="M2" value="0.0" />
-      <entry key="M5" value="1.0383026702809078E-243" />
-      <entry key="M10" value="3.2222704267036817E-122" />
-      <entry key="M15" value="1.0126079288391186E-81" />
-      <entry key="M30" value="3.1821501046291406E-41" />
-      <entry key="H1" value="5.641054958630636E-21" />
-      <entry key="H2" value="7.510695679250114E-11" />
-      <entry key="H4" value="8.666426991125034E-6" />
-      <entry key="D1" value="0.14331996071620393" />
-      <entry key="W1" value="0.7576565514447472" />
+      <entry key="M5" value="6.14435605062931E-244" />
+      <entry key="M10" value="2.478781162311296E-122" />
+      <entry key="M15" value="8.501432769148313E-82" />
+      <entry key="M30" value="2.9157216549506884E-41" />
+      <entry key="H1" value="5.3997422669518916E-21" />
+      <entry key="H2" value="7.348293861129868E-11" />
+      <entry key="H4" value="8.572219001594502E-6" />
+      <entry key="D1" value="0.1430591179332636" />
+      <entry key="W1" value="0.7574594065715509" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.9833496856286319" />
-      <entry key="MS500" value="2.056693271964994" />
-      <entry key="S2" value="3.755151888458384" />
-      <entry key="S5" value="4.433541858118167" />
-      <entry key="S10" value="4.703724917366828" />
-      <entry key="S30" value="4.898171635988025" />
-      <entry key="S60" value="4.948690830253005" />
-      <entry key="M2" value="4.974245803586915" />
-      <entry key="M5" value="4.990062022061515" />
-      <entry key="M10" value="5.093346133251775" />
-      <entry key="M15" value="5.624666912401576" />
-      <entry key="M30" value="9.301420403348455" />
-      <entry key="H1" value="18.030824027533708" />
-      <entry key="H2" value="29.903964215140128" />
-      <entry key="H4" value="40.63106401450692" />
-      <entry key="D1" value="88.52692603229849" />
-      <entry key="W1" value="195.97474017299103" />
+      <entry key="MS100" value="1.707903137728782" />
+      <entry key="MS500" value="2.6183688970452588" />
+      <entry key="S2" value="5.201988289526013" />
+      <entry key="S5" value="10.875245976070133" />
+      <entry key="S10" value="15.630667840295796" />
+      <entry key="S30" value="21.12118313885286" />
+      <entry key="S60" value="26.60333738806896" />
+      <entry key="M2" value="36.813542676214276" />
+      <entry key="M5" value="51.17357398075099" />
+      <entry key="M10" value="58.688897277078105" />
+      <entry key="M15" value="62.02956158648904" />
+      <entry key="M30" value="68.5675582467127" />
+      <entry key="H1" value="78.75368463887258" />
+      <entry key="H2" value="91.49724149728496" />
+      <entry key="H4" value="102.80750753806264" />
+      <entry key="D1" value="151.30190606230596" />
+      <entry key="W1" value="258.9146119465915" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -91,26 +92,33 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;javascript.preferred.runtime.type.id&quot;: &quot;node&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/administrator/Documents/Projects/max-assistant&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.github.ui.GithubSettingsConfigurable&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/administrator/Documents/Projects/max-assistant/node_modules/@typescript/typescript-darwin-arm64/lib&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "main",
+    "javascript.preferred.runtime.type.id": "node",
+    "last_opened_file_path": "/Users/administrator/Documents/Projects/max-assistant",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.jshint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.jshint": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "org.jetbrains.plugins.github.ui.GithubSettingsConfigurable",
+    "ts.external.directory.path": "/Users/administrator/Documents/Projects/max-assistant/node_modules/@typescript/typescript-darwin-arm64/lib"
   }
-}</component>
+}]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -130,6 +138,7 @@
       <workItem from="1791815223128" duration="36577000" />
       <workItem from="1792235012286" duration="9703000" />
       <workItem from="1792266771642" duration="505000" />
+      <workItem from="1792408736753" duration="341000" />
     </task>
     <servers />
   </component>

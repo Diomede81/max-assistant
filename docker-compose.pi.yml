@@ -9,6 +9,8 @@ services:
     environment:
       PULSE_SERVER: unix:/run/user/${MAX_UID:-1000}/pulse/native
       MAX_RUN_DIR: /run/max
+      # Home Assistant on the box (HA_LOCAL=1 in .env, set by setup): Max reaches it on the box itself.
+      HA_LOCAL_URL: http://host.docker.internal:8123
       CONTROL_PANEL_URL: ${CONTROL_PANEL_URL:-http://max.local:8099}
     volumes:
       - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
@@ -21,3 +23,21 @@ services:
       PULSE_SERVER: unix:/run/user/${MAX_UID:-1000}/pulse/native
     volumes:
       - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
+  # Home Assistant on the box (setup asks; COMPOSE_PROFILES then includes "home"). Max sets it up himself and
+  # your devices are managed in Max's control panel (Devices); the full Home Assistant is at
+  # http://max.local:8123. On the box's own network so it can find WiFi devices; its settings and history live
+  # in /var/lib/max/home-assistant (setup writes an SD-card-friendly configuration.yaml there once).
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    profiles: ["home"]
+    restart: unless-stopped
+    network_mode: host
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+    environment:
+      TZ: ${TZ:-Europe/London}
+    volumes:
+      - /var/lib/max/home-assistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro   # Bluetooth devices, through the Pi's own Bluetooth

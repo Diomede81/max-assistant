@@ -16,6 +16,7 @@
 #   MAX_SCREEN=dsi|hdmi|none   which round screen is fitted (asked if not set)
 #   MAX_DSI_PORT=0|1           Pi 5: which display connector the screen's ribbon is in (asked if not set)
 #   MAX_HOSTNAME=max           network name of the box
+#   MAX_HOME_ASSISTANT=on|off  run Home Assistant on the box, managed by Max (asked if not set)
 #   MAX_SKIP_START=1           install everything but don't build/start Max yet
 #
 # Your answers (screen, connector, user, name) are remembered in /etc/max/box.conf, so running it
@@ -47,6 +48,15 @@ if [ -z "$SCREEN" ]; then
   echo "Which screen is fitted?  1) round DSI (ribbon cable)   2) round HDMI   3) none"
   read -r -p "Choose 1, 2 or 3 [1]: " choice </dev/tty || choice=1
   case "${choice:-1}" in 2) SCREEN=hdmi ;; 3) SCREEN=none ;; *) SCREEN=dsi ;; esac
+fi
+
+# Home Assistant on the box: Max sets it up and runs it, and your devices are managed from his control panel.
+# Asked once; automatic updates (no one to answer) keep the saved answer, or leave it off.
+HOME_HA="${MAX_HOME_ASSISTANT:-$(saved MAX_HOME_ASSISTANT)}"
+if [ -z "$HOME_HA" ]; then
+  echo "Run Home Assistant on this box, so Max manages your smart-home devices (no separate Home Assistant needed)?"
+  read -r -p "y or n [y]: " choice </dev/tty || choice=n
+  case "${choice:-y}" in n|N|no|No) HOME_HA=off ;; *) HOME_HA=on ;; esac
 fi
 
 # ---------------------------------------------------------------- 1. packages
@@ -243,6 +253,33 @@ set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
 grep -q '^PANEL_PASSWORD=.\+' .env || say "The control panel asks you to choose a password on your first visit (with a code shown on Max's screen)."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
+# Home Assistant on the box: its own container (profile "home"), set up and connected by Max himself.
+PROFILES="$( (sed -n 's/^COMPOSE_PROFILES=//p' .env | tr ',' '\n' | grep -vx 'home' | grep -v '^$' | paste -sd, -) || true)"
+if [ "$HOME_HA" = on ]; then
+  say "Home Assistant on the box: Max sets it up; your devices are in his control panel (Devices)"
+  HA_DIR=/var/lib/max/home-assistant
+  install -d -m 755 "$HA_DIR"
+  if [ ! -f "$HA_DIR/configuration.yaml" ]; then
+    cat > "$HA_DIR/configuration.yaml" <<'YAML'
+# Home Assistant on the Max box. Written once by scripts/pi/setup.sh: yours to change.
+default_config:
+
+# Kinder to the SD card: save the history every 30 s instead of every second, and keep a week of it.
+recorder:
+  commit_interval: 30
+  purge_keep_days: 7
+
+logger:
+  default: warning
+YAML
+  fi
+  set_env COMPOSE_PROFILES "${PROFILES:-max},home"
+  set_env HA_LOCAL 1
+else
+  set_env COMPOSE_PROFILES "${PROFILES:-max}"
+  grep -q '^HA_LOCAL=1' .env && set_env HA_LOCAL 0
+  docker compose -f docker-compose.yml -f docker-compose.pi.yml --profile home rm -sf homeassistant >/dev/null 2>&1 || true
+fi
 # Every "docker compose" command on the box includes the Pi settings (sound, control panel on the
 # home network), so a plain "docker compose up -d" can't lock the control panel to the box itself.
 set_env COMPOSE_FILE docker-compose.yml:docker-compose.pi.yml
@@ -262,6 +299,7 @@ MAX_REPO=$REPO
 MAX_SCREEN=$SCREEN
 MAX_DSI_PORT=${DSI_PORT:-$(saved MAX_DSI_PORT)}
 MAX_HOSTNAME=$NAME
+MAX_HOME_ASSISTANT=$HOME_HA
 CONF
 install -D -m 755 "$REPO/scripts/pi/max-update.py" /usr/local/lib/max/max-update.py
 for UNIT in max-update.path max-update.service max-version.service; do

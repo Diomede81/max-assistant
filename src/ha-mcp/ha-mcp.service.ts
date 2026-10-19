@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
+import { HomeService } from '../home/home.service';
 
 const TOOL_REFRESH_MS = 5 * 60 * 1000;
 
@@ -23,9 +24,21 @@ export class HaMcpService implements OnModuleInit, OnModuleDestroy {
   /** Resolves once the first connection attempt has finished, successfully or not. */
   private readonly firstAttempt = new Promise<void>((r) => (this.markFirstAttempt = r));
 
-  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
+    @Optional() private readonly home?: HomeService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
+    // Home Assistant on the box: Max sets it up himself and has the address and token once it's ready.
+    if (this.cfg.ha.local && this.home) {
+      this.lastError = 'Home Assistant on the box is still starting';
+      void this.home.ready().then(() => {
+        void this.connect();
+        this.refreshTimer = setInterval(() => void this.refreshOrReconnect(), TOOL_REFRESH_MS);
+      });
+      return;
+    }
     if (!this.cfg.ha.token) {
       this.lastError = 'HA_TOKEN is not set in .env';
       this.log.warn('HA_TOKEN not set: Home Assistant tools disabled');

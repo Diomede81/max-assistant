@@ -20,8 +20,9 @@ Mic → Wake word → End-of-speech → Speech-to-text → LLM ⇄ Home Assistan
 - **You can see what he's doing:** while he checks email, the calendar, the web or the house, his face
   shows it ("📧 Checking your email..."); if it takes more than a second he says so; and if an action
   fails, the face shows "Couldn't finish" with what it was.
-- **Stopping him:** say **"stop"**, "that's all", "never mind" or "I'm not talking to you" and he goes quiet
-  and back to sleep at once. While he's talking, **"Hey Max"** cuts him off (then "stop", or a new
+- **Stopping him:** say **"stop"**, "that's all", **"thank you"** (on its own or in a sentence), "never mind"
+  or "I'm not talking to you" and he goes quiet and back to sleep at once. A request after the thanks still
+  goes through ("thanks, can you also set a timer"). While he's talking, **"Hey Max"** cuts him off (then "stop", or a new
   question). If he hears people talking to each other during a follow-up, he ends the conversation
   quietly instead of answering.
 - **Every turn logs a latency breakdown**, so you can tune with numbers.
@@ -74,6 +75,14 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
 - **Date and time**: "What's the date?", "What time is it?"
+- **WhatsApp**: "Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way"
+  (only to people you allow on the control panel, and after your "yes"). Links like WhatsApp Web. See
+  [docs/WHATSAPP.md](docs/WHATSAPP.md).
+- **Trains (UK)**: "When's the next train to Waterloo?" (live times, delays, platforms) and "get me to Manchester
+  by 10 tomorrow" (journeys with changes, plus a QR code on the screen to book on Trainline). See
+  **[docs/TRAINS.md](docs/TRAINS.md)**.
+- **Recipes and how-tos on the screen**: "Show me a recipe for macaroni cheese" puts the ingredients and
+  then each step on the screen; say "next step" or tap **Next**.
 - **Timers and reminders**: "Set a pasta timer for 10 minutes", "Remind me in 20 minutes to call Mum",
   "How long is left?", "Cancel the pasta timer". Max chimes and announces them out loud when they
   finish (no wake word needed). Timers are kept in memory, so they don't survive a restart.
@@ -81,8 +90,13 @@ See [`deploy/max.service`](deploy/max.service).
 - **Knows where home is**: set your town (and optionally postcode) on the control panel; local questions and
   web searches use it.
 - **Search the web and read pages** with Firecrawl, built in: add `FIRECRAWL_API_KEY` to `.env`. See **[docs/APPS.md](docs/APPS.md#web-search-and-reading-pages-firecrawl-built-in)**.
-- **Email, calendar and other apps** (Office 365, and more) via Composio: connect them from the control
-  panel at http://localhost:8099. Sending, deleting and similar actions always need your spoken "yes".
+- **Email, calendar and other apps** (Gmail, Outlook / Office 365, and more) via Composio: connect them from the
+  control panel at http://localhost:8099 (on the box: http://max.local:8099). Ask "show me my last email"
+  and it appears on the screen with a short summary.
+- **Your "yes" first** for anything that matters: sending, deleting or accepting in your apps, turning the box off,
+  installing an update, "forget everything", and Home Assistant locks, doors, the garage, gates and the alarm. Max
+  checks that *you* answered yes after he asked; a "yes" written in an email or a web page doesn't count. In guest
+  mode, locks, doors, the garage, the alarm and updates can't be controlled by voice at all.
   See **[docs/APPS.md](docs/APPS.md)**.
 
 - **His own identity**: a "soul" you write (his story, personality, how he talks; he starts as an
@@ -116,28 +130,60 @@ See [`deploy/max.service`](deploy/max.service).
 
 Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 
-## Real-time voice (demo mode)
+## Real-time voice
 
-Set `VOICE_MODE=realtime` to talk to Max through OpenAI's speech-to-speech model: the most natural
-conversation, typically under a second to respond, paid per minute. See **[docs/REALTIME.md](docs/REALTIME.md)**.
+Set `VOICE_MODE=realtime` to talk to Max through a speech-to-speech model: the most natural conversation,
+typically under a second to respond, paid per minute. Two providers: **OpenAI Realtime** or **Gemini Live**
+(similar speed, roughly 10x cheaper). His voice can be chosen and tried out on the control panel
+(**Settings → Device**), and his "Hey Max" greeting is spoken in that same voice.
+See **[docs/REALTIME.md](docs/REALTIME.md)**.
 
-## Voice
+## Voice (normal mode)
 
 The default voice (Piper) is fast but robotic. For a natural voice, switch to **Kokoro**
 (free, runs locally) or **OpenAI voices** (paid, most expressive). See **[docs/VOICES.md](docs/VOICES.md)**.
 
 ## Music
 
-The Max box can be a Spotify speaker: "Hey Max, play my running playlist", "skip", "louder". It also
-appears as **Max** in the Spotify app on any phone, and the music turns down while Max talks (needs
-Spotify Premium). See **[docs/MUSIC.md](docs/MUSIC.md)**.
+Three ways to play music through Max, one at a time; the music always turns down while he talks:
+
+- **Spotify:** "Hey Max, play my running playlist", "skip", "louder". The box also appears as **Max** in
+  the Spotify app on any phone (needs Spotify Premium).
+- **Internet radio** (free, no account): "Hey Max, play BBC Radio 2", "play some jazz radio", "play the radio"
+  (the last station). Thousands of stations from the radio-browser.info directory.
+- **AirPlay:** on an iPhone, iPad or Mac, pick **Max** as the speaker in any app (Apple Music, YouTube Music,
+  podcasts...). Protected by a 4-digit code shown on the control panel; off while Max is locked.
+
+The screen shows what's playing with the album cover (Spotify and AirPlay) or the station's logo (radio).
+See **[docs/MUSIC.md](docs/MUSIC.md)**.
 
 ## The Max box
 
-A Raspberry Pi 5 with a round screen showing Max's animated face, a 4-microphone array with echo
-cancellation, and a proper speaker, in a 3D-printed case. If it ever loses WiFi, it shows a QR code to
-set it up from your phone. See **[docs/PI.md](docs/PI.md)** for the setup (and `hardware/enclosure/`
-for the case, once added).
+A Raspberry Pi 5 with a round 720×720 touch screen, a ReSpeaker XVF3800 4-microphone board (with echo
+cancellation, so "Hey Max" works while he talks or plays music) and a speaker, in a 3D-printed case
+(`hardware/enclosure/`). Setup: **[docs/PI.md](docs/PI.md)**.
+
+- **His face:** a 3D robot whose eyes and mouth show his expressions and move with his voice. Pick another
+  character on the control panel (an astro droid, a golden droid, a rolling droid or a blue alien) or the
+  classic flat face. It dims after 10 seconds of quiet and lights up for "Hey Max", a card or a touch.
+- **Cards on the screen:** timers and reminders, what's playing, recipes step by step, your emails with a
+  short summary, the news headlines, and "Your day" (meetings, reminders, to-dos with a **Done** button).
+  When the conversation ends, the screen goes back to his face (timers, reminders and recipes stay until you
+  close them).
+- **Notifications:** news briefing ready, an important email, an overdue to-do; never while you're talking,
+  at night or in guest mode. Optional **captions** show what he heard and what he's saying.
+- **Glance and photo frame:** weather, next meeting and to-dos around his face while idle; your own pictures
+  in the evening.
+- **Dances to the music:** while music plays (Spotify, radio or AirPlay) his face moves to the beat:
+  bouncing to dance and pop, headbanging to rock, swaying to jazz and classical, nodding to the rest.
+- **Start-up code:** an optional 6-digit code to type on the screen each time the box starts. Until then
+  Max won't answer, act or show anything personal, and AirPlay is off.
+- **Greeting and jingle:** "Hey Max" is answered with "Hello, how can I help?" (your choice of words, or
+  a beep), and a short jingle plays when he's ready after a start or an update.
+- **Speaker sound:** Flat, Warm (fuller, for music) or Voice (clearer speech), chosen on the control panel.
+- **Updates from GitHub:** from the screen's menu, the control panel or by voice ("Max, update yourself").
+- **Easy to run:** a menu on the screen (hold for 2 seconds) for volume, brightness, WiFi setup, lock,
+  update, restart and turn off. If it loses WiFi, it shows a QR code to set it up from your phone.
 
 ## Project layout
 
@@ -146,18 +192,28 @@ for the case, once added).
 | `audio/` | Microphone capture (`arecord`), playback (`aplay`), end-of-speech detection |
 | `wyoming/` | Client for Home Assistant's Wyoming voice protocol |
 | `wake-word/` | openWakeWord with the custom "hey max" model ([training guide](training/README.md)) |
-| `tools/` | `npm run mic-check`: live mic levels and wake word detections · `npm run chat`: type to Max instead of talking |
 | `stt/` | Speech-to-text (Whisper via Wyoming) |
 | `llm/` | Any OpenAI-compatible LLM, streaming + tool calls + fallback |
-| `ha-mcp/` | Home Assistant MCP client (`/api/mcp`, Streamable HTTP) |
-| `tts/` | Text-to-speech (Piper via Wyoming), sentence-by-sentence pipelining |
-| `conversation/` | The flow: wake → listen → think/act → speak → follow-up |
+| `tts/` | Text-to-speech (Piper, Kokoro or OpenAI voices), sentence-by-sentence pipelining, chimes and jingle |
+| `realtime/` | Real-time voice (OpenAI Realtime, Gemini Live) and the recorded live-voice phrases |
+| `conversation/` | The flow: wake → listen → think/act → speak → follow-up, and the stop phrases |
+| `actions/` | Built-in actions (time, timers, reminders, screen cards, power, volume) and the action router |
+| `ha-mcp/`, `mcp/`, `composio/` | Home Assistant, other MCP servers, and apps (email, calendar...) via Composio |
+| `web/`, `weather/`, `location/` | Web search and reading (Firecrawl), weather (Open-Meteo), home location |
+| `memory/`, `soul/`, `routines/`, `models/` | Encrypted memory and projects, Max's identity, news briefings, bring-your-own AI models |
+| `music/` | Spotify (go-librespot), internet radio, AirPlay, turning music down while Max talks |
+| `face/` | The screen: 3D and classic face, cards, notifications, glance, photo frame |
+| `device/`, `lock/`, `updates/` | Volume, brightness, speaker sound and greeting; the start-up code; updates from GitHub |
+| `control-panel/` | The web control panel (port 8099) |
+| `tools/` | `npm run mic-check` (mic levels and wake word) · `npm run chat` (type to Max) · wake word coach · Gemini check |
+| `scripts/pi/` | The Max box setup and its services (screen, sound, AirPlay, WiFi, power, updates) |
 
 ## Roadmap
 
-- [ ] Barge-in: say "stop" / interrupt Max while it is speaking (needs echo cancellation)
+- [x] Interrupting Max while he speaks ("Hey Max", then "stop" or a new question)
+- [x] Speech-to-speech mode (OpenAI Realtime / Gemini Live) for the lowest latency
+- [ ] Interrupting just by starting to talk, without the wake word
 - [ ] Silero VAD for noisy rooms
 - [ ] Cloud streaming STT/TTS providers (Deepgram, ElevenLabs Flash, Cartesia)
-- [ ] Native Anthropic (Claude) provider alongside the OpenAI-compatible one
-- [ ] Speech-to-speech mode (OpenAI Realtime / Gemini Live) for the lowest latency
+- [ ] Native Anthropic (Claude) provider for the conversation (background jobs can already use it)
 - [ ] Multiple rooms via ESP32 satellites

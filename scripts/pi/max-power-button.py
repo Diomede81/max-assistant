@@ -1,106 +1,141 @@
 #!/usr/bin/env python3
-"""
-Max box power button.
+"""The Pi 5's power button, while the box is on (run by max-power-button.service, as root).
 
-A press asks Max to show Turn off / Restart on his screen (a second press while that shows turns off,
-after the usual few seconds to change your mind). Holding it for 3 seconds turns the box off straight
-away, in case Max or the screen isn't responding.
+  - A short press asks Max to put "Turn off / Restart" on his screen: it leaves a note in
+    /run/max/power-button, which Max picks up within a second.
+  - Held for 5 seconds, the box turns off straight away (a clean shutdown).
 
-Wiring, either:
-- the Pi 5's J2 pads (its power button connection; a locking header pushed into the holes needs no
-  solder): the button also turns the box ON, like the Pi's own button. This service watches the Pi's
-  power key (the "pwr_button" input device), which J2 and the Pi's own button share.
-- or GPIO 3 (pin 5) and ground (pin 6): the same, except it can't turn a Pi 5 on (unplug and replug).
-
-The press goes to Max through the folder the box shares with him: the time of each press is written to
-/run/max/power-button, which Max reads. setup.sh tells the system to ignore the power key itself, so a
-press asks instead of turning off straight away.
-
-Runs as root under systemd (max-power-button.service). Uses gpiozero (python3-gpiozero).
-Settings (environment): MAX_RUN_DIR (/run/max), MAX_POWER_GPIO (3).
+The service runs under systemd-inhibit (handle-power-key), so the system doesn't act on the button
+itself while this runs. If it stops, the system's own handling comes back: a press turns the box
+off safely. Pressing the button while the box is off turns it on (that's the Pi's firmware).
 """
 import os
-import signal
+import tempfile
+import stat
+import select
 import struct
 import subprocess
 import sys
-import threading
 import time
 
-from gpiozero import Button
-
 RUN_DIR = os.environ.get('MAX_RUN_DIR', '/run/max')
-PIN = int(os.environ.get('MAX_POWER_GPIO', '3'))
-HOLD_S = 3
-EV_KEY, KEY_POWER = 1, 116
-EVENT = struct.Struct('llHHi')  # struct input_event: time (2 longs), type, code, value
+NOTE = os.path.join(RUN_DIR, 'power-button')
+HOLD_S = float(os.environ.get('MAX_POWER_HOLD_S', '5'))
+KEY_POWER = 116
+EV_KEY = 1
+# struct input_event on 64-bit Linux: struct timeval (2 x long), __u16 type, __u16 code, __s32 value
+EVENT = struct.Struct('llHHi')
 
 
 def log(msg):
-    print(msg, file=sys.stderr, flush=True)
+    print(msg, flush=True)
+
+
+def has_power_key(event_dir):
+    """Whether this input device has a power key (its key capability bitmap includes KEY_POWER)."""
+    try:
+        with open(os.path.join(event_dir, 'device', 'capabilities', 'key')) as f:
+            words = f.read().split()
+    except OSError:
+        return False
+    # The bitmap is printed as hex words, most significant first, each the size of a long.
+    bits = 64 if struct.calcsize('l') == 8 else 32
+    for i, word in enumerate(reversed(words)):
+        if i * bits <= KEY_POWER < (i + 1) * bits:
+            return bool(int(word, 16) >> (KEY_POWER - i * bits) & 1)
+    return False
+
+
+def find_button():
+    """The Pi's power button ('pwr_button'), else any input device with a power key."""
+    base = '/sys/class/input'
+    events = sorted(e for e in os.listdir(base) if e.startswith('event')) if os.path.isdir(base) else []
+    named = []
+    for e in events:
+        try:
+            with open(os.path.join(base, e, 'device', 'name')) as f:
+                name = f.read().strip()
+        except OSError:
+            continue
+        if name == 'pwr_button':
+            return '/dev/input/' + e
+        if has_power_key(os.path.join(base, e)):
+            named.append('/dev/input/' + e)
+    return named[0] if named else None
+
+
+# Status files go into the folder Max shares with the box (/run/max), where Max's container can create
+# files too, including links pointing at system files. A root service must never write through such a
+# link: the file is written in a folder only root can use, then moved in with one rename, which
+# replaces whatever is at that name (a planted link included) and never follows it.
+PRIVATE_DIR = '/run/max-box'
+
+
+def put_shared(run_dir, name, text):
+    os.makedirs(PRIVATE_DIR, mode=0o755, exist_ok=True)
+    st = os.lstat(PRIVATE_DIR)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s is not a private folder' % PRIVATE_DIR)
+    fd, tmp = tempfile.mkstemp(dir=PRIVATE_DIR)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.makedirs(run_dir, exist_ok=True)
+        os.replace(tmp, os.path.join(run_dir, name))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def ask_max():
     try:
-        os.makedirs(RUN_DIR, exist_ok=True)
-        with open(os.path.join(RUN_DIR, 'power-button'), 'w') as f:
-            f.write(f'{int(time.time() * 1000)}\n')
-        log('Power button pressed: asking Max (turn off or restart?)')
-    except OSError as err:
-        log(f'Could not tell Max about the power button: {err}')
+        put_shared(RUN_DIR, os.path.basename(NOTE), str(int(time.time() * 1000)))
+        log('Power button pressed: asking on the screen')
+    except OSError as e:
+        log('Could not ask Max (%s)' % e)
 
 
 def power_off():
-    log(f'Power button held for {HOLD_S} s: turning off')
-    subprocess.run(['systemctl', 'poweroff'], check=False)
-
-
-def power_key_device(devices='/proc/bus/input/devices'):
-    """The Pi 5's power key (its own button and J2), e.g. /dev/input/event5; None if there isn't one."""
-    try:
-        text = open(devices).read()
-    except OSError:
-        return None
-    for block in text.split('\n\n'):
-        if 'Name="pwr_button"' not in block:
-            continue
-        for line in block.splitlines():
-            if line.startswith('H: Handlers='):
-                for handler in line.split('=', 1)[1].split():
-                    if handler.startswith('event'):
-                        return '/dev/input/' + handler
-    return None
-
-
-def watch_power_key(path):
-    hold = None
-    with open(path, 'rb') as f:
-        while True:
-            data = f.read(EVENT.size)
-            if len(data) < EVENT.size:
-                return
-            _, _, kind, code, value = EVENT.unpack(data)
-            if kind != EV_KEY or code != KEY_POWER:
-                continue
-            if value == 1:  # pressed
-                ask_max()
-                hold = threading.Timer(HOLD_S, power_off)
-                hold.start()
-            elif value == 0 and hold:  # released before 3 s
-                hold.cancel()
-                hold = None
+    log('Power button held for %g s: turning off' % HOLD_S)
+    subprocess.run(['logger', '-t', 'max-power', 'Turning off (power button held)'])
+    subprocess.run(['systemctl', 'poweroff'])
 
 
 def main():
-    button = Button(PIN, pull_up=True, bounce_time=0.05, hold_time=HOLD_S)
-    button.when_pressed = ask_max
-    button.when_held = power_off
-    log(f'Power button ready on GPIO {PIN}')
-    key = power_key_device()
-    if key:
-        threading.Thread(target=watch_power_key, args=(key,), daemon=True).start()
-        log(f'Power button ready on the Pi\'s power key ({key}: its own button and J2)')
-    signal.pause()
+    dev = None
+    for _ in range(30):
+        dev = find_button()
+        if dev:
+            break
+        time.sleep(2)
+    if not dev:
+        log('No power button found; the system handles it')
+        sys.exit(0)  # not a failure: nothing to watch (the inhibitor ends with us)
+    log('Watching the power button (%s): press = ask on the screen, hold %g s = turn off' % (dev, HOLD_S))
+    fd = os.open(dev, os.O_RDONLY)
+    pressed_at = None
+    while True:
+        timeout = None if pressed_at is None else max(0.0, pressed_at + HOLD_S - time.monotonic())
+        ready, _, _ = select.select([fd], [], [], timeout)
+        if not ready:
+            # Still held after HOLD_S seconds.
+            pressed_at = None
+            power_off()
+            continue
+        data = os.read(fd, EVENT.size * 64)
+        for i in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            _, _, etype, code, value = EVENT.unpack_from(data, i)
+            if etype != EV_KEY or code != KEY_POWER:
+                continue
+            if value == 1 and pressed_at is None:  # down (2 = auto-repeat, ignored)
+                pressed_at = time.monotonic()
+            elif value == 0 and pressed_at is not None:  # up before the hold time: a short press
+                pressed_at = None
+                ask_max()
 
 
 if __name__ == '__main__':

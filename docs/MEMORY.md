@@ -110,6 +110,9 @@ Later, with buttons to tick items off, change their priority, criticality or pro
 
 - Say **"Max, work mode"**, **"personal mode"**, **"guest mode"** or **"back to automatic"**. A switch
   lasts until your schedule next changes. The control panel has the same buttons.
+- **Leaving guest mode can't be done by voice**, so a visitor (or the TV) can't talk Max out of it. Hold a finger
+  on the screen for 2 seconds, tap **Leave guest mode** and enter the start-up code (set one in Settings →
+  Security on the control panel), or use the control panel. Guest mode also ends by itself after 24 hours.
 - Personal and work are walled off from each other: outside work mode Max can't see the Work vault,
   and in work mode he can't see the Personal vault (facts, conversation notes, projects and his
   journal alike), whoever asks. Household (bins, appliances, house rules) is shared by both.
@@ -146,8 +149,14 @@ Later, with buttons to tick items off, change their priority, criticality or pro
 - **Set `MEMORY_KEY` in `.env`** (`openssl rand -base64 32`) and keep a copy somewhere safe. Without it
   the vaults can't be opened. If unset, Max generates a key and stores it next to the vaults: that still
   protects copies of the vault files, but not someone with access to the whole data volume.
-- **Control panel password**: set `PANEL_PASSWORD`. The panel then needs signing in (12-hour sessions;
-  5 wrong attempts lock it for 5 minutes). Other websites can't post to it.
+- **Control panel password**: on the Max box the panel always has one. On your first visit it asks you to
+  choose it, and to type the 6-digit code Max shows on his screen at that moment (so only someone at home can).
+  Change it in **Settings → Security**. `PANEL_PASSWORD` in `.env` sets it instead (and on a computer, where the
+  panel is only on that computer, adds one). **Signing in on a new phone or computer:** the password, then tap
+  **Allow** on Max's screen. That device then stays signed in for 30 days; **Settings → Security** lists the
+  signed-in devices, with Sign out for each (changing the password signs out all the others). 5 wrong passwords
+  pause sign-in from that device for 5 minutes. Other websites can't post to it, show it in a frame, or reach it
+  through your browser.
 - **Secrets are refused**: passwords, PINs, alarm/door codes and account numbers are never stored.
 - **No learning from emails or web pages**: Max only files what *you* say. If he saves something right
   after reading emails or web pages, it's marked **unverified** (shown with a warning on the panel and

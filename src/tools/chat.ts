@@ -15,6 +15,7 @@ import { MusicModule } from '../music/music.module';
 import { FaceModule } from '../face/face.module';
 import { FaceService } from '../face/face.service';
 import { LlmService, explainLlmError } from '../llm/llm.service';
+import { ToolRouterService } from '../actions/tool-router.service';
 import { HaMcpService } from '../ha-mcp/ha-mcp.service';
 import { TimerService, announcement } from '../actions/timer.service';
 import { TtsModule } from '../tts/tts.module';
@@ -83,6 +84,7 @@ async function main(): Promise<void> {
     const text = String(next.value).trim();
     if (!text) break;
     history.push({ role: 'user', content: text });
+    app.get(ToolRouterService).heard(text); // typed answers to "Shall I go ahead?" count too
     transcript.push({ who: 'user', text });
     let reply = '';
     const started = Date.now();

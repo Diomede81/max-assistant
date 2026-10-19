@@ -167,8 +167,9 @@ export class UpdatesService implements OnModuleInit, OnModuleDestroy {
           name: 'software_update',
           description:
             'Your own software updates (from GitHub). check: is there a new version, and what\'s new. install: update ' +
-            'yourself, ONLY after the user confirmed ("Shall I update now? I\'ll restart for a few minutes"): call with ' +
-            'confirmed=true. Also: auto_on / auto_off for automatic updates at night.',
+            'yourself when the user asks: call it without confirmed first, then ask the user ("Shall I update now? I\'ll restart ' +
+            'for a few minutes") and call again with confirmed=true only after they say yes. Also: auto_on / auto_off for ' +
+            'automatic updates at night.',
           parameters: {
             type: 'object',
             properties: {

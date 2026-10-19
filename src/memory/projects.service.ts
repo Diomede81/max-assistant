@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { timeZone } from '../actions/clock';
 import { MemoryService, normalise, Project, ProjectPerson, Task } from './memory.service';
 import { label, ModesService, VaultName, VAULTS } from './modes.service';
+import { said } from '../log-content';
 
 const SCAN_MS = 30_000;
 const STALE_REMINDER_MS = 12 * 3600_000;
@@ -321,7 +322,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
           t.reminded = true;
           changed = true;
           const text = `Reminder: ${p.name ? `${p.name}: ` : ''}${t.title}${t.assignee ? ` (${t.assignee})` : ''} is due now.`;
-          this.log.log(`Reminder: ${text}`);
+          this.log.log(`Reminder: ${said(text)}`);
           this.memory.activity('shared', 'Task reminder announced', [vault], [text]);
           this.emit('reminder', text);
         }

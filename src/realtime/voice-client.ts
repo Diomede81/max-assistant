@@ -20,7 +20,7 @@ export interface VoiceClientOptions {
  * What the realtime conversation needs from a speech-to-speech provider (OpenAI Realtime,
  * Gemini Live). Events:
  *  speech-started, speech-stopped, audio(Buffer 24 kHz 16-bit mono), response-done({ toolCalls,
- *  status, reason }), tool-call({ callId, name, args }), user-transcript(string),
+ *  status, reason }), tool-call({ callId, name, args }), user-transcript(string), user-words(string, so far),
  *  assistant-transcript(string), assistant-text(string: live pieces of what Max is saying),
  *  error(Error), close()
  * `response-done` with toolCalls > 0 means "the model is waiting for tool results and a
@@ -35,5 +35,7 @@ export interface VoiceClient extends EventEmitter {
   requestResponse(): void;
   cancelResponse(): void;
   clearInput(): void;
+  /** Asks the voice to say a line of text (used to record the greeting and voice samples). */
+  speak(text: string): void;
   close(): void;
 }

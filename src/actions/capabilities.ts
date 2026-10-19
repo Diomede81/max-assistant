@@ -37,10 +37,18 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
   }
   // Built-in web search (Firecrawl, no Composio).
   if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
+  if (names.includes('train_departures') || names.includes('plan_train_journey')) {
+    apps.set('TRAINS', `UK trains: ${[names.includes('train_departures') && 'live departures, delays and platforms', names.includes('plan_train_journey') && 'journey planning with a QR code to book on Trainline'].filter(Boolean).join('; ')}`);
+  }
+  // Train times only ever come from the train actions: the model's own idea of a timetable is wrong.
+  const trains = names.includes('train_departures') || names.includes('plan_train_journey')
+    ? 'Train times, platforms, journey lengths and delays: ONLY from the train actions, called for each question, and said exactly as they return them; never from memory or guesswork.'
+    : 'You have no train data: if asked for train times, say they can be set up on the control panel (Trains), and never guess times.';
   const screen = names.includes('show_on_screen') ? SCREEN_RULE : '';
-  if (!apps.size) return screen;
+  if (!apps.size) return [screen, trains].filter(Boolean).join('\n');
   return (
     (screen ? `${screen}\n` : '') +
+    `${trains}\n` +
     `Live connections you have RIGHT NOW through your tools: ${[...apps.values()].join('; ')}. ` +
     'You DO have access to these: when the user asks about any of them, call the matching tool straight away ' +
     'instead of saying you cannot. Never claim you have no access to email, calendar or the internet while ' +

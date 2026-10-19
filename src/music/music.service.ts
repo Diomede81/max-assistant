@@ -1,6 +1,9 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
+import { AirPlayService } from './airplay.service';
+import { RadioService } from './radio.service';
+import { MUSIC_STREAM, setSinkInputVolume, sinkInputs } from './sink-inputs';
 
 /** off = not configured; unreachable = speaker not running; pairing = waiting for Spotify sign-in; ready = signed in */
 export type MusicState = 'off' | 'unreachable' | 'pairing' | 'ready';
@@ -34,7 +37,8 @@ const MOOD = /\b(music|songs|mix|playlist|radio|hits|vibes?|relaxing|chill|focus
  * Max, so the Max box is a Spotify speaker called "Max": music plays through Max's own
  * speakers, can also be picked from the Spotify app on any phone, and Max controls it by
  * voice: search and play songs, artists, albums, playlists and podcasts, pause, skip,
- * volume. While Max is talking the music is turned down, then back up.
+ * volume. Internet radio (RadioService) and AirPlay (AirPlayService) play through the same
+ * controls; one source at a time. While Max is talking the music is turned down, then back up.
  */
 @Injectable()
 export class MusicService implements OnModuleInit, OnModuleDestroy {
@@ -48,13 +52,29 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   private duck?: { restoreTo?: number };
   private firstCheck = true;
 
-  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
+    @Optional() private readonly radio?: RadioService,
+    @Optional() private readonly airplay?: AirPlayService,
+  ) {}
+  /** Radio and AirPlay streams turned down while Max talks: their volume to go back to. */
+  private ducked: { index: number; volume: number }[] = [];
+  /** Between duckStart and duckEnd (Max is talking): new radio streams start turned down too. */
+  private ducking = false;
 
   private get base(): string {
     return this.cfg.music.spotifyUrl.replace(/\/$/, '');
   }
 
   onModuleInit(): void {
+    // Each new radio station starts at the radio's volume (turned down if Max is talking).
+    if (this.radio) this.radio.onStream = (index) => void this.newStream(index, this.radio!.level);
+    // AirPlay from a phone takes over: the radio and Spotify stop.
+    this.airplay?.on('start', () => {
+      void this.airplayStream();
+      if (this.radio?.playing) this.radio.stop();
+      if (this.state === 'ready') void this.api('POST', '/player/pause').catch(() => undefined);
+    });
     if (!this.base) return;
     this.state = 'unreachable';
     void this.poll();
@@ -102,9 +122,50 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Music actions are offered once the speaker is running (signed in or waiting to be). */
+  /** Music actions: Spotify once its speaker is running (signed in or waiting to be), radio when ffmpeg is there. */
   get tools(): ChatCompletionTool[] {
-    if (this.state !== 'ready' && this.state !== 'pairing') return [];
+    const spotify = this.state === 'ready' || this.state === 'pairing';
+    const radio = Boolean(this.radio?.available);
+    const out: ChatCompletionTool[] = [];
+    if (spotify) out.push(this.toolList[0]);
+    if (radio) {
+      out.push({
+        type: 'function',
+        function: {
+          name: 'play_radio',
+          description:
+            'Play an internet radio station on Max\'s speaker (free, no account): by name ("BBC Radio 2", "Radio Deejay", ' +
+            '"Classic FM"), or a genre or country ("jazz", "Italian news"). Empty station = the last one played. ' +
+            'Use this whenever the user asks for "radio"; music_control pauses, stops, says what\'s on and changes volume.',
+          parameters: { type: 'object', properties: { station: { type: 'string', description: 'Station name, genre or country' } } },
+        },
+      });
+    }
+    if (spotify || radio || this.airplay?.enabled) out.push(this.toolList[1]);
+    if (this.airplay?.onBox) {
+      out.push({
+        type: 'function',
+        function: {
+          name: 'airplay',
+          description:
+            'Switch AirPlay (Max as a speaker for iPhones, iPads and Macs) on or off. "turn on AirPlay" = on for 60 minutes ' +
+            'unless the user says how long; "always" only if they say so. status: on or off, and until when. Never say the code: ' +
+            "it's on the control panel (Music & AirPlay).",
+          parameters: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['on', 'off', 'status'] },
+              minutes: { type: 'integer', description: 'How long it stays on (default 60). 0 = always on (only if the user asks).' },
+            },
+            required: ['action'],
+          },
+        },
+      });
+    }
+    return out;
+  }
+
+  private get toolList(): ChatCompletionTool[] {
     return [
       {
         type: 'function',
@@ -143,10 +204,32 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   has(name: string): boolean {
-    return name === 'play_music' || name === 'music_control';
+    return name === 'play_music' || name === 'music_control' || name === 'play_radio' || name === 'airplay';
   }
 
   async call(name: string, args: Record<string, unknown>): Promise<string> {
+    if (name === 'airplay' && this.airplay) {
+      const a = this.airplay;
+      if (args.action === 'off') return a.turnOff();
+      if (args.action === 'on') return a.turnOn(args.minutes === 0 ? undefined : typeof args.minutes === 'number' ? args.minutes : 60);
+      if (!a.enabled) return 'AirPlay is off.';
+      return a.until ? `AirPlay is on until ${new Date(a.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'Europe/London' })}.` : 'AirPlay is always on.';
+    }
+    if (name === 'play_radio') {
+      if (this.state === 'ready') await this.api('POST', '/player/pause').catch(() => undefined); // one source at a time
+      try {
+        return await this.radio!.play(String(args.station ?? ''));
+      } catch (err) {
+        return `Couldn't start the radio: ${(err as Error).message}.`;
+      }
+    }
+    if (name === 'music_control') {
+      const action = String(args.action ?? '');
+      const level = typeof args.level === 'number' ? args.level : undefined;
+      if (this.radio?.playing) return this.radioControl(action, level);
+      if (this.airplay?.active) return this.airplayControl(action, level);
+    }
+    if (name === 'play_music') this.radio?.stop();
     if (this.state !== 'ready') await this.poll();
     if (this.state === 'pairing') {
       return "Spotify isn't signed in yet. Tell the user to open Max's control panel and approve the Spotify sign-in (one time only).";
@@ -164,6 +247,8 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
 
   /** Turns playing music down for a conversation. Quick and never throws. */
   async duckStart(): Promise<void> {
+    this.ducking = true;
+    await this.duckStreams();
     if (this.state !== 'ready') return;
     this.duck = {};
     try {
@@ -181,6 +266,10 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
 
   /** Puts the volume back after the conversation (including any change asked for meanwhile). */
   async duckEnd(): Promise<void> {
+    this.ducking = false;
+    const streams = this.ducked;
+    this.ducked = [];
+    for (const s of streams) await setSinkInputVolume(s.index, s.volume).catch(() => undefined);
     const d = this.duck;
     this.duck = undefined;
     if (d?.restoreTo === undefined) return;
@@ -284,6 +373,112 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
     return pick('tracks', '') ?? pick('artists', '') ?? pick('playlists', 'the playlist ') ?? pick('albums', 'the album ');
   }
 
+  /** Radio and AirPlay: turned down to the duck level while Max talks (their own stream volume). */
+  private async duckStreams(): Promise<void> {
+    if (!this.radio?.playing && !this.airplay?.active) return;
+    try {
+      for (const s of await sinkInputs()) {
+        // Skip streams already turned down (so their own volume, not the lowered one, comes back).
+        if (!MUSIC_STREAM.test(s.names) || s.volume <= this.cfg.music.duckVolume || this.ducked.some((d) => d.index === s.index)) continue;
+        this.ducked.push({ index: s.index, volume: s.volume });
+        await setSinkInputVolume(s.index, this.cfg.music.duckVolume);
+      }
+    } catch {
+      // keeps playing at its volume
+    }
+  }
+
+  /** A new radio stream: its volume, or turned down until Max has finished talking. */
+  private async newStream(index: number, volume: number): Promise<void> {
+    try {
+      if (this.ducking && volume > this.cfg.music.duckVolume) {
+        this.ducked.push({ index, volume });
+        await setSinkInputVolume(index, this.cfg.music.duckVolume);
+      } else await setSinkInputVolume(index, volume);
+    } catch {
+      // plays at whatever volume it started with
+    }
+  }
+
+  /**
+   * AirPlay opens a new sound stream each time a phone starts playing, and the sound system can give
+   * it the last volume it remembered (e.g. turned down while Max talked): set it to full (the phone
+   * sets the loudness), or turned down until Max has finished talking.
+   */
+  private async airplayStream(): Promise<void> {
+    for (let i = 0; i < 30 && this.airplay?.active; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      const s = (await sinkInputs()).filter((x) => /shairport/.test(x.names)).sort((a, b) => b.index - a.index)[0];
+      if (!s) continue;
+      if (this.ducking ? !this.ducked.some((d) => d.index === s.index) : s.volume < 100) await this.newStream(s.index, 100);
+      return;
+    }
+  }
+
+  // ---- Radio and AirPlay controls ----
+
+  private async radioControl(action: string, level?: number): Promise<string> {
+    const r = this.radio!;
+    switch (action) {
+      case 'pause':
+      case 'stop':
+        return r.stop();
+      case 'resume':
+        return r.play('');
+      case 'next':
+      case 'previous':
+        return 'This is a radio station: to change, tell me which station to play.';
+      case 'now_playing': {
+        const c = r.current!;
+        return `Playing ${c.station.name}${c.song ? `: ${c.song}` : ''}.`;
+      }
+      default:
+        return this.streamVolume(action, level, (pct) => r.setVolume(pct), () => r.volume(), (pct) => r.remember(pct));
+    }
+  }
+
+  private async airplayControl(action: string, level?: number): Promise<string> {
+    const now = this.airplay!.now!;
+    if (action === 'now_playing') {
+      return now.title ? `Playing from AirPlay: ${now.title}${now.artist ? ` by ${now.artist}` : ''}.` : 'Something is playing from a phone or computer over AirPlay.';
+    }
+    if (['pause', 'stop', 'resume', 'next', 'previous'].includes(action)) {
+      return 'That music comes from a phone or computer over AirPlay: pause or skip it there.';
+    }
+    const stream = async () => (await sinkInputs()).find((s) => /shairport/.test(s.names));
+    return this.streamVolume(
+      action,
+      level,
+      async (pct) => {
+        const s = await stream();
+        if (s) await setSinkInputVolume(s.index, pct);
+        return Boolean(s);
+      },
+      async () => (await stream())?.volume,
+    );
+  }
+
+  /** Volume of a radio or AirPlay stream; while Max talks (ducked), the level it returns to. */
+  private async streamVolume(
+    action: string,
+    level: number | undefined,
+    set: (pct: number) => Promise<boolean>,
+    get: () => Promise<number | undefined>,
+    remember?: (pct: number) => void,
+  ): Promise<string> {
+    if (!['set_volume', 'volume_up', 'volume_down'].includes(action)) return `Unknown music action "${action}".`;
+    const ducked = this.ducked.find(() => true);
+    const current = ducked?.volume ?? (await get()) ?? 100;
+    const step = level ?? 15;
+    const target = Math.max(0, Math.min(100, action === 'set_volume' ? (level ?? 50) : current + (action === 'volume_up' ? step : -step)));
+    if (ducked) {
+      for (const d of this.ducked) d.volume = target;
+      remember?.(target);
+      return `Volume ${target}%.`;
+    }
+    return (await set(target)) ? `Volume ${target}%.` : "Couldn't change the volume.";
+  }
+
   // ---- Controls ----
 
   private async control(action: string, level?: number): Promise<string> {
@@ -339,7 +534,16 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The player for the screen's music card: what's playing (or paused), cover, position. */
-  async player(): Promise<{ title: string; artist: string; album: string; art?: string; paused: boolean; position?: number; duration?: number } | undefined> {
+  async player(): Promise<{ title: string; artist: string; album: string; art?: string; paused: boolean; position?: number; duration?: number; source?: 'spotify' | 'radio' | 'airplay' } | undefined> {
+    const r = this.radio?.current;
+    if (r && this.radio?.playing) {
+      return { title: r.song ?? r.station.name, artist: r.song ? r.station.name : 'Internet radio', album: '', art: r.station.favicon, paused: false, source: 'radio' };
+    }
+    const a = this.airplay?.now;
+    if (a) {
+      const c = this.airplay?.cover;
+      return { title: a.title ?? 'AirPlay', artist: a.artist ?? 'From a phone or computer', album: a.album ?? '', art: c && `/airplay-cover?v=${c.id}`, paused: false, source: 'airplay' };
+    }
     if (this.state !== 'ready') return undefined;
     const s = await this.status().catch(() => undefined);
     if (!s || s.stopped || !s.track) return undefined;
@@ -358,11 +562,20 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
 
   /** The music card's buttons: pause, resume, next, previous. */
   async press(action: 'pause' | 'resume' | 'next' | 'previous'): Promise<void> {
+    if (this.radio?.playing) {
+      await this.radioControl(action);
+      return;
+    }
+    if (this.airplay?.active) return;
     await this.control(action);
   }
 
   /** What's playing right now, for the face screen (undefined when stopped or paused). */
-  async nowPlaying(): Promise<{ title: string; artist: string } | undefined> {
+  async nowPlaying(): Promise<{ title: string; artist: string; genre?: string } | undefined> {
+    const p = this.radio?.playing || this.airplay?.active ? await this.player() : undefined;
+    // The style of music, where it's known (the face dances to it): the station's tags, or the song's genre.
+    const genre = this.radio?.playing ? this.radio.current?.station.tags : this.airplay?.now?.genre;
+    if (p) return { title: p.title, artist: p.artist, genre };
     if (this.state !== 'ready') return undefined;
     const s = await this.status().catch(() => undefined);
     if (!s || s.stopped || s.paused || !s.track) return undefined;

@@ -1,0 +1,9 @@
+[Unit]
+Description=Max: apply the speaker sound chosen on the control panel
+
+[Path]
+PathChanged=/run/max/sound.json
+Unit=max-sound-reload.service
+
+[Install]
+WantedBy=default.target

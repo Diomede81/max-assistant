@@ -95,6 +95,11 @@ export class RealtimeClient extends EventEmitter implements VoiceClient {
     this.send({ type: 'response.create' });
   }
 
+  speak(text: string): void {
+    this.send({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
+    this.send({ type: 'response.create' });
+  }
+
   close(): void {
     this.ws?.close();
     this.ws = undefined;

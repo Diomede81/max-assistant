@@ -12,6 +12,7 @@ import { SealedStore } from '../memory/sealed-store';
 import { TodoService } from '../memory/todo.service';
 import { Weather, WeatherService } from '../weather/weather.service';
 import { CalEvent, extractEvents } from './events';
+import { LockService } from '../lock/lock.service';
 
 export interface Glance {
   weather?: { icon: string; temp: number; text: string; hi?: number; lo?: number; rain?: number };
@@ -21,6 +22,17 @@ export interface Glance {
   /** Evening photo frame: on now, with these pictures (served at /photos/<name>). */
   frame?: { photos: string[]; everySec: number };
 }
+
+/** The faces to choose from on the control panel (the 3D ones are drawn in robot3d.ts). */
+export const FACE_STYLES = {
+  robot: 'Max: the white 3D robot',
+  astro: 'Astro droid: silver dome, blue panels (Star Wars style)',
+  golden: 'Golden droid: polished gold (Star Wars style)',
+  rolling: 'Rolling droid: white and orange (Star Wars style)',
+  alien: 'Blue alien: big ears (Disney style)',
+  classic: 'Classic: the flat face (lightest for the box)',
+} as const;
+export type FaceStyle = keyof typeof FACE_STYLES;
 
 export interface AmbientSettings {
   glance: boolean;
@@ -34,6 +46,13 @@ export interface AmbientSettings {
   notifyBriefing: boolean;
   notifyEmail: boolean;
   notifyTodos: boolean;
+  /** The face on the round screen: a 3D character (see FACE_STYLES), or the classic flat face. */
+  faceStyle: FaceStyle;
+  /** Dim the screen after this many quiet seconds (0 = never), down to this brightness (%). */
+  dimAfterSec: number;
+  dimLevel: number;
+  /** Max dances to the music while it plays (to the beat, in the style of the music). */
+  dance: boolean;
 }
 
 const CAL_MS = 20 * 60_000;
@@ -51,7 +70,7 @@ const PHOTO_EXT: Record<string, string> = { ffd8ff: 'jpg', '89504e': 'png', '524
 export class AmbientService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Ambient');
   private readonly store: SealedStore<AmbientSettings>;
-  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true };
+  settings: AmbientSettings = { glance: true, frame: false, frameFrom: '19:00', frameTo: '23:00', frameEverySec: 20, captions: false, notifyBriefing: true, notifyEmail: true, notifyTodos: true, faceStyle: 'robot', dimAfterSec: 10, dimLevel: 20, dance: true };
   private events: { list: CalEvent[]; at: number; mode: string } = { list: [], at: 0, mode: '' };
   private timer?: NodeJS.Timeout;
   private readonly photoDir: string;
@@ -63,6 +82,7 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly todos?: TodoService,
     @Optional() private readonly modes?: ModesService,
     @Optional() private readonly mcp?: McpServersService,
+    @Optional() private readonly lock?: LockService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'screen');
     this.photoDir = join(cfg.memory.dir, 'photos');
@@ -87,6 +107,8 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
     const t = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (changes.frameFrom !== undefined && !t.test(changes.frameFrom)) return 'Times must be like 19:00.';
     if (changes.frameTo !== undefined && !t.test(changes.frameTo)) return 'Times must be like 23:00.';
+    if (changes.dimAfterSec !== undefined) changes.dimAfterSec = Math.max(0, Math.min(3600, Math.round(changes.dimAfterSec) || 0));
+    if (changes.dimLevel !== undefined) changes.dimLevel = Math.max(5, Math.min(80, Math.round(changes.dimLevel) || 20));
     if (changes.frameEverySec !== undefined) changes.frameEverySec = Math.max(5, Math.min(600, Math.round(changes.frameEverySec) || 20));
     this.settings = { ...this.settings, ...changes };
     this.store.save(this.settings).catch((err) => this.log.warn(`Could not save the screen settings: ${(err as Error).message}`));
@@ -171,7 +193,7 @@ export class AmbientService implements OnModuleInit, OnModuleDestroy {
    * time range filled in from its own description. Skipped in guest mode and at night.
    */
   async refreshCalendar(): Promise<void> {
-    if (!this.settings.glance || !this.mcp || this.modes?.mode === 'guest') return;
+    if (!this.settings.glance || !this.mcp || this.modes?.mode === 'guest' || this.lock?.locked) return;
     const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     if (hour < 6 || hour >= 23) return;
     const pick = this.calendarAction();

@@ -1,0 +1,15 @@
+[Unit]
+Description=Max: speaker sound (tuning from the control panel)
+After=pipewire-pulse.service wireplumber.service max-audio-defaults.service
+Wants=wireplumber.service
+
+[Service]
+ExecStart=/usr/local/bin/max-sound
+# Only the script gets the stop signal, so it can hand the volume back before the equaliser goes.
+KillMode=mixed
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

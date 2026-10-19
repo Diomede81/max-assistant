@@ -10,10 +10,13 @@
  * that spring towards targets, so any expression blends smoothly into any other. A designed
  * character (e.g. a Rive animation) could replace this later and use the same signals.
  */
+import { ROBOT3D_JS } from './robot3d';
+
 export function renderFace(bootId = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
 <title>Max</title>
 <style>
 :root { --bg: #06090d; --ink: #8ff0d6; --dim: #5d7d76; --paper: #ffffff; --warn: #ffb36b; color-scheme: dark; }
@@ -21,6 +24,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; c
   font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-user-select: none; user-select: none; touch-action: none; }
 canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+#c3 { background: radial-gradient(circle at 50% 38%, #16222e 0%, #0a1119 55%, #04070b 100%); }
 #setup { position: fixed; inset: 0; display: grid; place-items: center; color: var(--ink); text-align: center; }
 #setup[hidden] { display: none; }
 .card { width: min(76vmin, 560px); display: grid; gap: 2.2vmin; justify-items: center; }
@@ -46,10 +50,15 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #cardEl .cbig { font-size: 6vmin; font-weight: 800; line-height: 1.2; margin: 1vmin 0; }
 #cardEl .cbody { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; font-size: 3.5vmin; line-height: 1.4; color: #cfeee6; text-align: left; margin: 0 2vmin; }
 #cardEl .cbody::-webkit-scrollbar { display: none; }
-#cardEl .cimg { width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
+#cardEl .cimg { flex-shrink: 0; width: 26vmin; height: 26vmin; border-radius: 2.4vmin; object-fit: cover; margin: 0 auto; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.5); }
 #cardEl .clines { flex: 0 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y; scrollbar-width: none; text-align: left; display: grid; align-content: start; gap: 1.1vmin; margin: .6vmin 1vmin 0; }
 #cardEl .clines::-webkit-scrollbar { display: none; }
 #cardEl .cl { display: grid; grid-template-columns: 11vmin 1fr; gap: 1.6vmin; align-items: baseline; }
+#cardEl .cl.act { grid-template-columns: 11vmin 1fr auto; align-items: center; }
+#cardEl .cl .lact { font: inherit; font-size: 2.8vmin; font-weight: 700; padding: 1.2vmin 2.6vmin; border-radius: 99vmin; border: .4vmin solid #2f8a7a; background: #1d5d52; color: #e9fff8; }
+#cardEl .cl.done .lact { background: transparent; border-color: #2b4a45; color: #a9cfc6; }
+#cardEl .cl.done .x { text-decoration: line-through; }
+#cardEl .cl .lact:active { transform: scale(.95); }
 #cardEl .cl .t { font-size: 2.8vmin; color: #8fb8ae; font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; }
 #cardEl .cl .x { font-size: 3.3vmin; line-height: 1.25; }
 #cardEl .cl .x small { display: block; font-size: 2.6vmin; color: var(--dim); margin-top: .2vmin; }
@@ -80,6 +89,28 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   font-size: 10vmin; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 #frame .fclock small { display: block; font-size: 3.4vmin; font-weight: 600; margin-top: 1.2vmin; opacity: .9; }
 #frame .fshade { position: absolute; left: 0; right: 0; bottom: 0; height: 40vh; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+/* Start-up code keypad. */
+#lock { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .94); color: #e9fff8; text-align: center; }
+#lock[hidden] { display: none; }
+#lock .lkx { font: inherit; font-size: 3.4vmin; font-weight: 700; padding: 1.4vmin 5vmin; border-radius: 99vmin; border: 0; background: transparent; color: var(--dim); }
+#lock .lkx[hidden] { display: none; }
+#lock .lk { display: grid; gap: 2vmin; justify-items: center; }
+#lock .lt { font-size: 4.4vmin; font-weight: 700; }
+#lock .dots { display: flex; gap: 2.4vmin; height: 4vmin; align-items: center; }
+#lock .dots i { width: 2.8vmin; height: 2.8vmin; border-radius: 50%; border: .45vmin solid #5f8f86; box-sizing: border-box; }
+#lock .dots i.on { background: var(--ink); border-color: var(--ink); }
+#lock .dots.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-2vmin); } 75% { transform: translateX(2vmin); } }
+#lock .lmsg { font-size: 3vmin; color: #ffb36b; min-height: 3.6vmin; }
+#lock .pad { display: grid; grid-template-columns: repeat(3, 13vmin); gap: 2vmin 3vmin; }
+#lock .pad button { font: inherit; font-size: 5.6vmin; font-weight: 600; width: 13vmin; height: 13vmin; border-radius: 50%; border: .4vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; }
+#lock .pad button:active { background: #1d5d52; transform: scale(.95); }
+#lock .pad button.blank { visibility: hidden; }
+#lock .pad button.del { border-color: transparent; background: transparent; font-size: 4.6vmin; }
+#lock.paused .pad button { opacity: .35; }
+/* Dims after a quiet spell (on the box the backlight dims too; this darkens screens without one). */
+#dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+#dim.on { transition: opacity 1.5s ease; }
 #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 10, .96); text-align: center; color: #e9fff8; }
 #menu[hidden] { display: none; }
 #menu .list { width: 58vmin; display: grid; gap: 2.4vmin; }
@@ -108,12 +139,14 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 <div id="setup" hidden><div class="card" id="card"></div></div>
 <div id="cardEl" hidden></div>
 <div id="caption" hidden></div>
+<div id="lock" hidden><div class="lk"><div class="lt" id="lkTitle">🔒 Enter your code</div><div class="dots" id="lkDots"></div><div class="lmsg" id="lkMsg"></div><div class="pad" id="lkPad"></div><button class="lkx" id="lkCancel" hidden>Cancel</button></div></div>
 <div id="frame" hidden><img id="fa" alt=""><img id="fb" alt=""><div class="fshade"></div><div class="fclock" id="fclock"></div></div>
+<div id="dim"></div>
 <div id="menu" hidden><div class="list" id="menuList"></div></div>
 <script>
 (() => {
   const cv = document.getElementById('c');
-  const g = cv.getContext('2d');
+  let g = cv.getContext('2d'); // the 3D face swaps this for its visor while drawing the eyes and mouth
   const setupEl = document.getElementById('setup');
   const card = document.getElementById('card');
   const params = new URLSearchParams(location.search);
@@ -122,6 +155,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let info = { state: 'idle', mode: 'personal', timers: [], offline: false, emotion: 'neutral' };
   let mouth = { o: 0, w: 0, r: 0, s: 0 };
   let connected = demo, lastMsg = Date.now(), lastMouth = 0;
+  // Dancing to the music: the last beat heard (performance.now()), the loudness, and when they came.
+  const groove = { e: 0, at: -1e9, beatAt: -1e9, heardAt: -1e9, beats: 0 };
   let W = 0, H = 0, R = 0, cx = 0, cy = 0, dpr = 1;
 
   function resize() {
@@ -139,11 +174,18 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     // Max restarted with a new version: load the new face (the old page would keep running).
     const BOOT = ${JSON.stringify(bootId)};
     es.addEventListener('hello', (e) => { const b = JSON.parse(e.data).boot; if (BOOT && b && b !== BOOT) location.reload(); });
-    es.addEventListener('info', (e) => { info = JSON.parse(e.data); connected = true; lastMsg = Date.now(); renderSetup(); renderCard(); renderCaption(); renderFrame(); checkPowerButton(); });
+    es.addEventListener('info', (e) => { info = JSON.parse(e.data); checkPowerAsk(); connectedOnce = true; connected = true; lastMsg = Date.now(); setTimeout(checkDim, 0); if (info.faceStyle) { faceKnown = true; applyFace(); } renderSetup(); renderCard(); renderCaption(); renderFrame(); renderLock(); });
     es.addEventListener('level', (e) => {
       const d = JSON.parse(e.data);
       mouth = typeof d === 'number' ? { o: d, w: 0, r: 0, s: 0 } : d;
       lastMsg = lastMouth = Date.now();
+    });
+    // The beat of the music playing (about 20 a second while it plays): how loud, and whether a beat just landed.
+    es.addEventListener('groove', (e) => {
+      const d = JSON.parse(e.data);
+      groove.e = d.e; groove.at = performance.now();
+      if (d.b) { groove.beatAt = groove.heardAt = groove.at; groove.beats++; }
+      lastMsg = Date.now();
     });
     es.onerror = () => { connected = false; };
   }
@@ -167,8 +209,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       { time: '10:00', text: 'Q4 planning', sub: 'until 11:00 · Room 2', tag: 'event' },
       { time: '12:30', text: 'Lunch with Marco', tag: 'event' },
       { time: '15:00', text: 'Call Mum', tag: 'reminder' },
-      { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue' },
-      { time: 'todo', text: 'Send the Q3 report', tag: 'critical' }] },
+      { time: 'late', text: 'Renew the car insurance', sub: 'was due Mon 12 Oct · Home admin', tag: 'overdue', action: { id: 'done-1', label: 'Done' } },
+      { time: 'todo', text: 'Send the Q3 report', tag: 'critical', action: { id: 'done-2', label: 'Done' } },
+      { time: '✓', text: 'Book the dentist', sub: 'Done', tag: 'done', action: { id: 'undo-3', label: 'Undo' } }] },
   };
   SCENES.push(['speaking', 'happy', 'Card steps'], ['speaking', 'neutral', 'Card answer'], ['speaking', 'neutral', 'Card news']);
   SCENES.push(['idle', 'neutral', 'Notify email'], ['idle', 'concerned', 'Notify todo']);
@@ -181,7 +224,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   DEMO_CARDS['Card ingredients'] = { id: 'd9', kind: 'list', icon: '🧀', title: 'Macaroni cheese', subtitle: 'Ingredients · then 6 steps', until: FOREVER,
     lines: [{ text: '300 g macaroni' }, { text: '50 g butter' }, { text: '50 g plain flour' }, { text: '600 ml milk' }, { text: '250 g mature cheddar' }],
     actions: [{ id: 'next', label: 'Start', style: 'primary' }] };
-  SCENES.push(['speaking', 'neutral', 'Card email']);
+  SCENES.push(['speaking', 'neutral', 'Card email'], ['idle', 'neutral', 'Locked']);
+  SCENES.push(['idle', 'neutral', 'Dancing pop'], ['idle', 'neutral', 'Dancing rock'], ['idle', 'neutral', 'Dancing jazz'], ['idle', 'neutral', 'Dancing']);
+  SCENES.push(['idle', 'neutral', 'Glance work']);
   DEMO_CARDS['Card email'] = { id: 'd10', kind: 'list', icon: '✉️', title: 'Email', subtitle: 'From Anna Rossi · 09:42', big: 'Milan launch: venue confirmed', until: FOREVER,
     body: 'Anna confirms the venue for the Milan launch on 12 November and has signed the contract. She needs your final guest list by Friday, and asks whether you want the evening or the afternoon slot.' };
   DEMO_CARDS['Card steps'] = { id: 'd4', kind: 'notice', icon: '🍝', title: 'Carbonara', subtitle: 'Step 3 of 7', until: FOREVER,
@@ -218,14 +263,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         card: DEMO_CARDS[label],
         muted: label === 'Muted' || undefined,
         caption: label === 'Captions' ? { who: 'you', text: "What's the weather like this afternoon?" } : undefined,
-        glance: label === 'Glance' || label === 'Photo frame' ? {
+        glance: label === 'Glance' || label === 'Glance work' || label === 'Photo frame' ? {
           weather: { icon: '⛅', temp: 14, text: 'Partly cloudy', hi: 16, lo: 9, rain: 30 },
           next: { time: '10:00', title: 'Q4 planning', now: false },
           todos: { critical: 2, overdue: 1, today: 3 },
           frame: label === 'Photo frame' ? { photos: ['demo-1.jpg', 'demo-2.jpg', 'demo-3.jpg'], everySec: 6 } : undefined,
         } : undefined,
       };
-      setTimeout(() => { renderCard(); renderCaption(); renderFrame(); }, 0); // after the card code below is set up
+      if (label === 'Locked') info.locked = { triesLeft: 5 };
+      if (label === 'Glance work') info.mode = 'work';
+      if (label.startsWith('Dancing')) {
+        info.music = { title: 'Song', artist: 'Artist' };
+        info.groove = { mood: { 'Dancing pop': 'party', 'Dancing rock': 'rock', 'Dancing jazz': 'chill' }[label] || 'groove' };
+      }
+      setTimeout(() => { renderCard(); renderCaption(); renderFrame(); renderLock(); }, 0); // after the card code below is set up
       renderSetup();
     };
     if (fixed) show(fixed);
@@ -261,7 +312,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let wifiBackUntil = 0;
   function renderSetup() {
     const w = info.wifi;
-    const show = info.state === 'setup' && w && Date.now() > wifiBackUntil;
+    // Locked: the keypad comes first; the network's password and QR code show once the code is entered.
+    const show = info.state === 'setup' && w && Date.now() > wifiBackUntil && !info.locked;
     setupEl.hidden = !show;
     if (!show) return;
     const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -288,12 +340,13 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   // ---------- cards (Max's face shrinks to the top while one shows) ----------
   const cardEl = document.getElementById('card' + 'El');
   const captionEl = document.getElementById('caption');
-  let cardKey = '', cardGone = '';
+  let cardKey = '', cardGone = -1;
   const escC = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  function cardShown() { return info.card && info.card.id !== cardGone && info.card.until > Date.now() && info.state !== 'setup'; }
+  // cardGone: the card closed with Back to Max (its number: a later card with the same id still shows).
+  function cardShown() { return info.card && (info.card.seq ?? info.card.id) !== cardGone && info.card.until > Date.now() && info.state !== 'setup'; }
   function renderCard() {
     const c = cardShown() ? info.card : undefined;
-    const key = c ? JSON.stringify(Object.assign({}, c, { until: 0 })) : '';
+    const key = c ? JSON.stringify(Object.assign({}, c, { until: 0, seq: 0 })) : '';
     if (key === cardKey) return;
     const fresh = !cardKey || (c && JSON.parse(cardKey || '{}').id !== c.id);
     cardKey = key;
@@ -309,9 +362,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       if (c.body) h += '<div class="cbody">' + escC(c.body) + '</div>';
       if (c.image) h += '<img class="cimg" src="' + escC(c.image) + '" alt="">';
       if (c.lines && c.lines.length) {
-        h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +
+        h += '<div class="clines">' + c.lines.map((l) => '<div class="cl' + (l.tag === 'done' ? ' done' : '') + (l.action ? ' act' : '') + '"><div class="t">' + escC(l.time || '') + '</div><div class="x">' + escC(l.text) +
           (l.tag && l.tag !== 'event' && l.tag !== 'done' && l.tag !== 'reminder' ? '<span class="tag ' + l.tag + '">' + l.tag.toUpperCase() + '</span>' : '') +
-          (l.tag === 'reminder' ? ' 🔔' : '') + (l.sub ? '<small>' + escC(l.sub) + '</small>' : '') + '</div></div>').join('') + '</div>';
+          (l.tag === 'reminder' ? ' 🔔' : '') + (l.sub ? '<small>' + escC(l.sub) + '</small>' : '') + '</div>' +
+          (l.action ? '<button class="lact" data-a="' + escC(l.action.id) + '">' + escC(l.action.label) + '</button>' : '') + '</div>').join('') + '</div>';
       }
     }
     if (c.actions && c.actions.length) h += '<div class="cacts">' + c.actions.map((a) => '<button class="' + (a.style || '') + '" data-a="' + escC(a.id) + '">' + escC(a.label) + '</button>').join('') + '</div>';
@@ -324,7 +378,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       b.onclick = (e) => {
         e.stopPropagation();
         const a = b.getAttribute('data-a');
-        if (a === 'dismiss') { cardGone = c.id; renderCard(); renderCaption(); }
+        if (a === 'dismiss') { cardGone = c.seq ?? c.id; renderCard(); renderCaption(); }
         fetch('/card?id=' + encodeURIComponent(c.id) + '&action=' + encodeURIComponent(a), { method: 'POST' }).catch(() => undefined);
       };
     }
@@ -388,6 +442,104 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   }
   setInterval(renderFrame, 1000);
 
+  // ---------- dim after a quiet spell; anything happening lights the screen up again ----------
+  const dimEl = document.getElementById('dim');
+  let dimOn = false, dimLastActive = Date.now(), dimBacklight = false;
+  function busyForDim() {
+    // Talking, thinking, a card, the menu, captions, the photo frame or WiFi setup: stay bright.
+    return (info.state !== 'idle' && info.state !== 'sleeping') || cardShown() || !menuEl.hidden || !captionEl.hidden || !frameEl.hidden;
+  }
+  function dimNow() {
+    dimOn = true;
+    dimEl.classList.add('on');
+    dimEl.style.opacity = '0.72'; // until the box confirms its backlight is dimming
+    if (demo) return;
+    fetch('/dim?on=1', { method: 'POST' }).then((r) => r.json()).then((j) => {
+      dimBacklight = Boolean(j.backlight);
+      if (dimOn) dimEl.style.opacity = dimBacklight ? '0.25' : '0.72';
+    }).catch(() => undefined);
+  }
+  function undim() {
+    if (!dimOn) return;
+    dimOn = false;
+    dimEl.classList.remove('on');
+    dimEl.style.opacity = '0';
+    if (!demo) fetch('/dim?on=0', { method: 'POST' }).catch(() => undefined);
+  }
+  function checkDim() {
+    const after = Number(params.get('dim') || (info.dimAfterSec === undefined ? 10 : info.dimAfterSec));
+    if (busyForDim()) { dimLastActive = Date.now(); undim(); return; }
+    if (!dimOn && after > 0 && Date.now() - dimLastActive > after * 1000) dimNow();
+  }
+  setInterval(checkDim, 500);
+
+  // ---------- start-up code keypad (until the code is entered, Max shows nothing personal) ----------
+  const lockEl = document.getElementById('lock');
+  const lkDots = document.getElementById('lkDots'), lkMsg = document.getElementById('lkMsg'), lkPad = document.getElementById('lkPad');
+  let lkCode = '', lkNote = '', lkBusy = false;
+  // 'guest': the keypad asks for the household's code to leave guest mode (from the menu), not to unlock.
+  let lkFor = '';
+  const lkCancel = document.getElementById('lkCancel'), lkTitle = document.getElementById('lkTitle');
+  lkCancel.onpointerdown = (e) => e.stopPropagation();
+  lkCancel.onclick = (e) => { e.stopPropagation(); lkFor = ''; renderLock(); };
+  lkPad.innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k) =>
+    '<button data-k="' + k + '" class="' + (k === '' ? 'blank' : k === 'del' ? 'del' : '') + '" aria-label="' + (k === 'del' ? 'Delete' : k) + '">' + (k === 'del' ? '⌫' : k) + '</button>').join('');
+  for (const b of lkPad.querySelectorAll('button')) {
+    b.onpointerdown = (e) => e.stopPropagation();
+    b.onclick = (e) => { e.stopPropagation(); lkKey(b.getAttribute('data-k')); };
+  }
+  function lkPaused() { return info.locked && info.locked.pausedUntil && info.locked.pausedUntil > Date.now(); }
+  function leaveGuest() {
+    closeMenu();
+    if (!info.canLock) { toast = 'Set a start-up code on the control panel first'; toastUntil = performance.now() + 5000; return; }
+    lkFor = 'guest'; lkCode = ''; lkNote = ''; renderLock();
+  }
+  function lkKey(k) {
+    if (lkBusy || lkPaused() || !k) return;
+    if (k === 'del') lkCode = lkCode.slice(0, -1);
+    else if (lkCode.length < 6) lkCode += k;
+    lkNote = '';
+    renderLock();
+    if (lkCode.length === 6) lkSubmit();
+  }
+  function lkWrong(message) {
+    lkCode = ''; lkNote = message || 'Wrong code.';
+    lkDots.classList.remove('shake'); void lkDots.offsetWidth; lkDots.classList.add('shake');
+    renderLock();
+  }
+  function lkSubmit() {
+    lkBusy = true;
+    const code = lkCode;
+    if (demo) {
+      lkBusy = false;
+      if (code === '246810') { info.locked = undefined; lkCode = ''; renderLock(); } else lkWrong('Wrong code.');
+      return;
+    }
+    fetch(lkFor === 'guest' ? '/guest/leave' : '/unlock', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'code=' + encodeURIComponent(code) })
+      .then((r) => r.json())
+      .then((j) => {
+        lkBusy = false;
+        if (!j.ok) return lkWrong(j.message);
+        lkCode = ''; lkNote = '';
+        if (lkFor === 'guest') { lkFor = ''; renderLock(); toast = 'Guest mode is off'; toastUntil = performance.now() + 4000; }
+      })
+      .catch(() => { lkBusy = false; lkWrong('Could not check the code. Try again.'); });
+  }
+  function renderLock() {
+    if (lkFor === 'guest' && (info.mode !== 'guest' || info.locked)) lkFor = ''; // left guest mode another way, or locked
+    const show = Boolean(info.locked) || (lkFor === 'guest' && info.state !== 'setup');
+    lockEl.hidden = !show;
+    if (!show) { lkCode = ''; lkNote = ''; return; }
+    lkTitle.textContent = lkFor === 'guest' ? '👋 Code to leave guest mode' : '🔒 Enter your code';
+    lkCancel.hidden = lkFor !== 'guest';
+    lkDots.innerHTML = [0, 1, 2, 3, 4, 5].map((i) => '<i class="' + (i < lkCode.length ? 'on' : '') + '"></i>').join('');
+    const paused = lkPaused();
+    lockEl.classList.toggle('paused', Boolean(paused));
+    lkMsg.textContent = paused ? 'Too many tries. Wait ' + Math.ceil((info.locked.pausedUntil - Date.now()) / 1000) + ' s.'
+      : lkNote || (info.locked && info.locked.triesLeft < 5 ? info.locked.triesLeft + ' tries left' : '');
+  }
+  setInterval(() => { if (!lockEl.hidden) renderLock(); }, 1000); // the pause countdown
+
   // ---------- hold for 2 s: the options menu (turn off, restart, WiFi setup) ----------
   const HOLD_MS = 2000;
   const menuEl = document.getElementById('menu');
@@ -395,6 +547,8 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   let pressAt = 0, pressFired = false, toast = '', toastUntil = 0, menuIdle = 0, countdown = 0;
   let frameTouch = false;
   addEventListener('pointerdown', () => {
+    dimLastActive = Date.now();
+    if (dimOn) { frameTouch = true; undim(); return; } // a touch on a dimmed screen only wakes it
     if (!frameEl.hidden) { frameTouch = true; idleSince = Date.now() + (demo ? 15000 : 0); renderFrame(); return; }
     if (!menuEl.hidden) return;
     pressAt = performance.now(); pressFired = false;
@@ -454,10 +608,21 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     }
   }
   function showMenu() {
+    if (info.locked) {
+      // Locked: only turning off or restarting (whoever holds the box can pull the plug anyway).
+      menu('<button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button><button class="quiet" id="mCancel">Back</button>', {
+        mOff: () => confirmPower('poweroff'), mRestart: () => confirmPower('reboot'), mCancel: closeMenu,
+      });
+      return;
+    }
     fetch('/device').then((r) => r.json()).then((d) => { device = d; refreshRows(); }).catch(() => undefined);
     menu('<div class="rows">' + deviceRows() + '</div><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
-      '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div><button class="quiet" id="mCancel">Back to Max</button>', {
+      '<div class="pair"><button id="mWifi">WiFi setup</button><button id="mUpdate">Update</button></div>' +
+      (info.mode === 'guest' ? '<button id="mGuest">👋 Leave guest mode</button>' : '') +
+      (info.canLock ? '<button id="mLock">🔒 Lock</button>' : '') + '<button class="quiet" id="mCancel">Back to Max</button>', {
+      mGuest: leaveGuest,
       mUpdate: showUpdate,
+      mLock: () => { closeMenu(); fetch('/lock', { method: 'POST' }).catch(() => undefined); if (demo) { info.locked = { triesLeft: 5 }; renderLock(); } },
       mOff: () => confirmPower('poweroff'),
       mRestart: () => confirmPower('reboot'),
       mWifi: () => {
@@ -494,21 +659,20 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       });
     }).catch(() => menu('<h1>Updates</h1><p>Could not check for updates.</p>' + BACK, { uBack: closeMenu }));
   }
-  // The box's power button: a press shows Turn off / Restart; a second press while that shows turns off
-  // (with the usual few seconds to change your mind). Presses from before the screen loaded don't count.
-  let powerSeen;
-  function checkPowerButton() {
-    const p = info.powerPress || 0;
-    if (powerSeen === undefined || p === powerSeen) { powerSeen = p; return; }
-    powerSeen = p;
-    if (!menuEl.hidden && document.getElementById('pwOff')) return confirmPower('poweroff');
-    menu('<h1>Power</h1><button class="off" id="pwOff">Turn off</button><button id="pwRestart">Restart</button>' +
-      '<button class="quiet" id="pwCancel">Back to Max</button>', {
-      pwOff: () => confirmPower('poweroff'),
-      pwRestart: () => confirmPower('reboot'),
-      pwCancel: closeMenu,
+  // The box's power button was pressed: ask what to do (holding it for 5 s turns the box off anyway).
+  let powerAsked = 0;
+  function checkPowerAsk() {
+    if (!info.powerAsk || info.powerAsk === powerAsked) return;
+    const first = powerAsked === 0 && !connectedOnce;
+    powerAsked = info.powerAsk;
+    if (first && Date.now() - info.powerAsk > 3000) return; // a press from before this page opened
+    clearInterval(countdown);
+    menu('<h1>Power button</h1><p>Turn Max off, or restart him?</p><button class="off" id="mOff">Turn off</button><button id="mRestart">Restart</button>' +
+      '<button class="quiet" id="mCancel">Back to Max</button><p>Holding the button for 5 seconds turns him off straight away.</p>', {
+      mOff: () => confirmPower('poweroff'), mRestart: () => confirmPower('reboot'), mCancel: closeMenu,
     });
   }
+  let connectedOnce = false;
   // A few seconds to change your mind, then the box is asked to turn off / restart.
   function confirmPower(action) {
     const off = action === 'poweroff';
@@ -523,7 +687,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       fetch('/power?action=' + action, { method: 'POST' }).then((r) => {
         if (!r.ok) throw new Error();
         menu(off
-          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, unplug the power and plug it back in.</p>'
+          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button.</p>'
           : '<h1>Restarting…</h1><p>Back in about a minute.</p>', {});
         clearTimeout(menuIdle);
         // If the box hasn't gone down after 30 s, something stopped it: offer the way back.
@@ -614,6 +778,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     if (state === 'listening') { e.lidT = Math.min(e.lidT, 0.03); e.eye *= 1.06; e.pupil += 0.15; e.browY += 7; e.tilt += 6; }
     if (state === 'sleeping') Object.assign(e, { lidT: 1, lidA: -0.05, lidB: 0.12, browY: -6, browA: -0.05, browL: 0, smile: 0.3, open: 0, round: 0, cheek: 0.2, tilt: 5 });
     if (state === 'speaking') e.browY += m.o * 7;
+    const gv = dance(now, state, e);
     const lidT = Math.min(1, e.lidT + (1 - e.lidT) * blink);
 
     const K = 170, Z = 0.62; // expression springs: soft with a little bounce
@@ -629,9 +794,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       mw: spring('mw', m.w, dt, 1100, 0.8), mr: spring('mr', state === 'speaking' ? m.r : e.round, dt, 1100, 0.8),
       ms: spring('ms', m.s, dt, 1100, 0.8),
       bright: spring('bright', state === 'sleeping' ? 0.5 : offline ? 0.8 : 1, dt, 20, 1),
-      ring: spring('ring', state === 'listening' ? 0.65 + 0.25 * Math.sin(now / 260) : state === 'thinking' ? 0.45 : state === 'speaking' ? 0.25 + m.o * 0.5 : state === 'sleeping' ? 0.06 : 0.14, dt, 120, 0.9),
+      nod: spring('nod', gv.nod, dt, 260, 0.45), hop: spring('hop', gv.hop, dt, 320, 0.4),
+      ring: gv.ring + spring('ring', state === 'listening' ? 0.65 + 0.25 * Math.sin(now / 260) : state === 'thinking' ? 0.45 : state === 'speaking' ? 0.25 + m.o * 0.5 : state === 'sleeping' ? 0.06 : 0.14, dt, 120, 0.9),
     };
-    const target = (state === 'idle' || state === 'speaking' || state === 'listening') && TINT[emotion] ? TINT[emotion] : COLORS[state] || COLORS.idle;
+    const target = gv.col || ((state === 'idle' || state === 'speaking' || state === 'listening') && TINT[emotion] ? TINT[emotion] : COLORS[state] || COLORS.idle);
     col = col.map((c, i) => c + (target[i] - c) * Math.min(1, dt * 4));
     const rgb = (a, mix) => {
       const c = mix ? col.map((v) => v + (255 - v) * mix) : col;
@@ -647,16 +813,29 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 
     // Head: gentle breathing, a nod with emphasis, tilt, and a slight turn towards where he looks.
     const breathe = Math.sin(now / 1300);
-    g.save();
-    g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5) * s * fk);
-    g.rotate((P.tilt * Math.PI) / 180);
-    g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
-    g.globalAlpha = P.bright;
-    drawCheeks(P);
-    for (const side of [-1, 1]) drawEye(side, P, rgb);
-    for (const side of [-1, 1]) drawBrow(side, P, rgb);
-    drawMouth(P, rgb);
-    g.restore();
+    if (R3.on) {
+      // 3D robot: the same eyes and mouth on his glass visor (repainted 30 times a second, which
+      // halves the work for the Pi); the head itself turns, tilts and nods every frame.
+      R3.paint = !R3.paint;
+      if (R3.paint) paintVisor(() => {
+        drawCheeks(P);
+        for (const side of [-1, 1]) drawEye(side, P, rgb);
+        for (const side of [-1, 1]) drawBrow(side, P, rgb);
+        drawMouth(P, rgb);
+      });
+      renderRobot(P, now, cmp, state, col);
+    } else {
+      g.save();
+      g.translate(cx + P.lx * 7 * s * fk, fy + (breathe * 3 - P.mo * 4 + P.ly * 5 + P.nod * 16 - P.hop * 14) * s * fk);
+      g.rotate((P.tilt * Math.PI) / 180);
+      g.scale(s * fk * (1 + breathe * 0.005), s * fk * (1 + breathe * 0.005));
+      g.globalAlpha = P.bright;
+      drawCheeks(P);
+      for (const side of [-1, 1]) drawEye(side, P, rgb);
+      for (const side of [-1, 1]) drawBrow(side, P, rgb);
+      drawMouth(P, rgb);
+      g.restore();
+    }
 
     if (state === 'thinking') {
       for (let i = 0; i < 3; i++) {
@@ -674,13 +853,76 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       }
       g.globalAlpha = 1;
     }
+    if (cmp < 0.5) drawNotes(now, s, rgb);
     drawChrome(now, s, rgb, state, cmp);
     requestAnimationFrame(frame);
   }
 
+  // ---------- dancing to the music ----------
+  // Beats a minute when there's no beat to hear (a laptop without the sound system, or a quiet intro).
+  const DANCE_BPM = { party: 122, rock: 138, chill: 76, groove: 100 };
+  const DANCE_COL = { rock: [255, 130, 95], chill: [165, 150, 255], groove: [120, 240, 205] };
+  const DANCE_FACE = {
+    party: { lidT: 0.02, lidB: 0.4, browY: 12, smile: 1, cheek: 1, eye: 1.05, pupil: 0.72, open: 0.12 },
+    rock: { lidT: 0.24, lidB: 0.2, browY: -6, browA: 0.18, smile: 0.45, cheek: 0.3, eye: 1, pupil: 0.5, open: 0 },
+    chill: { lidT: 0.42, lidB: 0.3, browY: 3, browA: -0.04, smile: 0.55, cheek: 0.5, eye: 0.98, pupil: 0.55, open: 0 },
+    groove: { lidT: 0.06, lidB: 0.36, browY: 8, smile: 0.85, cheek: 0.8, eye: 1.02, pupil: 0.64, open: 0.05 },
+  };
+  let lastBeatSeen = -1e9, beatSide = 1;
+  const notes = [];
+  /** While music plays (and he's not busy talking or listening): his expression, the head moves and colour for the beat. */
+  function dance(now, state, e) {
+    const mood = info.groove && info.music && !info.locked && (state === 'idle' || state === 'sleeping') ? info.groove.mood : '';
+    if (!mood) return { nod: 0, hop: 0, ring: 0, col: null };
+    const beatMs = 60000 / (DANCE_BPM[mood] || 100);
+    // No beat heard for a while (a quiet intro, music he can't hear, or no sound system): keep time by himself.
+    if (now - groove.heardAt > 1500 && now - groove.beatAt > beatMs) { groove.beatAt = now; groove.beats++; if (now - groove.at > 1500) groove.e = 0.5; }
+    if (groove.beatAt !== lastBeatSeen) {
+      lastBeatSeen = groove.beatAt; beatSide = -beatSide;
+      if (groove.beats % 2 === 0 && notes.length < 6) notes.push({ at: now, x: (Math.random() - 0.5) * 1.3, d: Math.random() < 0.5 ? -1 : 1, c: Math.random() < 0.5 ? '♪' : '♫' });
+    }
+    Object.assign(e, DANCE_FACE[mood]);
+    const pulse = Math.exp(-(now - groove.beatAt) / 150); // 1 on the beat, fading
+    const out = { nod: 0, hop: 0, ring: groove.e * 0.25 + pulse * 0.3, col: DANCE_COL[mood] || null };
+    if (mood === 'party') {
+      // bouncing, tipping side to side on each beat, colours cycling
+      out.hop = pulse; e.tilt = beatSide * 7;
+      const h = (now / 40) % 360, k = (n) => (n + h / 30) % 12, f = (n) => 0.5 - 0.5 * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+      out.col = [f(0), f(8), f(4)].map((v) => 110 + v * 145);
+    } else if (mood === 'rock') {
+      out.nod = pulse * 1.1; e.tilt = beatSide * 3; // headbanging
+    } else if (mood === 'chill') {
+      e.tilt = Math.sin((now / (beatMs * 2)) * Math.PI) * 8; out.nod = pulse * 0.25; out.ring *= 0.6; // swaying
+    } else {
+      out.nod = pulse * 0.55; e.tilt = beatSide * 3.5; // nodding along
+    }
+    return out;
+  }
+  /** Little notes floating up around him while he dances. */
+  function drawNotes(now, s, rgb) {
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const n = notes[i], t = (now - n.at) / 1800;
+      if (t >= 1) { notes.splice(i, 1); continue; }
+      g.globalAlpha = Math.sin(t * Math.PI) * 0.8;
+      g.fillStyle = rgb(1, 0.3);
+      g.font = '600 ' + Math.round((30 + t * 14) * s) + 'px system-ui, sans-serif';
+      g.fillText(n.c, cx + (n.x * 230 + n.d * Math.sin(t * 6) * 18) * s, cy + (150 - t * 330) * s);
+    }
+    g.globalAlpha = 1;
+  }
+
+${ROBOT3D_JS}
   // ---------- drawing ----------
   function drawBackground(P, rgb, s) {
     g.clearRect(0, 0, W, H);
+    if (R3.on) {
+      // 3D face: the scene is drawn underneath; here only the coloured glow at the edge.
+      const ringA = Math.max(0, Math.min(1, P.ring));
+      const grad = g.createRadialGradient(cx, cy, R * 0.8, cx, cy, R);
+      grad.addColorStop(0, rgb(0)); grad.addColorStop(1, rgb(ringA * 0.5));
+      g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+      return;
+    }
     g.fillStyle = '#04070b'; g.fillRect(0, 0, W, H);
     // the face plate: a softly lit dark glass dome
     const bg = g.createRadialGradient(cx, cy - R * 0.25, R * 0.05, cx, cy, R);
@@ -846,27 +1088,33 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 
   function drawChrome(now, s, rgb, state, cmp = 0) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
+    // With the 3D robot, the top text sits higher (in the band near the screen's edge, clear of his
+    // head and antenna) and gets a soft dark shadow so it reads over anything behind it.
+    const badge = info.mode && info.mode !== 'personal' && state !== 'setup' && cmp < 0.3;
+    if (R3.on) { g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 8 * s; }
     // mode badge
-    if (info.mode && info.mode !== 'personal' && state !== 'setup' && cmp < 0.3) {
+    if (badge) {
       const label = info.mode.toUpperCase();
       g.font = '700 ' + Math.round(22 * s) + 'px system-ui, sans-serif';
       const w = g.measureText(label).width + 36 * s;
-      roundRect(cx - w / 2, cy - 290 * s, w, 40 * s, 20 * s);
+      const by = R3.on ? 330 : 290;
+      roundRect(cx - w / 2, cy - by * s, w, 40 * s, 20 * s);
       g.fillStyle = info.mode === 'work' ? 'rgba(255,196,120,0.18)' : 'rgba(150,140,220,0.2)'; g.fill();
-      g.fillStyle = info.mode === 'work' ? '#ffc478' : '#b8b0f0'; g.fillText(label, cx, cy - 269 * s);
+      g.fillStyle = info.mode === 'work' ? '#ffc478' : '#b8b0f0'; g.fillText(label, cx, cy - (by - 21) * s);
     }
     // weather at the top while idle
     const gl = info.glance || {};
     if (gl.weather && state === 'idle' && cmp < 0.3) {
       const w = gl.weather;
       g.font = '600 ' + Math.round(30 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.8);
-      const top = info.mode && info.mode !== 'personal' ? cy - 218 * s : cy - 262 * s;
+      const top = R3.on ? cy - (badge ? 272 : 290) * s : badge ? cy - 218 * s : cy - 262 * s;
       g.fillText(fit(w.icon + '  ' + w.temp + '°  ·  ' + w.text, 330 * s), cx, top);
       if (w.hi !== undefined) {
         g.font = '500 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.45);
-        g.fillText(w.lo + '° – ' + w.hi + '°' + (w.rain ? '  ·  ' + w.rain + '% rain' : ''), cx, top + 32 * s);
+        g.fillText(w.lo + '° – ' + w.hi + '°' + (w.rain ? '  ·  ' + w.rain + '% rain' : ''), cx, top + (R3.on ? 28 : 32) * s);
       }
     }
+    g.shadowBlur = 0; g.shadowColor = 'transparent';
     // bottom line: timer, music, or the clock
     let text = '', sub = '', sub2 = '', sub2Warn = false;
     const timer = (info.timers || []).slice().sort((a, b) => a.endsAt - b.endsAt)[0];
@@ -969,6 +1217,9 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     return t + '…';
   }
 
+  // The 3D face starts once Max says which one is chosen (or after 2 s without him, e.g. the demo).
+  let faceKnown = false;
+  setTimeout(() => { if (!faceKnown) { faceKnown = true; applyFace(); } }, 2000);
   requestAnimationFrame(frame);
 })();
 </script>

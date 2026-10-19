@@ -1,12 +1,13 @@
 [Unit]
-Description=Max power button on the 40-pin header (asks Max: turn off or restart?)
-After=local-fs.target
+Description=Max: power button (press = ask on the screen, hold 5 s = turn off)
+After=systemd-logind.service
 
 [Service]
 Environment=MAX_RUN_DIR=/run/max
-ExecStart=/usr/bin/python3 /usr/local/lib/max/max-power-button.py
+# While this runs, the system leaves the power button to it (if it stops, a press turns the box off safely).
+ExecStart=/usr/bin/systemd-inhibit --what=handle-power-key --who=Max --why="Max asks on the screen first" --mode=block /usr/bin/python3 /usr/local/lib/max/max-power-button.py
 Restart=always
-RestartSec=5
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target

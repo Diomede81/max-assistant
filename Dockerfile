@@ -7,6 +7,8 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
+# The 3D face only needs two files of three.js (the package is ~30 MB).
+RUN cd node_modules/three && find . -type f ! -path ./package.json ! -path ./LICENSE ! -path ./build/three.module.min.js ! -path ./build/three.cjs ! -path ./examples/jsm/environments/RoomEnvironment.js -delete
 # Memory search engine: keep only this machine's runtime (the package ships every platform + GPU builds).
 RUN ARCH=$(node -p process.arch) \
  && cd node_modules/onnxruntime-node/bin/napi-v6 && rm -rf darwin win32 \
@@ -20,7 +22,7 @@ RUN node -e "const m=process.argv[1],fs=require('fs');(async()=>{for(const f of 
 
 FROM node:22-bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends alsa-utils libasound2-plugins pulseaudio-utils \
+ && apt-get install -y --no-install-recommends alsa-utils libasound2-plugins pulseaudio-utils ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 # Route ALSA's "default" device (used by arecord/aplay) to the PulseAudio server in $PULSE_SERVER.
 RUN printf 'pcm.!default { type pulse }\nctl.!default { type pulse }\n' > /etc/asound.conf

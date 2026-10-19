@@ -17,7 +17,14 @@ import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
-import { AmbientService } from '../face/ambient.service';
+import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
+import { TrainsService } from '../trains/trains.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { dismissCard, showCard } from '../face/screen';
+import { LockService } from '../lock/lock.service';
+import { RadioService } from '../music/radio.service';
+import { AirPlayService } from '../music/airplay.service';
+import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -31,6 +38,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
+  @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
+  @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
@@ -38,6 +47,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
   @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
+  @Optional() @Inject(LockService) private readonly lock?: LockService;
+  @Optional() @Inject(RadioService) private readonly radio?: RadioService;
+  @Optional() @Inject(AirPlayService) private readonly airplay?: AirPlayService;
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -49,10 +62,54 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     private readonly projects: ProjectsService,
     private readonly todos: TodoService,
   ) {
-    this.auth = new PanelAuth(cfg.controlPanel.password);
+    this.auth = new PanelAuth({
+      envPassword: cfg.controlPanel.password,
+      // On the box the panel is reachable from the home network: it always has a password.
+      required: cfg.face.onBox,
+      dir: cfg.memory.dir,
+      showCode: (code, ttlMs) =>
+        showCard({
+          id: 'panel-code',
+          kind: 'notice',
+          icon: '🔐',
+          title: 'Control panel',
+          big: `${code.slice(0, 3)} ${code.slice(3)}`,
+          body: "Someone is choosing the control panel's password: type this code there. If that isn't you, ignore it.",
+          ttlMs,
+        }),
+      // On the box, a new device signs in with the password and then Allow on Max's screen.
+      askOnScreen: cfg.face.onBox
+        ? (device, ttlMs, answer) => {
+            const done = (allowed: boolean) => () => {
+              answer(allowed);
+              dismissCard('panel-signin');
+            };
+            showCard(
+              {
+                id: 'panel-signin',
+                kind: 'notice',
+                icon: '🔐',
+                title: 'Control panel sign-in',
+                big: device,
+                body: 'wants to open the control panel (the password was right). Allow it only if it is you.',
+                actions: [
+                  { id: 'allow', label: 'Allow', style: 'primary' },
+                  { id: 'deny', label: 'Deny', style: 'danger' },
+                ],
+                ttlMs,
+              },
+              { allow: done(true), deny: done(false) },
+            );
+          }
+        : undefined,
+    });
+    const extra = [cfg.controlPanel.publicUrl, ...cfg.controlPanel.allowedHosts];
+    this.hosts = new Set(extra.map((h) => hostOf(h)).filter(Boolean));
   }
 
   private readonly auth: PanelAuth;
+  /** Extra names the panel answers to (CONTROL_PANEL_URL's, CONTROL_PANEL_HOSTS). */
+  private readonly hosts: Set<string>;
 
   onModuleInit(): void {
     const { port, host, publicUrl } = this.cfg.controlPanel;
@@ -68,21 +125,40 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    // Never inside another website's frame (click tricks), no guessing of file types, no leaking addresses.
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    // Only answer to the panel's own names (max.local, the box's address, localhost...): a website whose name
+    // is made to point at the box ("DNS rebinding") could otherwise read the panel from the user's browser.
+    if (!hostAllowed(req.headers.host, this.hosts)) {
+      res.writeHead(421, { 'Content-Type': 'text/plain' }).end('Open the control panel by its own address, e.g. http://max.local:8099');
+      return;
+    }
     // Stop other websites open in the browser from posting to the panel (e.g. planting a "memory").
     if (req.method === 'POST' && !sameOrigin(req)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
       return;
     }
     // Password (PANEL_PASSWORD): everything except the login page needs a signed-in session.
-    if (url.pathname === '/login') return this.auth.handleLogin(req, res, readForm);
+    if (url.pathname === '/login' || url.pathname === '/login/wait') return this.auth.handleLogin(req, res, readForm);
     if (url.pathname === '/logout' && req.method === 'POST') return this.auth.logout(req, res);
     if (!this.auth.allowed(req)) {
       if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return this.redirect(res, '/login');
       res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Sign in first');
       return;
     }
-    if (req.method === 'GET' && url.pathname === '/') return this.page(res, url);
+    if (req.method === 'GET' && url.pathname === '/') return this.page(res, url, req);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
+      const f = await readForm(req);
+      const on = f.get('for') ?? 'off'; // minutes, 'always' or 'off'
+      const msg = url.pathname === '/music/airplay-code'
+        ? this.airplay.renewCode()
+        : on === 'off' ? this.airplay.turnOff() : this.airplay.turnOn(on === 'always' ? undefined : Number(on) || 60);
+      return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#music`);
+    }
     if (req.method === 'POST' && url.pathname === '/music/check') {
       await this.music?.poll();
       return this.redirect(res, '/#music');
@@ -132,6 +208,29 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const what = f.has('volume') ? 'Volume' : 'Brightness';
       return this.redirect(res, `/?${typeof out === 'number' ? `ok=${encodeURIComponent(`${what} ${out}%.`)}` : `error=${encodeURIComponent(out)}`}#device`);
     }
+    if (req.method === 'POST' && url.pathname === '/device/sound' && this.device) {
+      const f = await readForm(req);
+      const msg = this.device.setTone(f.get('tone') ?? '');
+      return this.redirect(res, `/?${msg.startsWith('Speaker sound:') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
+    }
+    if (req.method === 'POST' && url.pathname === '/device/voice' && this.device) {
+      const f = await readForm(req);
+      const msg = this.device.setVoice({ greeting: f.get('greeting') ?? '', startSound: f.get('startSound') === 'on' });
+      void this.liveVoice?.ensure(this.device.greeting); // recorded in the live voice, ready for the next "Hey Max"
+      return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#device`);
+    }
+    if (req.method === 'POST' && (url.pathname === '/voice/save' || url.pathname === '/voice/try') && this.liveVoice) {
+      const f = await readForm(req);
+      const voice = f.get('voice') ?? '';
+      const style = f.get('style') ?? '';
+      if (url.pathname === '/voice/try') {
+        const msg = await this.liveVoice.preview(voice, style);
+        return this.redirect(res, `/?${msg.startsWith('That was') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
+      }
+      const msg = this.liveVoice.save({ voice, style });
+      if (msg.startsWith('Saved') && this.device?.greeting) void this.liveVoice.ensure(this.device.greeting);
+      return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
+    }
     if (req.method === 'POST' && url.pathname === '/device/power') {
       const f = await readForm(req);
       const action = f.get('action') === 'reboot' ? 'reboot' : 'poweroff';
@@ -165,11 +264,55 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       this.memory.clearActivity();
       return this.redirect(res, '/?ok=Activity%20log%20cleared.#activity');
     }
+    if (req.method === 'POST' && url.pathname.startsWith('/lock/') && this.lock) {
+      const f = await readForm(req);
+      const action = url.pathname.slice('/lock/'.length);
+      let out: { ok: boolean; message: string };
+      if (action === 'set') {
+        out = f.get('code') !== f.get('repeat') ? { ok: false, message: 'The two new codes are different.' } : this.lock.setCode(f.get('code') ?? '', f.get('current') ?? '');
+      } else if (action === 'off') {
+        out = this.lock.setCode(undefined, f.get('current') ?? '');
+      } else if (action === 'reset' && this.auth.enabled && f.get('confirm') === 'yes') {
+        out = this.lock.setCode(undefined, undefined, true);
+      } else {
+        out = { ok: false, message: this.auth.enabled ? 'Tick the box to confirm.' : 'Removing a forgotten code needs a password on this page (PANEL_PASSWORD).' };
+      }
+      return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
+    }
     if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
     if (req.method === 'POST' && url.pathname === '/location' && this.location) {
       const f = await readForm(req);
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
       return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#location`);
+    }
+    if (url.pathname.startsWith('/whatsapp/') && this.whatsapp) {
+      const w = this.whatsapp;
+      if (req.method === 'GET' && url.pathname === '/whatsapp/status') {
+        const st = await w.status();
+        return this.json(res, { state: st.state, qrSvg: st.qrSvg });
+      }
+      if (req.method === 'POST') {
+        const f = await readForm(req);
+        let out: { ok: boolean; message: string } | undefined;
+        if (url.pathname === '/whatsapp/link') out = { ok: true, message: await w.link() };
+        else if (url.pathname === '/whatsapp/unlink') out = { ok: true, message: await w.unlink() };
+        else if (url.pathname === '/whatsapp/allow') out = await w.allow(f.get('name') ?? '', f.get('number') ?? '');
+        else if (url.pathname === '/whatsapp/disallow') out = { ok: true, message: w.disallow(f.get('number') ?? '') };
+        if (out) return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#whatsapp`);
+      }
+    }
+    if (req.method === 'POST' && url.pathname === '/trains/home' && this.trains) {
+      const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
+      return this.redirect(res, `/?${/^Home station/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#trains`);
+    }
+    if (req.method === 'POST' && url.pathname === '/security/device-remove') {
+      const msg = this.auth.removeDevice(req, (await readForm(req)).get('id') ?? '');
+      return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#security`);
+    }
+    if (req.method === 'POST' && url.pathname === '/security/password') {
+      const f = await readForm(req);
+      const out = this.auth.change(req, f.get('current') ?? '', f.get('password') ?? '', f.get('again') ?? '');
+      return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#security`);
     }
     if (req.method === 'POST' && url.pathname === '/mode') {
       const m = (await readForm(req)).get('mode') ?? '';
@@ -401,9 +544,13 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         glance: f.get('glance') === 'on',
         frame: f.get('frame') === 'on',
         captions: f.get('captions') === 'on',
+        dance: f.get('dance') === 'on',
         notifyBriefing: f.get('notifyBriefing') === 'on',
         notifyEmail: f.get('notifyEmail') === 'on',
         notifyTodos: f.get('notifyTodos') === 'on',
+        faceStyle: ((f.get('faceStyle') ?? '') in FACE_STYLES ? f.get('faceStyle') : 'robot') as FaceStyle,
+        ...(f.has('dimAfterSec') ? { dimAfterSec: Number(f.get('dimAfterSec')) } : {}),
+        ...(f.has('dimLevel') ? { dimLevel: Number(f.get('dimLevel')) } : {}),
         frameFrom: f.get('frameFrom') ?? '',
         frameTo: f.get('frameTo') ?? '',
         frameEverySec: Number(f.get('frameEverySec') ?? 20),
@@ -424,6 +571,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         account: this.music.account,
         pairing: this.music.pairing,
         error: this.music.lastError,
+        radio: this.radio && { available: this.radio.available, playing: this.radio.playing ? this.radio.current?.station.name : undefined },
+        airplay: this.airplay && { onBox: this.airplay.onBox, enabled: this.airplay.enabled, mode: this.airplay.mode, until: this.airplay.until, code: this.airplay.code, locked: Boolean(this.lock?.locked), playing: this.airplay.active },
       },
       voice:
         this.cfg.voiceMode === 'realtime'
@@ -431,6 +580,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           : `Pipeline (${this.cfg.llm.model})`,
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error },
       web: this.web?.status,
+      trains: this.trains?.status,
+      whatsapp: await this.whatsapp?.status(),
       location: this.location && { ...(this.location.home ?? { place: '', country: this.location.country }), countries: COUNTRIES },
       routines: this.routines && this.memory.enabled
         ? {
@@ -447,6 +598,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: await this.device?.status(),
+      liveVoice: this.liveVoice
+        ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
+        : undefined,
+      lock: this.lock && this.cfg.face.enabled ? { enabled: this.lock.enabled, locked: this.lock.locked, canReset: this.auth.enabled } : undefined,
       screen: this.ambient && this.cfg.face.enabled
         ? { ...this.ambient.settings, photos: this.ambient.photos(), place: this.location?.home?.place || undefined }
         : undefined,
@@ -480,6 +635,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             })),
             autoLearn: this.cfg.memory.autoLearn,
             passwordSet: this.auth.enabled,
+            passwordFromEnv: this.auth.fromEnv,
             workApps: this.cfg.memory.workApps,
             activity: this.memory.recentActivity(60),
             today: localToday(),
@@ -528,8 +684,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async page(res: ServerResponse, url: URL): Promise<void> {
+  private async page(res: ServerResponse, url: URL, req: IncomingMessage): Promise<void> {
     const d = await this.data();
+    // Settings > Security: the signed-in devices (only on the page, never in /api/status).
+    if (this.auth.enabled) d.devices = this.auth.listDevices(req);
     if (url.searchParams.has('connected')) d.notice = { kind: 'ok', text: 'Signed in. Max can use this app now.' };
     else if (url.searchParams.has('refreshed')) d.notice = { kind: 'ok', text: 'Refreshed.' };
     else if (url.searchParams.get('ok')) d.notice = { kind: 'ok', text: url.searchParams.get('ok')! };
@@ -592,4 +750,25 @@ function sameOrigin(req: IncomingMessage): boolean {
   } catch {
     return false;
   }
+}
+
+/** The host name (no port) of a URL or a bare name. */
+function hostOf(v: string): string {
+  try {
+    return new URL(v.includes('://') ? v : `http://${v}`).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The panel's own names: localhost, an IP address (how a home network reaches the box), a single-word
+ * name or a .local one (max, max.local), plus CONTROL_PANEL_URL's and CONTROL_PANEL_HOSTS. A public
+ * name (evil.example) pointed at the box by a website is refused.
+ */
+function hostAllowed(header: string | undefined, extra: Set<string>): boolean {
+  const h = hostOf(header ?? '');
+  if (!h) return false;
+  if (h === 'localhost' || h.endsWith('.local') || !h.includes('.') || extra.has(h)) return true;
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':');
 }

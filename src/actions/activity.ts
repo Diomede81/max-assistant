@@ -9,7 +9,7 @@ export interface Activity {
 }
 
 const INSTANT = new Set([
-  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'device_power', 'device_settings', 'show_on_screen',
+  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'airplay', 'device_power', 'device_settings', 'show_on_screen',
 ]);
 
 const SENDING = /(SEND|REPLY|FORWARD|CREATE_DRAFT|DRAFT)/;
@@ -27,7 +27,10 @@ export function describeActivity(name: string): Activity | undefined {
   if (name === 'news_briefing') return { icon: '📰', label: 'Getting your news' };
   if (name === 'news_settings') return { icon: '📰', label: 'Updating your news' };
   if (name === 'play_music') return { icon: '🎵', label: 'Finding the music' };
+  if (name === 'play_radio') return { icon: '📻', label: 'Tuning in' };
   if (name === 'web_search') return { icon: '🌐', label: 'Searching the web' };
+  if (name === 'train_departures') return { icon: '🚆', label: 'Checking the trains' };
+  if (name === 'plan_train_journey') return { icon: '🚆', label: 'Planning your journey' };
   if (name === 'read_webpage') return { icon: '🌐', label: 'Reading the page' };
   if (n.startsWith('WHATSAPP_')) return { icon: '💬', label: SENDING.test(n) ? 'Sending the WhatsApp' : 'Checking WhatsApp' };
   if (/^(SLACK|MICROSOFT_TEAMS|TEAMS)_/.test(n)) return { icon: '💬', label: SENDING.test(n) ? 'Sending the message' : 'Checking your messages' };

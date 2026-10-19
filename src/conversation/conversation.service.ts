@@ -15,9 +15,13 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
+import { LockService } from '../lock/lock.service';
+import { DeviceService } from '../device/device.service';
+import { LiveVoiceService } from '../realtime/live-voice.service';
 import { isStopRequest } from './stop';
 import { ConversationControl } from '../actions/conversation-control';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
+import { said } from '../log-content';
 
 type State = 'idle' | 'wake' | 'listen' | 'respond';
 
@@ -25,6 +29,10 @@ const HISTORY_LIMIT = 16;
 const HISTORY_RESET_MS = 2 * 60 * 1000;
 const FOLLOW_UP_WINDOW_MS = 5000;
 const CHIME_GRACE_MS = 400;
+/** The start-up jingle waits a moment for the sound system to be ready. */
+const START_SOUND_DELAY_MS = 1500;
+/** A short pause after the greeting before listening (the mic board cancels most of his own voice). */
+const AFTER_GREETING_MS = 250;
 const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
@@ -68,8 +76,16 @@ export class ConversationService implements OnApplicationBootstrap {
 
   /** Personal / work / guest: the conversation context never carries over a mode switch. */
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
+  /** The start-up code: while locked, Max doesn't answer or announce anything. */
+  @Optional() @Inject(LockService) private readonly lock?: LockService;
+  /** The greeting ("Hello, how can I help?") and the start-up jingle, set on the control panel. */
+  @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
+  /** Real-time mode: the greeting recorded in Max's live voice, so it sounds like the rest of the conversation. */
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
   private historyMode?: Mode;
   private lastIgnoredWakeAt = 0;
+  /** He greeted (rather than beeped) at the last wake-up. */
+  private greeted = false;
   /** end_conversation: the AI decided the conversation is over. */
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   @Optional() @Inject(ToolRouterService) private readonly toolRouter?: ToolRouterService;
@@ -88,17 +104,29 @@ export class ConversationService implements OnApplicationBootstrap {
     }
     this.mic.on('chunk', (c: Buffer) => this.onChunk(c));
     this.mic.start();
+    // A jingle when Max starts, so you know he's ready; and the greeting prepared so it plays instantly.
+    setTimeout(() => {
+      if (this.device?.startSound ?? true) void this.tts.jingle().catch((err) => this.log.warn(`Start-up sound: ${(err as Error).message}`));
+      if (this.device?.greeting) {
+        void this.tts.prepare(this.device.greeting); // the stand-in until the live voice has recorded it
+        void this.liveVoice?.ensure(this.device.greeting);
+      }
+    }, START_SOUND_DELAY_MS);
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
     // the current conversation ends (never in the middle of an answer).
     this.timers.on('fired', (t) => {
       this.pendingAnnouncements.push({ text: announcement(t), timer: !t.say });
       if (this.state === 'wake') void this.flushAnnouncements();
     });
+    // Reminders that came due while he was locked are said once he's unlocked.
+    this.lock?.on('change', (locked: boolean) => {
+      if (!locked && this.state === 'wake') void this.flushAnnouncements();
+    });
     void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
   }
 
   private async flushAnnouncements(): Promise<void> {
-    if (this.announcing) return;
+    if (this.announcing || this.lock?.locked) return; // reminders can be personal: not until unlocked
     this.announcing = true;
     await this.music?.duckStart();
     try {
@@ -106,9 +134,16 @@ export class ConversationService implements OnApplicationBootstrap {
         const { text, timer } = this.pendingAnnouncements.shift()!;
         if (timer) this.face?.setEmotion('surprised', 5000);
         else this.face?.said(text);
-        this.log.log(`Announcing: "${text}"`);
+        this.log.log(`Announcing: ${said(text)}`);
+        // In real-time mode it's said in Max's live voice: recorded while the chimes play.
+        const live = this.liveVoice?.active ? this.liveVoice.line(text) : undefined;
         await this.tts.chime().catch(() => undefined);
         await this.tts.chime().catch(() => undefined);
+        const pcm = await live;
+        if (pcm) {
+          await this.liveVoice!.play(pcm).catch((err) => this.log.warn(`Announcement: ${(err as Error).message}`));
+          continue;
+        }
         const speech = this.tts.session();
         speech.say(text);
         await speech.done();
@@ -132,16 +167,16 @@ export class ConversationService implements OnApplicationBootstrap {
       session.write(audio);
       const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
       if (heardWakeWord(text, this.cfg.wakeWord.names)) {
-        this.log.log(`Wake word confirmed ("${text}", ${Date.now() - started} ms)`);
+        this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)`);
         return true;
       }
       // Said it again straight after being ignored: that's a person calling, not noise.
       if (Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
-        this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? `"${text}"` : 'no words'})`);
+        this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? said(text) : 'no words'})`);
         return true;
       }
       this.lastIgnoredWakeAt = Date.now();
-      this.log.log(`Ignored a possible false wake-up: heard ${text ? `"${text}"` : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
+      this.log.log(`Ignored a possible false wake-up: heard ${text ? said(text) : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
       return false;
     } catch (err) {
       session?.abort();
@@ -179,16 +214,50 @@ export class ConversationService implements OnApplicationBootstrap {
       return;
     }
 
-    if (this.cfg.wakeWord.verify && !(await this.confirmWake(Buffer.concat(recent), fmt))) {
-      void this.waitForWakeWord();
-      return;
+    // The double-check runs while Max already answers, so it adds no delay; a false wake-up cuts
+    // the greeting short and he goes back to sleep.
+    const heardAt = Date.now();
+    const verified = this.cfg.wakeWord.verify ? this.confirmWake(Buffer.concat(recent), fmt) : Promise.resolve(true);
+    if (this.lock?.locked) {
+      if (!(await verified)) return this.waitForWakeWord();
+      this.log.log(`Wake word "${name}" detected, but Max is locked (start-up code)`);
+      const speech = this.tts.session();
+      speech.say("I'm locked. Please enter my code on the screen.");
+      await speech.done().catch(() => undefined);
+      return this.waitForWakeWord();
     }
 
-    this.log.log(`Wake word "${name}" detected - listening for your request`);
-    this.face?.setState('listening');
-    if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
-    // Turn any music down while we talk (in parallel with the chime, so no added delay).
+    this.log.log(`Wake word "${name}" detected - answering`);
+    // Turn any music down while we talk (in parallel with the greeting, so no added delay).
     const ducked = this.music?.duckStart();
+    // "Hello, how can I help?" (set on the control panel), or the short beep if there's no greeting.
+    const greeting = this.device?.greeting;
+    this.greeted = Boolean(greeting);
+    let answering: Promise<unknown> = Promise.resolve();
+    let falseAlarm = false;
+    if (greeting) {
+      const live = this.liveVoice?.active ? this.liveVoice.recorded(greeting) : undefined;
+      if (live) answering = this.liveVoice!.play(live).catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+      else {
+        answering = (async () => {
+          await this.tts.prepare(greeting); // normally ready since start-up
+          if (!falseAlarm) await this.tts.sayReady(greeting);
+        })().catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
+        void this.liveVoice?.ensure(greeting); // in the live voice from next time
+      }
+    } else if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    if (!(await verified)) {
+      falseAlarm = true;
+      this.tts.stopPlayback();
+      await answering;
+      await ducked;
+      await this.music?.duckEnd();
+      return this.waitForWakeWord();
+    }
+    await answering;
+    if (greeting) await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
+    this.log.log(`Ready for your request ${Date.now() - heardAt} ms after the wake word`);
+    this.face?.setState('listening');
     try {
       await this.talk();
     } finally {
@@ -202,7 +271,7 @@ export class ConversationService implements OnApplicationBootstrap {
     if (this.cfg.voiceMode === 'realtime') {
       this.state = 'respond';
       await this.realtime
-        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime)
+        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime && !this.greeted)
         .catch((err) => this.log.error(`Realtime conversation failed: ${(err as Error).message}`));
       this.onChunk = () => undefined;
     } else {
@@ -213,7 +282,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** One request, then follow-ups without the wake word, until nobody speaks. */
   private async conversation(): Promise<void> {
     this.transcript = [];
-    this.control?.consumeEnd(); // nothing left over from a previous conversation
+    this.control?.reset(); // nothing left over from a previous conversation
     try {
       await this.conversationTurns();
     } finally {
@@ -230,13 +299,19 @@ export class ConversationService implements OnApplicationBootstrap {
         if (!text) return;
         // "Stop", "that's all", "not talking to you": go quiet straight away, no AI involved.
         if (isStopRequest(text.value)) {
-          this.log.log(`Stopping: you said "${text.value}"`);
+          this.log.log(`Stopping: you said ${said(text.value)}`);
           this.control?.consumeEnd();
+          this.face?.conversationEnded();
           return;
         }
         const outcome = await this.respond(text.value, text.endOfSpeech);
         if (outcome === 'ended') {
           this.log.log('Conversation ended by Max (told to stop, or the speech was not meant for him)');
+          this.face?.conversationEnded();
+          return;
+        }
+        if (outcome === 'music') {
+          this.log.log('Music started: conversation ended so you can listen');
           return;
         }
         if (outcome === 'interrupted') {
@@ -316,11 +391,11 @@ export class ConversationService implements OnApplicationBootstrap {
       this.log.log('Heard sound but could not make out any words. Try speaking a little closer to the microphone.');
       return undefined;
     }
-    this.log.log(`You: "${text}"  (stt ${Date.now() - tEnd} ms)`);
+    this.log.log(`You: ${said(text)}  (stt ${Date.now() - tEnd} ms)`);
     return { value: text, endOfSpeech: tEnd };
   }
 
-  private async respond(text: string, tEndOfSpeech: number): Promise<'done' | 'ended' | 'interrupted'> {
+  private async respond(text: string, tEndOfSpeech: number): Promise<'done' | 'ended' | 'music' | 'interrupted'> {
     this.state = 'respond';
     this.face?.setState('thinking');
     if (Date.now() - this.lastTurnAt > HISTORY_RESET_MS) this.history = [];
@@ -335,6 +410,7 @@ export class ConversationService implements OnApplicationBootstrap {
     this.historyMode = mode;
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });
+    this.toolRouter?.heard(text); // the answer to any "Shall I go ahead?"
     this.face?.heard(text);
     const historyStart = this.history.length;
 
@@ -383,7 +459,7 @@ export class ConversationService implements OnApplicationBootstrap {
       speech.say(sentence);
     }
     if (firstSpoken) {
-      this.log.log(`Max: "${reply.trim()}"  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
+      this.log.log(`Max: ${said(reply.trim())}  (end-of-speech -> first sentence ${firstSpoken - tEndOfSpeech} ms)`);
     }
     for (const m of this.history.slice(historyStart)) {
       if (m.role === 'assistant' && 'tool_calls' in m && m.tool_calls) {
@@ -398,6 +474,8 @@ export class ConversationService implements OnApplicationBootstrap {
     this.lastTurnAt = Date.now();
     this.trimHistory();
     if (this.control?.consumeEnd()) return 'ended';
+    // Music just started: he's said so, now quiet so you can listen.
+    if (this.control?.consumeEndAfterReply() && !interrupted) return 'music';
     return interrupted ? 'interrupted' : 'done';
   }
 

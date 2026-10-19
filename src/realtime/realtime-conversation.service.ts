@@ -20,6 +20,8 @@ import { SoulService } from '../soul/soul.service';
 import { ModesService } from '../memory/modes.service';
 import { isStopRequest } from '../conversation/stop';
 import { ConversationControl } from '../actions/conversation-control';
+import { LiveVoiceService } from './live-voice.service';
+import { said } from '../log-content';
 
 const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
@@ -44,6 +46,8 @@ export class RealtimeConversationService {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(ModesService) private readonly modes?: ModesService;
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
+  /** The voice and speaking style chosen on the control panel (else REALTIME_VOICE / REALTIME_STYLE). */
+  @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -75,9 +79,9 @@ export class RealtimeConversationService {
       url: rt.url,
       apiKey: rt.apiKey,
       model: rt.model,
-      voice: rt.voice,
+      voice: this.liveVoice?.voice ?? rt.voice,
       instructions:
-        `${this.soul?.systemPrompt() ?? this.cfg.llm.systemPrompt}\n${rt.style}\nCurrent local time: ${describeNow()}.` +
+        `${this.soul?.systemPrompt() ?? this.cfg.llm.systemPrompt}\n${this.liveVoice?.style ?? rt.style}\nCurrent local time: ${describeNow()}.` +
         (this.memory.enabled ? `\n${this.memory.promptSection()}` : '') +
         (this.tools.homeAssistantConnected ? '' : '\nHome Assistant is NOT connected right now, so you cannot control devices.'),
       tools: rt.tools
@@ -156,7 +160,7 @@ export class RealtimeConversationService {
     connected = true;
     for (const pcm of early.splice(0)) client.sendAudio(pcm);
     this.face?.setState('listening');
-    this.log.log(`Connected to ${providerName} ${rt.model} (voice "${rt.voice}") in ${Date.now() - started} ms - talk now`);
+    this.log.log(`Connected to ${providerName} ${rt.model} (voice "${options.voice}") in ${Date.now() - started} ms - talk now`);
 
     let player: AsyncQueue<Buffer> | undefined;
     let playing: Promise<void> = Promise.resolve();
@@ -166,7 +170,7 @@ export class RealtimeConversationService {
     let turns = 0;
     let closed = false;
     const startMode = this.modes?.mode;
-    this.control?.consumeEnd(); // nothing left over from a previous conversation
+    this.control?.reset(); // nothing left over from a previous conversation
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
     let firstAudioThisTurn = true;
@@ -199,6 +203,7 @@ export class RealtimeConversationService {
     };
 
     client.on('speech-started', () => {
+      this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
       userSpeaking = true;
       lastActivity = Date.now();
@@ -233,8 +238,11 @@ export class RealtimeConversationService {
     });
     // "Stop" / "that's all" from the user, or end_conversation from the model: go quiet and end.
     let stopReason: string | undefined;
+    /** Music just started: end once he's said so (finished speaking). */
+    let endAfterReply = false;
     const hush = (why: string) => {
       stopReason ??= why;
+      this.face?.conversationEnded(); // the card shown for this conversation goes; his face comes back
       generation++;
       this.speaker.stop();
       player?.close();
@@ -276,11 +284,15 @@ export class RealtimeConversationService {
       }
       turns++;
       busy = false;
+      if (this.control?.consumeEndAfterReply()) endAfterReply = true;
       this.face?.setState('listening');
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
+    // What the user said, as it comes in: the answer to "Shall I go ahead?" is checked against it.
+    client.on('user-words', (t: string) => this.tools.heard(t));
     client.on('user-transcript', (t: string) => {
-      this.log.log(`You: "${t}"`);
+      this.tools.heard(t);
+      this.log.log(`You: ${said(t)}`);
       transcript.push({ who: 'user', text: t });
       this.face?.heard(t);
       if (isStopRequest(t)) hush(`you said "${t}"`);
@@ -292,7 +304,7 @@ export class RealtimeConversationService {
     });
     client.on('assistant-transcript', (t: string) => {
       for (const s of sentences.flush()) this.face?.said(s);
-      this.log.log(`Max: "${t}"`);
+      this.log.log(`Max: ${said(t)}`);
       transcript.push({ who: 'max', text: t });
     });
     client.on('error', (err: Error) => {
@@ -315,6 +327,7 @@ export class RealtimeConversationService {
         let why: string | undefined;
         if (closed) why = 'connection closed';
         else if (stopReason) why = stopReason;
+        else if (endAfterReply && !busy && !speaking() && now >= lastActivity) why = 'music started: quiet so you can listen';
         // Switched mode: end once he's confirmed it, so the next conversation starts in the new
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;

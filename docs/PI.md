@@ -42,7 +42,7 @@ This includes your `.env` (keys and settings). Then, on the **box** (over SSH), 
 | Setting | On the box |
 | --- | --- |
 | `PULSE_SERVER` | **Delete this line** if it's there (it's for the Mac sound bridge) |
-| `PANEL_PASSWORD` | Set one: the control panel will be reachable from your home network |
+| `PANEL_PASSWORD` | Optional: on your first visit the control panel asks you to choose a password (with a code shown on Max's screen); this sets it instead |
 | `REALTIME_BARGE_IN=on` | Recommended: the mic board's echo cancellation lets you talk over Max |
 | `COMPOSE_PROFILES=max,music` | Add `,music` if you use the Spotify speaker |
 | `MEMORY_KEY` | Keep the same value as on your Mac |
@@ -67,7 +67,9 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 
 ## Using the box
 
-- **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi.
+- **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi. The first time, it asks you to
+  choose a password and to type the code Max shows on his screen. On other devices: the password, then tap **Allow**
+  on Max's screen; each device then stays signed in for 30 days.
 - **Boot screen:** while the box starts (and shuts down) it shows Max's face on a dark screen instead of
   raspberries and scrolling text. To use **your own logo**:
   1. Make a **PNG** picture, ideally square, about **400 × 400 pixels**, with the important part inside a
@@ -79,6 +81,16 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   To go back to Max's face, delete `boot-logo.png` from the folder on the Mac **and** on the box
   (`rm ~/max-assistant/boot-logo.png`), then run the setup again. `MAX_BOOT_LOGO=off sudo ./scripts/pi/setup.sh`
   leaves the boot screen alone.
+- **Dimming:** after 10 seconds of quiet the screen fades down (on the box, the backlight dims to 20%). It lights
+  up again at once for "Hey Max", a card, a timer, a notification or a touch (a touch on a dimmed screen only
+  wakes it). Change the delay (0 = never) and how dark it gets in **Settings → Screen**.
+- **Max's face:** a 3D robot (a glossy white head with a glass visor, glowing ear pods and an antenna) whose eyes
+  and mouth show his expressions and move as he talks; the head turns, tilts, nods and dozes. **Settings → Screen
+  → Face** picks another character with the same eyes and expressions (an **astro droid** with a silver and
+  blue dome, a **golden droid**, a white and orange **rolling droid**, or a **blue alien** with big ears), or
+  the classic flat face. Preview one with `/?demo&face=astro` (`golden`, `rolling`, `alien`). If the box can't draw the 3D face smoothly (or at all), it lowers
+  the detail and then falls back to the classic face on its own. Preview on a computer: `/?demo` (add
+  `&face=classic` for the classic face).
 - **Cards on the screen:** when there's something worth seeing, Max shrinks to a small face at the top and
   a card fills the screen; tap **Back to Max** (or wait) to return.
   - **Timer done / reminder:** with **OK** / **Again**, or **Done** / **Snooze 10 min**.
@@ -98,7 +110,8 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   - **Important email** (marked important in Gmail, or high importance in Outlook), checked every 10 minutes
     from 07:00 to 22:00 in the current mode's email. **Read it** reads out who it's from, the subject and the
     first lines.
-  - **Overdue to-do**, once a day each (from 08:00), with **Done** and **Tomorrow** buttons.
+  - **Overdue to-do**, once a day each (from 08:00), with **Done** and **Tomorrow** buttons (several at once: a
+    list with **Done** on each).
 
   They wait for a good moment: never while you're talking to Max, never over a card you're using (a recipe, a
   timer), never during his sleep hours, and never in guest mode. Each can be switched off in
@@ -107,31 +120,60 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
     calendar's events added as soon as Max reads the calendar. Asking about the calendar shows its events too.
   - **Captions** (off unless you switch them on in **Settings → Screen** on the control panel): what Max
     heard you say and what he's saying, under the face.
+- **Dancing to the music** (on unless you switch it off in **Settings → Screen**): while music plays, Max
+  listens to the speaker's own output for the beat (nothing is recorded: it only becomes a loudness and a
+  beat) and moves to it in the style of the music, told from the genre (AirPlay), the station's tags and
+  name (radio), or else the tempo (fast is a party, slow is chill): bouncing with changing colours to dance,
+  pop and hip hop, headbanging to rock and metal, swaying with sleepy eyes to jazz, soul and classical,
+  nodding along to the rest. Little notes float up around him. He stops to talk or listen, and keeps time
+  by himself if he can't hear the beat (a laptop without the box's sound system).
 - **Glance (while Max is idle):** the weather at the top (for the home location set on the control panel,
   from Open-Meteo: free, no key), and under the clock your next meeting and a line like "2 critical ·
-  1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather). The next
+  1 overdue". **Tap the face** for "Your day" (meetings, reminders, to-dos and the weather); each to-do
+  has a **Done** button (a ticked one stays struck through, with **Undo**). The next
   meeting comes from the current mode's calendar app, checked quietly every 20 minutes between 06:00 and
   23:00. In **guest mode** only the time and weather show, and a tap shows the weather for the next hours.
 - **Evening photo frame:** upload pictures on the control panel (**Settings → Screen**; JPEG, PNG or WebP,
   kept on the box only) and switch it on. During the hours you choose (19:00–23:00 by default), after two
   quiet minutes, your pictures fade one into the next with the clock on top. "Hey Max" or a touch brings
   his face back. The glance can be switched off there too.
+- **Talking to Max:** say "Hey Max" and he answers **"Hello, how can I help?"**, then listens. To end the
+  conversation, say "stop", "that's all" or **"thank you"**, on its own or in a sentence ("that was
+  really helpful, thank you"); a request after it still goes through ("thanks, can you also set a timer").
+  When the box starts or Max restarts (an update), a short **jingle** tells you he's ready. The greeting
+  (empty = a short beep) and the jingle are set in **Settings → Device** on the control panel.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.
+- **Speaker sound:** **Settings → Device → Speaker sound**: Flat, Warm (fuller, for music) or Voice (clearer
+  speech). For a louder, richer speaker, seal its chamber airtight and fill it loosely with speaker wadding.
+- **Start-up code:** in **Settings → Security** on the control panel, set a 6-digit code. From then on, every
+  time the box starts, Max shows a keypad and stays locked until the code is typed: he won't answer
+  ("I'm locked, please enter my code on the screen"), won't run any action, and his screen shows nothing
+  personal (no meetings, to-dos, emails, notifications or reminders; reminders that come due are said once
+  he's unlocked). Max restarting on his own (an update) doesn't lock him again; turning the box off and on
+  does. To lock him yourself, hold a finger on the screen for 2 seconds and tap **Lock**.
+  - After 5 wrong tries the keypad pauses for 30 seconds, then 1, 2, 4... up to 15 minutes. Turning the box
+    off and on doesn't reset this, and the control panel's "current code" boxes count towards the same tries.
+  - Changing or turning off the code needs the current code. **Forgot it?** Sign in to the control panel and
+    use **Remove code** (or delete `data/startup-code.json` in the `max-assistant` folder on the box and restart Max).
+  - Only a scrambled fingerprint of the code is stored, never the code itself.
 - **Turning off and on:** never just pull the plug (it can damage the SD card). Instead:
   - **Hold a finger on the screen for 2 seconds** for the menu: **Turn off**, **Restart**, **WiFi setup**
     (and volume and brightness).
     After choosing, you have 5 seconds to cancel. When the screen goes dark it's safe to unplug.
   - Or say **"Max, turn off"** / **"Max, restart"** (he asks you to confirm), or use **Settings → Device**
     on the control panel.
-  - Or press the **power button on the Raspberry Pi** once.
+  - Or press the **power button on the Raspberry Pi** once: the screen asks **Turn off**, **Restart** or **Back to
+    Max** (then the usual 5 seconds to cancel). **Hold the button for 5 seconds** to turn the box off straight away
+    (still a clean shutdown), e.g. if the screen isn't responding.
   - **To turn it on again:** press the Pi's power button (or unplug and plug the power back in).
 - **Changing WiFi:** if the box can't reach a known WiFi network for a minute, or you choose **WiFi
   setup** in the screen's menu, Max says so and shows a QR code. Scan it with your phone: it joins Max's temporary
   "Max-Setup" network and opens a page where you choose your WiFi and type its password. Max tells you
   when he's connected. If nobody uses the setup network for 10 minutes, it switches itself off and the
-  box tries your known networks again.
+  box tries your known networks again. If Max is locked (start-up code), he asks for the code first: the QR
+  code and the setup network's password (12 random letters and digits) only show once it's entered.
   To leave setup mode (e.g. you opened it by mistake), tap **Back to Max** under the QR code: the box goes
   back to your usual WiFi straight away. Every screen in the menu has a **Back to Max** button.
 - **The face:**
@@ -195,6 +237,7 @@ The very first time (to install this updater) it's the old way: copy the new ver
 
 | Problem | What to do |
 | --- | --- |
+| The logs say `You: (8 words)` instead of what you said | On purpose: what you say, emails, memory facts and reminders are kept out of the logs. To see them while troubleshooting, add `LOG_CONTENT=on` to `.env` and run `docker compose up -d`; remove it afterwards. |
 | Screen stays black | On a Pi 5, use the cable with **one narrow end** (22-pin, into the Pi) and one wide end (15-pin, into the screen); the cable with two equal ends is for older Pis. Check both ends are fully in with the latches closed. Then run the setup again and make sure you picked the connector the cable is really in (`CAM/DISP 0` or `1`, printed on the Pi): `sudo MAX_DSI_PORT=0 ./scripts/pi/setup.sh` (or `=1`). |
 | The desktop appears instead of Max's face | The card has Raspberry Pi OS **with desktop**. Run the setup again (it now switches the desktop off at boot), or by hand: `sudo systemctl disable lightdm && sudo systemctl enable max-face && sudo reboot`. To get the desktop back: `sudo systemctl enable lightdm && sudo reboot`. |
 | Control panel won't open from the laptop | On the box, `docker compose ps` must show `0.0.0.0:8099->8099` for `max`; if it shows `127.0.0.1:8099`, run `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d` (the setup now makes this the default). On a Mac, if `curl http://<box address>:8099` works in Terminal but the browser doesn't, allow the browser in System Settings → Privacy & Security → Local Network. |

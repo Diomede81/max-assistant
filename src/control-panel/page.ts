@@ -2,14 +2,25 @@
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
+import { SPEAKER_TONES } from '../device/device.service';
+import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 
 export interface PanelData {
-  music?: { state: string; account?: string; pairing?: { url: string; code: string }; error?: string };
+  music?: {
+    state: string;
+    account?: string;
+    pairing?: { url: string; code: string };
+    error?: string;
+    radio?: { available: boolean; playing?: string };
+    airplay?: { onBox: boolean; enabled: boolean; mode?: string; until?: number; code: string; locked: boolean; playing: boolean };
+  };
   voice: string;
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean };
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean; tone?: string };
+  /** Real-time mode: Max's voice and speaking style. */
+  liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
     onBox: boolean;
     version?: { sha: string; date: string; subject: string; repo: string };
@@ -18,6 +29,8 @@ export interface PanelData {
     auto: { auto: boolean; time: string };
   };
   models?: PanelModels;
+  /** The start-up code (6 digits typed on Max's screen each time he starts). */
+  lock?: { enabled: boolean; locked: boolean; canReset: boolean };
   /** The round screen's glance and photo frame (when the face is on). */
   screen?: PanelScreen;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
@@ -25,6 +38,10 @@ export interface PanelData {
   notice?: { kind: 'ok' | 'error'; text: string };
   homeAssistant: { connected: boolean; tools: number; error?: string };
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
+  trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
+  whatsapp?: WhatsAppStatus;
+  /** Devices signed in to this panel (Settings > Security). */
+  devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
   composio: {
     configured: boolean;
@@ -52,6 +69,7 @@ export interface PanelData {
     }[];
     autoLearn: boolean;
     passwordSet: boolean;
+    passwordFromEnv?: boolean;
     workApps: string[];
     selected?: string;
     query?: string;
@@ -124,6 +142,38 @@ function soulSection(s: NonNullable<PanelData['soul']>): string {
 ${s.journal ? `<h3>Max's journal</h3><p class="meta">What Max has learnt about himself living with you, kept separately for personal and work mode (each mode only sees its own). Encrypted like his memory.</p><ul>${journal}</ul>
 <form class="addfact" method="post" action="/soul/journal-add"><input name="text" maxlength="240" required placeholder="e.g. We call the hoover Dave, and Max is jealous of him"><select name="mode" aria-label="Mode"><option value="personal">Personal</option><option value="work">Work</option></select><button class="btn secondary" type="submit">Add</button></form>` : ''}
 </section>`;
+}
+
+function liveVoiceForm(v: NonNullable<PanelData['liveVoice']>): string {
+  if (!v.active) {
+    return '<p class="meta"><b>Voice:</b> Max uses his standard voice (see docs/VOICES.md). In real-time mode (<code>VOICE_MODE=realtime</code>) you can choose his live voice here.</p>';
+  }
+  const list = v.voices.some((x) => x.id === v.voice) ? v.voices : [{ id: v.voice, label: v.voice }, ...v.voices];
+  const opts = list.map((x) => `<option value="${esc(x.id)}" ${x.id === v.voice ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
+  return `<form class="stack" method="post" action="/voice/save">
+<div class="addfact"><label class="meta" for="lv">Max's voice (${v.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'})</label><select id="lv" name="voice">${opts}</select></div>
+<div class="addfact"><input name="style" maxlength="400" value="${esc(v.style)}" placeholder="How he speaks, e.g. a warm, calm British accent, like a witty butler"></div>
+<div class="addfact"><button class="btn secondary" type="submit" formaction="/voice/try">▶ Try it on Max</button><button class="btn" type="submit">Save</button></div>
+<p class="meta">"Try it" plays a short sample on the box (takes a few seconds). Saving also re-records the greeting in the new voice.</p>
+</form>`;
+}
+
+function lockRow(l: NonNullable<PanelData['lock']>): string {
+  const code = (name: string, label: string) =>
+    `<input name="${name}" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" required autocomplete="off" placeholder="${label}" style="width:9em">`;
+  const status = l.enabled ? (l.locked ? ' <span class="badge warn">Locked now</span>' : '') : '';
+  return `<li class="row"><div style="width:100%"><div class="name">Start-up code ${badge(l.enabled, 'On', 'Off')}${status}</div>
+<div class="meta">${l.enabled
+    ? 'Every time Max starts, he stays locked until this 6-digit code is typed on his screen: he won\'t answer, act or show anything personal. You can also lock him from his screen menu (hold a finger on the screen for 2 seconds).'
+    : 'Set a 6-digit code and Max will ask for it on his screen every time he starts. Until it is entered he won\'t answer, act or show anything personal.'}</div>
+${l.enabled
+    ? `<form class="addfact" method="post" action="/lock/set">${code('current', 'Current code')}${code('code', 'New code')}${code('repeat', 'Repeat new code')}<button class="btn" type="submit">Change</button></form>
+<form class="addfact" method="post" action="/lock/off">${code('current', 'Current code')}<button class="btn secondary" type="submit">Turn off</button></form>
+${l.canReset
+    ? `<form class="addfact danger" method="post" action="/lock/reset"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Forgot the code? Remove it (you signed in to this page with its password)</label><button class="btn secondary" type="submit">Remove code</button></form>`
+    : '<p class="meta">Forgot the code? Set <code>PANEL_PASSWORD</code> to be able to remove it from this page, or delete <code>data/startup-code.json</code> on the box.</p>'}`
+    : `<form class="addfact" method="post" action="/lock/set">${code('code', 'New 6-digit code')}${code('repeat', 'Repeat it')}<button class="btn" type="submit">Turn on</button></form>`}
+</div></li>`;
 }
 
 function locationSection(l: NonNullable<PanelData['location']>): string {
@@ -325,7 +375,7 @@ ${post('/memory/delete', { id: f.id, vault: v.name }, 'Forget')}</div></li>`,
     : `<li class="empty">${m.autoLearn ? 'Max files a one-line note after each conversation worth remembering.' : 'Conversation notes are off (MEMORY_AUTO_LEARN=off).'}</li>`;
   const kinds = ['fact', 'person', 'preference', 'routine', 'date', 'project'].map((k) => `<option>${k}</option>`).join('');
   return `<section id="memory"><h2>Memory</h2>
-${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.</p>'}
+${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read Max\'s memory. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).</p>'}
 <p class="meta">${esc(m.modeText)} Personal: Work vault locked${m.workApps.length ? ' (and work apps)' : ''} · Work: Personal vault locked · Guest: only Household. Household is shared. <a href="#mode">Change mode</a></p>
 <div class="tabs">${tabs}</div>
 <form class="search" method="get" action="/#memory">${hidden('vault', v.name)}<input name="q" value="${esc(m.query ?? '')}" placeholder="Search ${VAULT_LABEL[v.name]}…"><button class="btn secondary" type="submit">Search</button></form>
@@ -350,8 +400,18 @@ const NOTES: Record<string, string> = {
 const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
+/** One tap away at the top: what's used most. Everything else is in the menu drawer (DRAWER). */
+const QUICK = ['overview', 'myday', 'projects'];
+
+/** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
+const DRAWER: [string, [string, string, string][]][] = [
+  ['Max', [['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
+  ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
+  ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
+];
+
 const TABS: [string, string][] = [
-  ['overview', 'Overview'],
+  ['overview', 'Home'],
   ['myday', 'My Day'],
   ['routines', 'Routines'],
   ['max', 'Max'],
@@ -412,6 +472,15 @@ ${busy ? '' : '<form method="post" action="/updates/check"><button class="btn se
 }
 
 /** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
+/** Home: what's playing (radio, AirPlay) and the AirPlay code, to hand to a guest's phone. */
+function musicTile(mu: PanelData['music'], tile: (href: string, k: string, v: string, meta: string) => string): string {
+  if (!mu) return '';
+  const a = mu.airplay;
+  const now = mu.radio?.playing ? `📻 ${esc(mu.radio.playing)}` : a?.playing ? '📱 AirPlay' : 'Nothing playing';
+  const code = a?.onBox ? (!a.enabled ? 'AirPlay off' : a.locked ? 'AirPlay off while Max is locked' : `AirPlay code <b>${esc(a.code)}</b>`) : 'Radio, Spotify and AirPlay';
+  return tile('#music', 'Music', now, code);
+}
+
 function overview(d: PanelData): string {
   const m = d.memory;
   const modes = m
@@ -425,17 +494,19 @@ function overview(d: PanelData): string {
   const facts = m ? m.vaults.filter((v) => m.readable.includes(v.name)).reduce((n, v) => n + v.facts.length, 0) : 0;
   const tasks = m ? m.projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'open').length, 0) : 0;
   const music = d.music && d.music.state !== 'off' ? (d.music.state === 'ready' ? badge(true, 'Ready') : badge(false, '', d.music.state === 'pairing' ? 'Sign-in needed' : 'Not running')) : '';
+  // Everyday things first (your day, music, news, projects), then how Max's connections are doing.
   const tiles = [
+    m ? myDayTile(m, tile) : '',
+    musicTile(d.music, tile),
+    d.routines ? newsTile(d.routines, tile) : '',
+    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.composio.configured
       ? tile('#apps', 'Apps', `${count(d.composio.apps)} personal · ${count(d.composio.workApps)} work`, 'Email, calendar, messaging and more')
       : tile('#apps', 'Apps', badge(false, '', 'Not set up'), 'Add a Composio key to connect email and other apps'),
     tile('#web', 'Web search', d.web?.configured ? badge(d.web.connected) : badge(false, '', 'Not set up'), d.web?.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages'),
     tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
-    music ? tile('#music', 'Music', `Spotify ${music}`, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
-    m ? myDayTile(m, tile) : '',
-    d.routines ? newsTile(d.routines, tile) : '',
+    music ? tile('#music', 'Spotify', music, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
     m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
-    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
     d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
     d.location ? tile('#location', 'Home location', d.location.place ? esc(d.location.place) : badge(false, '', 'Not set'), 'For local answers and search results') : '',
   ].join('');
@@ -529,7 +600,16 @@ form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-s
 @media (max-width:520px){.row{flex-direction:column;align-items:stretch}.btn{text-align:center}.addfact{flex-wrap:wrap}.addfact input{flex-basis:100%}}
 .nav{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;margin:0 -16px 16px;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}.nav a{flex:none;padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600}
-.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
+.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}
+.nav .menu{margin-left:auto;flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-weight:600;cursor:pointer}.nav .menu.on{border-color:var(--accent);color:var(--accent)}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}.scrim[hidden],.drawer[hidden]{display:none}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(300px,86vw);background:var(--card);border-left:1px solid var(--line);z-index:21;overflow-y:auto;padding:12px 16px 24px;box-shadow:-8px 0 24px rgba(0,0,0,.15)}
+.dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.dhead button{border:0;background:none;font-size:20px;color:var(--muted);cursor:pointer;padding:6px}
+.dgroup{padding:10px 0;border-top:1px solid var(--line)}.dgroup:first-of-type{border-top:0}.dtitle{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:0 0 4px}
+.dgroup a{display:block;padding:9px 10px;border-radius:8px;text-decoration:none;color:var(--text);font-weight:600}.dgroup a:hover{background:var(--bg)}.dgroup a.on{background:var(--accent);color:#fff}
+.dgroup .dot,.menu .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
+.pane.focus>section:not(.on),.pane.focus>p,.pane.focus>.jump{display:none}
+.stack input[type=password]{display:block;width:100%;max-width:340px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin:6px 0}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
 section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block}.pane>h2.title{font-size:13px;margin:0 0 10px}
 .jump{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}.jump a{font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--text)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
@@ -538,7 +618,12 @@ section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block
 </style><script>document.documentElement.className='js'</script></head><body data-tab="${esc(TABS.some((t) => t[0] === d.tab) ? d.tab : 'overview')}"><main>
 <div class="top"><div><h1>Max</h1><p class="sub">Voice: ${esc(d.voice)}</p></div>
 <div class="acts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div></div>
-<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id]).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}</nav>
+<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id] && QUICK.includes(id)).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}
+<button type="button" class="menu" id="menuBtn" aria-controls="drawer" aria-expanded="false">☰ Menu${Object.entries(attention).some(([id, on]) => on && !QUICK.includes(id)) ? '<span class="dot" title="Something in the menu needs attention"></span>' : ''}</button></nav>
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-label="Menu" hidden><div class="dhead"><b>Menu</b><button type="button" id="drawerClose" aria-label="Close">✕</button></div>
+${DRAWER.map(([group, items]) => `<div class="dgroup"><div class="dtitle">${group}</div>${items.filter(([, , tab]) => show[tab]).map(([href, label, tab]) => `<a href="${href}" data-tab="${tab}">${label}${attention[tab] && (tab !== 'connections' && tab !== 'settings') ? '<span class="dot"></span>' : ''}</a>`).join('')}</div>`).join('')}
+</aside>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 
 <div class="pane" id="tab-overview">${overview(d)}</div>
@@ -554,11 +639,12 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 
 <div class="pane" id="tab-connections">
-<div class="jump"><a href="#apps">Apps</a><a href="#web">Web search</a><a href="#home-assistant">Home Assistant</a>${musicSection(d.music) ? '<a href="#music">Music</a>' : ''}${servers ? '<a href="#servers">Other</a>' : ''}</div>
 <section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
 <p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
 <section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
 <div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
+${d.whatsapp ? whatsappSection(d.whatsapp) : ''}
+${d.trains ? trainsSection(d.trains) : ''}
 <section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
 <div class="meta">${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul></section>
 ${musicSection(d.music)}
@@ -570,8 +656,17 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 ${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
+${d.device ? `<form class="stack" method="post" action="/device/voice">
+<div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
+<div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
+<p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
+</form>` : ''}
+${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
+${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>
+${Object.entries(SPEAKER_TONES).map(([k, label]) => `<label class="meta tick"><input type="radio" name="tone" value="${k}" ${(d.device!.tone ?? 'flat') === k ? 'checked' : ''} onchange="this.form.submit()"> ${esc(label)}</label>`).join('')}
+<noscript><button class="btn" type="submit">Save</button></noscript></form>` : ''}
 ${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}
 ${d.onBox
   ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>
@@ -581,21 +676,48 @@ ${d.onBox
 </section>
 ${d.updates ? updatesSection(d.updates) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
-<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone on your network can open this page. Set <code>PANEL_PASSWORD</code> in <code>.env</code> and restart Max.'}</div></div></li>
+<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>
+${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" method="post" action="/security/password" style="margin-top:8px">
+<input type="password" name="current" placeholder="Current password" required autocomplete="current-password">
+<input type="password" name="password" placeholder="New password (8+ characters)" minlength="8" required autocomplete="new-password">
+<input type="password" name="again" placeholder="New password again" minlength="8" required autocomplete="new-password">
+<div><button class="btn secondary" type="submit">Change password</button></div></form>` : d.memory?.passwordFromEnv ? '<div class="meta">Set in <code>.env</code> (<code>PANEL_PASSWORD</code>): change it there.</div>' : ''}</div></li>
+${d.devices ? devicesRow(d.devices) : ''}
+${d.lock ? lockRow(d.lock) : ''}
 <li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
 </main>
 <script>
 (function () {
   var panes = [].slice.call(document.querySelectorAll('.pane'));
   var links = [].slice.call(document.querySelectorAll('.nav a'));
+  var drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim'), menuBtn = document.getElementById('menuBtn');
+  var dlinks = [].slice.call(drawer.querySelectorAll('a'));
+  // Menu entries for sections that aren't there (an app not set up...) are left out.
+  dlinks.forEach(function (a) { if (!document.getElementById(a.getAttribute('href').slice(1))) a.remove(); });
+  function openMenu(open) {
+    drawer.hidden = !open; scrim.hidden = !open;
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { var first = drawer.querySelector('a.on') || drawer.querySelector('a'); if (first) first.focus(); }
+  }
+  menuBtn.addEventListener('click', function () { openMenu(drawer.hidden); });
+  scrim.addEventListener('click', function () { openMenu(false); });
+  document.getElementById('drawerClose').addEventListener('click', function () { openMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) openMenu(false); });
+  dlinks.forEach(function (a) { a.addEventListener('click', function () { openMenu(false); }); });
   function route() {
     var id = decodeURIComponent(location.hash.slice(1));
     var el = id && document.getElementById(id);
     var pane = el && (el.classList.contains('pane') ? el : el.closest('.pane'));
     if (!pane) pane = document.getElementById('tab-' + document.body.getAttribute('data-tab')) || panes[0];
-    panes.forEach(function (p) { p.classList.toggle('on', p === pane); });
+    // A section opened from the menu (Apps, Security...) shows on its own, not the whole page of settings.
+    var section = el && el !== pane && el.tagName === 'SECTION' && el.parentNode === pane && (pane.id === 'tab-connections' || pane.id === 'tab-settings') ? el : null;
+    panes.forEach(function (p) { p.classList.toggle('on', p === pane); p.classList.toggle('focus', p === pane && !!section); });
+    [].slice.call(pane.querySelectorAll(':scope > section')).forEach(function (sct) { sct.classList.toggle('on', sct === section); });
     links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + pane.id); });
-    if (el && el !== pane) el.scrollIntoView(); else window.scrollTo(0, 0);
+    var inMenu = false;
+    dlinks.forEach(function (a) { var on = a.getAttribute('href') === '#' + (section ? section.id : pane.id); a.classList.toggle('on', on); inMenu = inMenu || on; });
+    menuBtn.classList.toggle('on', inMenu);
+    if (el && el !== pane && !section) el.scrollIntoView(); else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
   route();
@@ -614,7 +736,9 @@ ${d.updates ? updatesSection(d.updates) : ''}
 }
 
 function musicSection(m: PanelData['music']): string {
-  if (!m || m.state === 'off') return '';
+  if (!m) return '';
+  const extra = radioRow(m.radio) + airplayRow(m.airplay);
+  if (m.state === 'off') return extra ? `<section id="music"><h2>Music</h2><ul>${extra}</ul></section>` : '';
   const check = '<form method="post" action="/music/check"><button class="btn secondary" type="submit">Check again</button></form>';
   let body: string;
   if (m.state === 'ready') {
@@ -631,5 +755,98 @@ function musicSection(m: PanelData['music']): string {
     body = `<li class="row"><div><div class="name">Spotify ${badge(false, '', 'Not running')}</div>
       <div class="meta">Start the Spotify speaker: <code>docker compose --profile music up -d</code> (needs Spotify Premium). ${esc(m.error ?? '')}</div></div>${check}</li>`;
   }
-  return `<section id="music"><h2>Music</h2><ul>${body}</ul></section>`;
+  return `<section id="music"><h2>Music</h2><ul>${body}${extra}</ul></section>`;
+}
+
+function radioRow(r: NonNullable<PanelData['music']>['radio']): string {
+  if (!r) return '';
+  return `<li class="row"><div><div class="name">Internet radio ${r.available ? badge(true, r.playing ? 'Playing' : 'Ready') : badge(false, '', 'Update needed')}</div>
+<div class="meta">${r.available
+    ? `${r.playing ? `Now: <b>${esc(r.playing)}</b>. ` : ''}Free, no account. Say "Hey Max, play BBC Radio 2", "play some jazz radio" or "play the radio" (the last station).`
+    : 'Update Max (Settings → Updates) to get the radio player.'}</div></div></li>`;
+}
+
+function airplayRow(a: NonNullable<PanelData['music']>['airplay']): string {
+  if (!a) return '';
+  if (!a.onBox) return '<li class="row"><div><div class="name">AirPlay</div><div class="meta">Available on the Max box: it appears as a speaker on iPhones, iPads and Macs.</div></div></li>';
+  const until = a.until ? new Date(a.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+  const state = !a.enabled ? badge(false, '', 'Off') : a.locked ? badge(false, '', 'Off while Max is locked') : badge(true, a.playing ? 'Playing' : a.mode === 'timed' ? `On until ${until}` : 'Always on');
+  const btn = (value: string, label: string, primary = false) =>
+    `<form method="post" action="/music/airplay"><input type="hidden" name="for" value="${value}"><button class="btn ${primary ? '' : 'secondary'}" type="submit">${label}</button></form>`;
+  return `<li class="row"><div style="width:100%"><div class="name">AirPlay ${state}</div>
+<div class="meta">Max appears as the speaker <b>Max</b> on your iPhone, iPad or Mac, so any app (Apple Music, YouTube Music, podcasts…) can play through him. The first time, the device asks for this code and remembers it:</div>
+<div class="name" style="font-size:28px;letter-spacing:.3em;margin:8px 0">${esc(a.code)}</div>
+<div class="addfact wrap">${a.enabled ? btn('off', 'Turn off', true) : ''}${btn('60', a.enabled && a.mode === 'timed' ? 'On for 1 more hour' : 'On for 1 hour', !a.enabled)}${btn('240', 'On for 4 hours')}${a.mode !== 'always' ? btn('always', 'Always on') : ''}
+<form method="post" action="/music/airplay-code" onsubmit="return confirm('Every phone and computer will have to enter the new code. Continue?')"><button class="btn secondary" type="submit">New code</button></form></div>
+<p class="meta">Off unless you switch it on, so nobody nearby can spend hours guessing the code. When the time is up it switches off by itself (after the music then playing has stopped). Or say "Max, turn on AirPlay for an hour". It's also off while Max is locked. A new code makes every device ask again.</p></div></li>`;
+}
+
+/** Connections > WhatsApp: link a phone (QR code), and the people Max may send messages to. */
+function whatsappSection(w: WhatsAppStatus): string {
+  const state =
+    w.state === 'connected' ? badge(true, `Linked${w.phone ? ` · ${esc(w.phone)}` : ''}`)
+    : w.state === 'linking' ? '<span class="badge">Waiting for the scan</span>'
+    : w.state === 'connecting' ? '<span class="badge">Connecting…</span>'
+    : '<span class="badge off">Not linked</span>';
+  const link =
+    w.state === 'linking'
+      ? `<div id="waQr" style="max-width:260px;background:#fff;padding:10px;border-radius:12px;margin:10px 0">${w.qrSvg ?? ''}</div>
+<p class="meta">On your phone: <b>WhatsApp → Settings → Linked devices → Link a device</b>, then scan this code. It changes every few seconds; this page keeps it up to date.</p>
+<script>(function(){var t=setInterval(function(){fetch('/whatsapp/status').then(function(r){return r.json()}).then(function(s){if(s.state!=='linking'){clearInterval(t);location.href='/#whatsapp';return}if(s.qrSvg)document.getElementById('waQr').innerHTML=s.qrSvg}).catch(function(){})},3000)})()</script>`
+      : w.state === 'off'
+        ? '<form method="post" action="/whatsapp/link"><button class="btn" type="submit">Link a phone</button></form>'
+        : `<form method="post" action="/whatsapp/unlink" onsubmit="return confirm('Unlink WhatsApp? Max will forget the login and the messages he kept.')"><button class="btn secondary" type="submit">Unlink</button></form>`;
+  const people = w.allowed
+    .map(
+      (a) => `<div class="addfact"><span class="meta"><b>${esc(a.name)}</b> · ${esc(a.shown)}</span>
+<form method="post" action="/whatsapp/disallow"><input type="hidden" name="number" value="${esc(a.number)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
+    )
+    .join('');
+  return `<section id="whatsapp"><h2>WhatsApp</h2><ul><li class="row"><div style="flex:1"><div class="name">Your WhatsApp ${state}</div>
+<div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web: he reads your chats and keeps the last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
+${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
+${w.received ? receivedRow(w.received) : ''}
+${link}</div></li>
+<li class="row"><div style="flex:1"><div class="name">Who Max may send messages to</div>
+<div class="meta">Max only sends to the people on this list, and only after reading the message back and hearing your "yes". He can't add people himself.</div>
+${people || '<p class="meta">Nobody yet: Max can read your messages but not send any.</p>'}
+<form class="addfact" method="post" action="/whatsapp/allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add</button></form>
+</div></li></ul>
+<p class="meta">This uses WhatsApp's linked-devices feature through unofficial software (not a WhatsApp product). WhatsApp unlinks devices when the phone has been offline for about 14 days: link again then. You can also unlink Max from the phone (Linked devices).</p>
+</section>`;
+}
+
+/** What has reached Max (no message text): shows at a glance whether messages arrive, and whether they can be read. */
+function receivedRow(r: NonNullable<WhatsAppStatus['received']>): string {
+  const t = (ms?: number) => (ms ? new Date(ms).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+  const recent = r.recent.map((c) => `${esc(c.name)} (${c.messages}, ${t(c.lastAt)})`).join(' · ');
+  return `<p class="meta"><b>Since Max started:</b> ${r.messages} message${r.messages === 1 ? '' : 's'} received${r.lastAt ? `, the last at ${t(r.lastAt)}` : ''}${r.unreadable ? ` · <b>${r.unreadable} couldn't be decrypted</b> (if this keeps growing, Unlink and link again)` : ''}.<br>
+<b>Kept on the box:</b> ${r.kept} message${r.kept === 1 ? '' : 's'} in ${r.chats} chat${r.chats === 1 ? '' : 's'} (last 7 days, text only).${recent ? `<br><b>Latest chats:</b> ${recent}` : ''}</p>`;
+}
+
+function trainsSection(t: NonNullable<PanelData['trains']>): string {
+  const row = (name: string, on: boolean, yes: string, no: string) =>
+    `<li class="row"><div><div class="name">${name} ${on ? badge(true) : '<span class="badge off">Not set up</span>'}</div><div class="meta">${on ? yes : no}</div></div></li>`;
+  return `<section id="trains"><h2>Trains</h2><ul>
+${row('Live departures (National Rail)', t.departures, '"When\'s the next train to Waterloo?", "is the 8:15 on time?": times, delays, platforms', 'Add <code>RAIL_DATA_KEY</code> to <code>.env</code> (free at <a href="https://raildata.org.uk" target="_blank" rel="noopener">raildata.org.uk</a>, "Live Departure Board" product) and restart Max. See docs/TRAINS.md.')}
+${row('Journey planning (Google Maps)', t.journeys, '"Trains to Manchester tomorrow morning", "get me to Bath by 10": options on the screen with a QR code to book on Trainline', 'Add <code>GOOGLE_MAPS_API_KEY</code> (Routes API) to <code>.env</code> and restart Max. See docs/TRAINS.md.')}
+</ul>
+<form class="addfact" method="post" action="/trains/home"><label class="meta" for="homeSt">Home station (the "from" when you don't say)</label><input id="homeSt" name="station" maxlength="60" value="${esc(t.home?.name ?? '')}" placeholder="e.g. Twickenham"><button class="btn" type="submit">Save</button></form>
+</section>`;
+}
+
+/** Settings > Security: the devices signed in to the panel, each with Sign out. */
+function devicesRow(devices: NonNullable<PanelData['devices']>): string {
+  const when = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const rows = devices
+    .map(
+      (x) => `<div class="addfact"><span class="meta"><b>${esc(x.label)}</b>${x.current ? ' (this device)' : ''} · signed in ${when(x.created)} · last used ${when(x.lastUsed)}</span>
+<form method="post" action="/security/device-remove"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">Sign out</button></form></div>`,
+    )
+    .join('');
+  const others = devices.filter((x) => !x.current).length;
+  return `<li class="row"><div><div class="name">Signed-in devices</div>
+<div class="meta">A new phone or computer signs in with the password, then <b>Allow</b> on Max's screen; it then stays signed in for 30 days.</div>
+${rows || '<p class="meta">None.</p>'}
+${others ? '<form method="post" action="/security/device-remove"><input type="hidden" name="id" value="all"><button class="btn secondary" type="submit">Sign out all other devices</button></form>' : ''}</div></li>`;
 }

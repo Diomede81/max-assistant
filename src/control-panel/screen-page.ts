@@ -1,3 +1,4 @@
+import { FACE_STYLES, FaceStyle } from '../face/ambient.service';
 /** The "Screen" section of the Settings tab: what the round screen shows when Max is idle, and the evening photo frame. */
 export interface PanelScreen {
   glance: boolean;
@@ -9,6 +10,10 @@ export interface PanelScreen {
   notifyBriefing: boolean;
   notifyEmail: boolean;
   notifyTodos: boolean;
+  faceStyle: FaceStyle;
+  dimAfterSec: number;
+  dimLevel: number;
+  dance: boolean;
   photos: { name: string; size: number }[];
   /** The home location's name (the weather is for it), if set. */
   place?: string;
@@ -35,6 +40,10 @@ export function screenSection(s: PanelScreen, esc: Esc): string {
   return `<section id="screen"><h2>Screen</h2>
 <p class="meta">What Max's round screen shows. Tap his face to see your day. In guest mode visitors only see the time and the weather.</p>
 <form class="stack" method="post" action="/screen/save">
+<p class="meta"><b>Face</b> (the eyes, expressions and lip-sync are the same on all of them):</p>
+${Object.entries(FACE_STYLES).map(([k, label]) => `<label class="meta tick"><input type="radio" name="faceStyle" value="${k}" ${s.faceStyle === k ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+<div class="addfact"><label class="meta" for="dimA">Dim the screen after</label><input id="dimA" type="number" name="dimAfterSec" min="0" max="3600" value="${s.dimAfterSec}" style="width:5em"><span class="meta">seconds of quiet (0 = never), down to</span><input type="number" name="dimLevel" min="5" max="80" value="${s.dimLevel}" style="width:4.5em" aria-label="Dimmed brightness"><span class="meta">% (it lights up again for "Hey Max", a card, a timer or a touch)</span></div>
+<label class="meta tick"><input type="checkbox" name="dance" value="on" ${s.dance ? 'checked' : ''}> <b>Dance to the music</b>: while music plays his face moves to the beat, bouncing to dance and pop, headbanging to rock, swaying to jazz and classical</label>
 <label class="meta tick"><input type="checkbox" name="captions" value="on" ${s.captions ? 'checked' : ''}> <b>Captions</b>: show the words on screen, what Max heard you say and what he's answering</label>
 <label class="meta tick"><input type="checkbox" name="glance" value="on" ${s.glance ? 'checked' : ''}> <b>Glance</b>: the weather${s.place ? ` in ${esc(s.place)}` : ' (set your home location above)'}, your next meeting and the to-dos that matter, around his face</label>
 <label class="meta tick"><input type="checkbox" name="frame" value="on" ${s.frame ? 'checked' : ''}> <b>Evening photo frame</b>: your pictures, one fading into the next, with the clock (after 2 minutes of quiet; "Hey Max" or a touch brings him back)</label>

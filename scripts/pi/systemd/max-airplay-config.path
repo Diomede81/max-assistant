@@ -1,0 +1,9 @@
+[Unit]
+Description=Max: apply AirPlay settings from the control panel
+
+[Path]
+PathChanged=/run/max/airplay.json
+Unit=max-airplay-reload.service
+
+[Install]
+WantedBy=default.target

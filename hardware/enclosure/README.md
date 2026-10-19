@@ -119,7 +119,7 @@ front panel take a few minutes each to compute because of the grille holes.
 
    | Button | Tab | Goes to |
    | --- | --- | --- |
-   | Power | switch (both) | the Pi 5's **J2** pads, either way round, through a 2-pin **locking header** pushed into the holes (no solder): the only connection that can also turn the box **on**. (Pin 5 and pin 6 work too, but can't turn a Pi 5 on.) |
+   | Power | switch (both) | the Pi 5's **J2** pads, either way round, through a 2-pin **locking header** pushed into the holes (no solder). It works exactly like the Pi's own power button, including turning the box **on** |
    | Power | light + | pin 1 (3.3 V) |
    | Power | light - | pin 20 (ground) |
    | Mute | switch | pin 11 (GPIO 17) and pin 9 (ground), either way round |
@@ -128,7 +128,7 @@ front panel take a few minutes each to compute because of the grille holes.
 
    - **Power:** pressed while the box is off, it starts. Pressed while it's on, Max's screen shows
      **Turn off / Restart**, and a second press while that shows turns off (after a 5-second
-     countdown you can cancel). Holding it for 3 seconds turns the box off straight away, in case Max
+     countdown you can cancel). Holding it for 5 seconds turns the box off straight away, in case Max
      isn't responding. J2 is next to the small white battery socket (J5), near the USB-C socket.
      Its light is on while the box is on.
    - **Mute:** each press turns the microphone off or back on. While it is off, the button's light

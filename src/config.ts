@@ -78,6 +78,12 @@ export interface AppConfig {
   /** Web search and page reading (Firecrawl), built in. selfHosted: FIRECRAWL_API_URL set without a key. */
   firecrawl: { apiKey: string; apiUrl: string; selfHosted: boolean; country: string };
   /**
+   * Trains (docs/TRAINS.md): live departures from National Rail (Rail Data Marketplace key, free)
+   * and journey planning with Google Maps (Routes API key). The home station is the default "from"
+   * (the control panel's setting wins).
+   */
+  trains: { railDataKey: string; railDataUrl: string; googleMapsKey: string; homeStation: string };
+  /**
    * Extra AI providers for background jobs (news briefings, memory filing...): one key per
    * provider in .env; which model does which job is chosen on the control panel.
    */
@@ -85,7 +91,7 @@ export interface AppConfig {
   /** Default home location (the control panel's setting wins): town/area and ISO country code. */
   location: { place: string; country: string };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
-  controlPanel: { port: number; host: string; publicUrl: string; password: string };
+  controlPanel: { port: number; host: string; publicUrl: string; password: string; allowedHosts: string[] };
   /** Max's identity, story and personality (editable on the control panel). */
   soul: { file: string };
   memory: {
@@ -258,12 +264,20 @@ export function loadConfig(): AppConfig {
       selfHosted: Boolean(env.FIRECRAWL_API_URL && !env.FIRECRAWL_API_KEY),
       country: env.FIRECRAWL_COUNTRY ?? 'GB',
     },
+    trains: {
+      railDataKey: env.RAIL_DATA_KEY ?? '',
+      railDataUrl: env.RAIL_DATA_URL ?? '',
+      googleMapsKey: env.GOOGLE_MAPS_API_KEY ?? '',
+      homeStation: env.HOME_STATION ?? '',
+    },
     controlPanel: {
       port: num(env.CONTROL_PANEL_PORT, 8099),
       // Only this computer by default; docker-compose publishes it on 127.0.0.1 only.
       host: env.CONTROL_PANEL_HOST || '127.0.0.1',
       publicUrl: env.CONTROL_PANEL_URL || 'http://localhost:8099',
       password: env.PANEL_PASSWORD ?? '',
+      // Extra names the panel answers to (e.g. a reverse proxy's), comma-separated.
+      allowedHosts: (env.CONTROL_PANEL_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
     },
     soul: { file: env.SOUL_FILE || join(env.MEMORY_DIR || 'data', 'soul.md') },
     memory: {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Max: AirPlay speaker (shairport-sync, code required)
+After=pipewire-pulse.service wireplumber.service
+Wants=wireplumber.service
+
+[Service]
+ExecStart=/usr/local/bin/max-airplay
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

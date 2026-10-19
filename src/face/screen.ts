@@ -14,6 +14,8 @@ export interface CardLine {
   /** Left column, e.g. "08:30". */
   time?: string;
   tag?: 'critical' | 'overdue' | 'important' | 'event' | 'reminder' | 'done';
+  /** A small button on the line (e.g. Done for a to-do); runs the card's handler with this id. */
+  action?: { id: string; label: string };
 }
 
 export interface CardAction {

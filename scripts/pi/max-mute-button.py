@@ -16,7 +16,9 @@ Settings (environment): MAX_RUN_DIR (/run/max), MAX_MUTE_GPIO (17), MAX_MUTE_LED
 """
 import os
 import signal
+import stat
 import sys
+import tempfile
 
 from gpiozero import LED, Button
 
@@ -26,23 +28,54 @@ LED_PIN = os.environ.get('MAX_MUTE_LED_GPIO', '27')
 NOTE = os.path.join(RUN_DIR, 'muted')
 SAVED = '/var/lib/max/muted'
 light = None
+# The note goes into the folder Max shares with the box (/run/max), where Max's container can create
+# files too, including links pointing at system files. A root service must never write through such a
+# link: the file is written in a folder only root can use, then moved in with one rename, which replaces
+# whatever is at that name (a planted link included) and never follows it. (As max-power-button.py.)
+PRIVATE_DIR = '/run/max-box'
 
 
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
 
 
-def set_muted(muted):
-    for path in (NOTE, SAVED):
+def put_shared(run_dir, name, text):
+    os.makedirs(PRIVATE_DIR, mode=0o755, exist_ok=True)
+    st = os.lstat(PRIVATE_DIR)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s is not a private folder' % PRIVATE_DIR)
+    fd, tmp = tempfile.mkstemp(dir=PRIVATE_DIR)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.makedirs(run_dir, exist_ok=True)
+        os.replace(tmp, os.path.join(run_dir, name))
+    except BaseException:
         try:
-            if muted:
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, 'w') as f:
-                    f.write('mute button\n')
-            elif os.path.exists(path):
-                os.remove(path)
-        except OSError as err:
-            log(f'Could not update {path}: {err}')
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def set_muted(muted):
+    try:
+        if muted:
+            put_shared(RUN_DIR, os.path.basename(NOTE), 'mute button\n')
+        elif os.path.lexists(NOTE):
+            os.remove(NOTE)  # removes a planted link itself, never what it points at
+    except OSError as err:
+        log(f'Could not update {NOTE}: {err}')
+    try:  # root's own folder, not shared with Max
+        if muted:
+            os.makedirs(os.path.dirname(SAVED), exist_ok=True)
+            with open(SAVED, 'w') as f:
+                f.write('mute button\n')
+        elif os.path.exists(SAVED):
+            os.remove(SAVED)
+    except OSError as err:
+        log(f'Could not update {SAVED}: {err}')
     if light:
         light.value = muted
 

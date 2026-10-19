@@ -82,6 +82,32 @@ sleep 2
 "${USER_SYSTEMCTL[@]}" enable --now pipewire pipewire-pulse wireplumber || warn "Could not start PipeWire yet; it starts after a reboot."
 "${USER_SYSTEMCTL[@]}" enable max-audio-defaults.service || true
 
+# Speaker sound: the tuning chosen on the control panel (flat, warm or voice), applied by a small
+# equaliser between Max and the mic board.
+install -m 755 "$REPO/scripts/pi/max-sound.sh" /usr/local/bin/max-sound
+for u in max-sound.service max-sound-config.path max-sound-reload.service; do
+  install -D -m 644 "$REPO/scripts/pi/systemd/$u" "/etc/systemd/user/$u"
+done
+"${USER_SYSTEMCTL[@]}" daemon-reload || true
+"${USER_SYSTEMCTL[@]}" enable max-sound.service max-sound-config.path || true
+"${USER_SYSTEMCTL[@]}" restart max-sound-config.path max-sound.service || true
+
+# AirPlay: "Max" as a speaker on iPhones, iPads and Macs, protected by a 4-digit code (control panel).
+# The package's own system-wide receiver has no code and would be a second, open speaker: masked.
+say "Setting up AirPlay (code required)"
+if apt-get install -y -q shairport-sync >/dev/null; then
+  systemctl mask --now shairport-sync.service >/dev/null 2>&1 || true
+  install -m 755 "$REPO/scripts/pi/max-airplay.sh" /usr/local/bin/max-airplay
+  for u in max-airplay.service max-airplay-config.path max-airplay-reload.service; do
+    install -D -m 644 "$REPO/scripts/pi/systemd/$u" "/etc/systemd/user/$u"
+  done
+  "${USER_SYSTEMCTL[@]}" daemon-reload || true
+  "${USER_SYSTEMCTL[@]}" enable max-airplay.service max-airplay-config.path || true
+  "${USER_SYSTEMCTL[@]}" restart max-airplay-config.path max-airplay.service || true
+else
+  warn "Could not install AirPlay (shairport-sync); everything else works. Run the setup again later."
+fi
+
 # ---------------------------------------------------------------- 4. screen + face
 say "Setting up the screen ($SCREEN)"
 sed -i '/# max-box screen/,+1d' "$CONFIG_TXT"
@@ -168,35 +194,32 @@ say "Installing turn off / restart and screen brightness (screen menu, voice, co
 install -D -m 755 "$REPO/scripts/pi/max-power.sh" /usr/local/lib/max/max-power.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-power.path" /etc/systemd/system/max-power.path
 install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/max-power.service
-# The Pi 5's power key (its own button, or one on its J2 pads): pressed while off, the box starts;
-# pressed while on, max-power-button asks Max to show Turn off / Restart (held 3 s: off straight away),
-# so the system itself ignores the key.
+# The Pi 5's own power button: max-power-button.service asks on the screen for a short press and turns
+# the box off when it's held for 5 s. While it runs it holds the button (systemd-inhibit); if it ever
+# stops, the system's own setting below applies: a short press turns the box off safely.
 mkdir -p /etc/systemd/logind.conf.d
-printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=ignore\n' > /etc/systemd/logind.conf.d/max-power-key.conf
-# A power button can also plug onto the 40-pin header with no soldering: GPIO 3 (pin 5) and ground
-# (pin 6). max-power-button watches it and shuts the box down safely. (Not the gpio-shutdown overlay:
-# the desktop ignores a second power key.)
+printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+# An earlier pin-5 power button set this; the power button now uses the Pi's own power key (J2).
 sed -i '/^dtoverlay=gpio-shutdown/d' "$CONFIG_TXT"
+install -D -m 755 "$REPO/scripts/pi/max-power-button.py" /usr/local/lib/max/max-power-button.py
+install -m 644 "$REPO/scripts/pi/systemd/max-power-button.service" /etc/systemd/system/max-power-button.service
 install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service
 systemctl daemon-reload
 systemctl enable --now max-power.path max-brightness.path
+systemctl enable max-power-button.service
+systemctl restart max-power-button.service || true
 
 # ---------------------------------------------------------------- 5c. mute button
 # The button on top of the box (GPIO 17 and ground) turns the microphone off and on.
-say "Installing the mute and power buttons"
+say "Installing the mute button"
 python3 -c 'import gpiozero' 2>/dev/null || apt-get install -y -q python3-gpiozero python3-lgpio
 install -D -m 755 "$REPO/scripts/pi/max-mute-button.py" /usr/local/lib/max/max-mute-button.py
 install -m 644 "$REPO/scripts/pi/systemd/max-mute-button.service" /etc/systemd/system/max-mute-button.service
 systemctl daemon-reload
 systemctl enable max-mute-button.service
 systemctl restart max-mute-button.service || warn "The mute button service didn't start; see: journalctl -u max-mute-button"
-install -D -m 755 "$REPO/scripts/pi/max-power-button.py" /usr/local/lib/max/max-power-button.py
-install -m 644 "$REPO/scripts/pi/systemd/max-power-button.service" /etc/systemd/system/max-power-button.service
-systemctl daemon-reload
-systemctl enable max-power-button.service
-systemctl restart max-power-button.service || warn "The power button service didn't start; see: journalctl -u max-power-button"
 
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d
@@ -212,10 +235,13 @@ if [ ! -f .env ]; then
   MAX_SKIP_START=1
 fi
 set_env() { grep -q "^$1=" .env && sed -i "s|^$1=.*|$1=$2|" .env || echo "$1=$2" >> .env; }
+# .env holds every API key and password: readable by its owner only.
+chown "$USER_NAME:$USER_NAME" .env
+chmod 600 .env
 set_env MAX_UID "$USER_ID"
 set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
-grep -q '^PANEL_PASSWORD=.\+' .env || warn "PANEL_PASSWORD is not set in .env. On the box the control panel is reachable from your home network, so set one."
+grep -q '^PANEL_PASSWORD=.\+' .env || say "The control panel asks you to choose a password on your first visit (with a code shown on Max's screen)."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
 # Every "docker compose" command on the box includes the Pi settings (sound, control panel on the
 # home network), so a plain "docker compose up -d" can't lock the control panel to the box itself.

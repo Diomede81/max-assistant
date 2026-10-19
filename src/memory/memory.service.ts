@@ -7,8 +7,10 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { timeZone } from '../actions/clock';
 import { masterKey, newSecret, open, seal, SealedFile, vaultKey } from './crypto';
 import { cosine, EmbedderService, fromB64, toB64 } from './embedder.service';
+import { isSameFact } from './duplicates';
 import { label, ModesService, VaultName, VAULTS } from './modes.service';
 import { Activity, ActivityKind, ActivityLog } from './activity-log';
+import { said } from '../log-content';
 
 export type Kind = 'person' | 'preference' | 'routine' | 'date' | 'project' | 'fact';
 export const KINDS: Kind[] = ['person', 'preference', 'routine', 'date', 'project', 'fact'];
@@ -132,7 +134,7 @@ interface Hit {
 const MAX_ITEMS_PER_VAULT = 5000;
 const MAX_EPISODES_PER_VAULT = 5000;
 const MAX_TEXT = 300;
-const SAME_FACT = 0.9; // meaning similarity above which a new fact replaces the old one
+const TIDY_MS = 6 * 3600_000;
 const SECRET = /\b(password|passcode|passphrase|pin( code| number)?|alarm code|door code|security code|cvv|card number|sort code|account number|iban|api key|token)\b/i;
 const KIND_WEIGHT: Record<Kind, number> = { person: 3, preference: 2.5, routine: 2, project: 2, date: 1.5, fact: 1 };
 
@@ -238,6 +240,7 @@ export class MemoryService implements OnModuleInit {
   promptSection(included = new Set<string>()): string {
     if (!this.enabled) return '';
     this.expire();
+    this.tidy();
     const mode = this.modes.mode;
     const open = this.modes.readable(mode);
     const items = this.items(open).filter((i) => !i.unverified);
@@ -281,10 +284,11 @@ export class MemoryService implements OnModuleInit {
       ...this.sections.map((f) => f(open)),
       recent.length ? `Recent conversations:\n${recent.join('\n')}` : '',
       'Use recall to search all facts and past conversations before saying you don\'t know something personal. ' +
-        'When the user asks you to remember something, or mentions a lasting detail (people, preferences, routines, ' +
-        'important dates, work projects), call remember with one short self-contained sentence using real names and ' +
-        'dates, and choose the vault: work for job matters, household for things everyone at home shares, personal ' +
-        'otherwise. Call forget when asked. Use set_mode when asked to switch to work, personal or guest mode. ' +
+        'Call remember only when the user explicitly asks you to remember or note something: one short self-contained ' +
+        'sentence with real names and dates, in the right vault (work for job matters, household for things everyone at ' +
+        'home shares, personal otherwise). Details mentioned in passing are filed automatically after the conversation, ' +
+        'so never call remember for them, and never turn a question into a fact (asking about trains to Bath does not ' +
+        'mean the user is going to Bath). Call forget when asked. Use set_mode when asked to switch to work, personal or guest mode. ' +
         'Never store passwords, PINs, codes or account numbers.',
     ]
       .filter(Boolean)
@@ -317,7 +321,7 @@ export class MemoryService implements OnModuleInit {
       for (const i of v.data.items) {
         if (!i.vec) continue;
         const s = cosine(vec, fromB64(i.vec));
-        if (s >= SAME_FACT && (!best || s > best.s)) best = { i, s };
+        if (isSameFact(text, i.text, s) && (!best || s > best.s)) best = { i, s };
       }
       same = best?.i;
     }
@@ -336,7 +340,7 @@ export class MemoryService implements OnModuleInit {
       });
       this.save(v);
       if (changed) {
-        this.log.log(`Updated [${v.name}]: "${text}"`);
+        this.log.log(`Updated [${v.name}]: ${said(text)}`);
         this.activity('updated', `Updated (${n.source})`, [v.name], [text]);
       }
       return { ok: true, message: changed ? `Updated: ${text}` : 'Already remembered.', item: same };
@@ -363,7 +367,7 @@ export class MemoryService implements OnModuleInit {
     };
     v.data.items.push(item);
     this.save(v);
-    this.log.log(`Remembered [${v.name}/${item.kind}${item.unverified ? ', unverified' : ''}] (${n.source}): "${text}"`);
+    this.log.log(`Remembered [${v.name}/${item.kind}${item.unverified ? ', unverified' : ''}] (${n.source}): ${said(text)}`);
     this.activity('saved', `Saved (${n.source}${item.unverified ? ', unverified' : ''})`, [v.name], [text]);
     return {
       ok: true,
@@ -392,7 +396,7 @@ export class MemoryService implements OnModuleInit {
     v.data.episodes.push({ id: randomUUID(), vault, at: at.toISOString(), summary: text, level: 'note', projectId, vec: vec ? toB64(vec) : undefined });
     this.activity('note', 'New conversation note', [vault], [text]);
     if (v.data.episodes.length > MAX_EPISODES_PER_VAULT) v.data.episodes.splice(0, v.data.episodes.length - MAX_EPISODES_PER_VAULT);
-    this.log.log(`Conversation note [${vault}]: "${text}"`);
+    this.log.log(`Conversation note [${vault}]: ${said(text)}`);
     this.save(v);
   }
 
@@ -518,7 +522,7 @@ export class MemoryService implements OnModuleInit {
     const f = this.find(id);
     if (!f) return false;
     f.v.data.items = f.v.data.items.filter((i) => i.id !== id);
-    this.log.log(`Forgot [${f.v.name}]: "${f.i.text}"`);
+    this.log.log(`Forgot [${f.v.name}]: ${said(f.i.text)}`);
     this.activity('forgot', 'Forgot', [f.v.name], [f.i.text]);
     this.save(f.v);
     return true;
@@ -541,7 +545,7 @@ export class MemoryService implements OnModuleInit {
     dest.data.items.push({ ...f.i, vault: to, updatedAt: new Date().toISOString() });
     this.save(f.v);
     this.save(dest);
-    this.log.log(`Moved to ${to}: "${f.i.text}"`);
+    this.log.log(`Moved to ${to}: ${said(f.i.text)}`);
     this.activity('moved', `Moved from ${f.v.name} to ${to}`, [f.v.name, to], [f.i.text]);
     return true;
   }
@@ -668,6 +672,26 @@ export class MemoryService implements OnModuleInit {
       if (v) touched.add(v);
     }
     for (const v of touched) this.save(v);
+  }
+
+  private lastTidy = new Map<string, number>();
+
+  /**
+   * Merges facts saved twice in different words (e.g. once during the conversation and again by the
+   * filer afterwards), keeping the newest wording. At most every few hours per vault.
+   */
+  private tidy(): void {
+    const now = Date.now();
+    for (const v of this.openVaults()) {
+      if (now - (this.lastTidy.get(v.name) ?? 0) < TIDY_MS) continue;
+      this.lastTidy.set(v.name, now);
+      const merged = mergeDuplicates(v.data.items);
+      if (merged.length) {
+        this.log.log(`${v.name}: merged ${merged.length} duplicate fact(s)`);
+        this.activity('updated', `Merged ${merged.length} duplicate fact(s)`, [v.name], merged);
+        this.save(v);
+      }
+    }
   }
 
   private expire(): void {
@@ -864,4 +888,40 @@ export function episodeLabel(e: Pick<Episode, 'at' | 'from' | 'level'>): string 
 
 export function shortDate(iso: string): string {
   return new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso));
+}
+
+/**
+ * Removes duplicate facts from the list (in place): of each set of the same fact, the most recently
+ * updated wording stays, with the earliest creation date, the uses added up and any details it lacked.
+ * Returns the wordings removed.
+ */
+export function mergeDuplicates(items: MemoryItem[]): string[] {
+  const removed: string[] = [];
+  const vecs = new Map(items.map((i) => [i.id, i.vec ? fromB64(i.vec) : undefined]));
+  const order = [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const gone = new Set<string>();
+  for (let x = 0; x < order.length; x++) {
+    const keep = order[x];
+    if (gone.has(keep.id)) continue;
+    const kv = vecs.get(keep.id);
+    for (let y = x + 1; y < order.length; y++) {
+      const other = order[y];
+      if (gone.has(other.id) || other.projectId !== keep.projectId) continue;
+      const ov = vecs.get(other.id);
+      const sim = normalise(keep.text) === normalise(other.text) ? 1 : kv && ov ? cosine(kv, ov) : 0;
+      if (!isSameFact(keep.text, other.text, sim)) continue;
+      gone.add(other.id);
+      removed.push(other.text);
+      keep.createdAt = other.createdAt < keep.createdAt ? other.createdAt : keep.createdAt;
+      keep.uses = (keep.uses ?? 0) + (other.uses ?? 0);
+      keep.subject ??= other.subject;
+      keep.date ??= other.date;
+      if (!other.unverified) keep.unverified = undefined;
+    }
+  }
+  if (gone.size) {
+    const left = items.filter((i) => !gone.has(i.id));
+    items.splice(0, items.length, ...left);
+  }
+  return removed;
 }

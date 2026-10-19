@@ -4,7 +4,7 @@ import { Card, CardHandlers, screen } from './screen';
 import { eventLines, extractEvents } from './events';
 import { extractEmails } from './emails';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -18,7 +18,9 @@ import { Emotion, emotionFor } from './emotion';
 import { ActivityEvent, ToolRouterService } from '../actions/tool-router.service';
 import { BuiltinActionsService } from '../actions/builtin-actions.service';
 import { ScreenToolsService } from '../actions/screen-tools.service';
-import { AmbientService, Glance } from './ambient.service';
+import { LockService } from '../lock/lock.service';
+import { AmbientService, FaceStyle, Glance } from './ambient.service';
+import { GrooveFrame, GrooveListener, GrooveMood, moodFor, moodForTempo } from './groove';
 
 /** What the conversation is doing. "speaking" is worked out from the audio actually playing. */
 export type BaseState = 'idle' | 'listening' | 'thinking';
@@ -51,15 +53,28 @@ export interface FaceInfo {
   updating?: boolean;
   /** The mute button is on: Max can't hear anything. */
   muted?: boolean;
-  /** When the box's power button was last pressed (the face then asks: turn off or restart?). */
-  powerPress?: number;
   /** The card on screen (Max's face shrinks to the top while it shows). */
-  card?: Card & { until: number };
+  card?: Card & { until: number; seq: number };
   /** Live captions: what Max heard, or what he's saying. */
   caption?: { who: 'you' | 'max'; text: string };
   /** Around the face when idle: weather, next meeting, to-dos; and the evening photo frame. */
   glance?: Glance;
+  /** The start-up code hasn't been entered: the keypad shows, and nothing personal. */
+  locked?: { pausedUntil?: number; triesLeft: number };
+  /** A start-up code is set (the menu offers Lock). */
+  canLock?: boolean;
+  /** Which face to draw: the 3D robot or the classic flat face. */
+  faceStyle?: FaceStyle;
+  /** Dim the screen after this many quiet seconds (0 = never). */
+  dimAfterSec?: number;
+  /** The box's power button was pressed (when): the screen asks "Turn off / Restart?". */
+  powerAsk?: number;
+  /** Music is playing and Max dances to it, in this style (the beat comes as 'groove' events). */
+  groove?: { mood: GrooveMood };
 }
+
+/** How long a power button press stays "asked" (a screen that reconnects within it still asks). */
+const POWER_ASK_MS = 30_000;
 
 const FRAME_MS = 50;
 /** How long a "couldn't finish" note stays on the face. */
@@ -94,6 +109,9 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   private audioEndsAt = 0;
   private timers: NodeJS.Timeout[] = [];
   private music?: { title: string; artist: string };
+  /** The style of what's playing, from its genre, station or title (undefined: told from the tempo). */
+  private musicMood?: GrooveMood;
+  private readonly groove = new GrooveListener();
   private wifi?: WifiStatus & { qrSvg?: string };
   private lastInfo = '';
 
@@ -106,6 +124,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly actions?: BuiltinActionsService,
     @Optional() private readonly screenTools?: ScreenToolsService,
+    @Optional() private readonly lock?: LockService,
   ) {
     super();
     this.setMaxListeners(50);
@@ -115,7 +134,12 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     if (!this.cfg.face.enabled) return;
     this.timers.push(setInterval(() => this.tickLevel(), FRAME_MS));
     this.timers.push(setInterval(() => void this.tickInfo(), INFO_MS));
+    this.lock?.on('change', () => void this.tickInfo());
     this.timers.push(setInterval(() => void this.pollMusic(), MUSIC_MS));
+    // The beat of the music, for the face to dance to (not while he talks over it, nor while locked).
+    this.groove.on('frame', (f: GrooveFrame) => {
+      if (!this.speaking && !this.lock?.status()) this.emit('groove', f);
+    });
     // Cards from anywhere in Max (showCard in ./screen), and the ones the face makes itself.
     screen.on('card', (card: Card, handlers: CardHandlers) => this.showCard(card, handlers));
     screen.on('dismiss', (id: string) => this.dismissCard(id));
@@ -159,6 +183,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   onModuleDestroy(): void {
     for (const t of this.timers) clearInterval(t);
+    this.groove.stop();
   }
 
   // ---------- Inputs from the rest of Max ----------
@@ -275,15 +300,28 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   info(): FaceInfo {
+    const info = this.fullInfo();
+    const locked = this.lock?.status();
+    if (!locked) return info;
+    // Locked (start-up code): the clock, timers and the keypad only; nothing personal.
+    // The WiFi setup network's password and QR code only after the code is entered (they let anyone repoint the box).
+    const wifi = info.wifi ? { ...info.wifi, password: undefined, qrSvg: undefined } : undefined;
+    return { ...info, locked, wifi, reminder: undefined, music: undefined, groove: undefined, activity: undefined, card: undefined, caption: undefined, glance: undefined };
+  }
+
+  private fullInfo(): FaceInfo {
     const offline = this.wifi?.state === 'setup' || this.wifi?.state === 'connecting';
     let state: FaceState = this.wifi && this.wifi.state !== 'connected' ? 'setup' : this.speaking ? 'speaking' : this.base;
-    if (state === 'idle' && this.inSleepHours()) state = 'sleeping';
+    const dancing = Boolean(this.music && this.ambient?.settings.dance !== false);
+    // Music on in his sleep hours: someone's up, so is he.
+    if (state === 'idle' && this.inSleepHours() && !dancing) state = 'sleeping';
     return {
       state,
       mode: this.modes?.mode ?? 'personal',
       timers: (this.timerService?.list() ?? []).filter((t) => !t.reminder).map((t) => ({ label: describeTimer(t), endsAt: t.endsAt, total: t.durationSeconds * 1000 })),
       reminder: this.nextReminder(),
       music: this.music,
+      groove: dancing ? { mood: this.musicMood ?? moodForTempo(this.groove.bpm) } : undefined,
       wifi: this.wifi,
       offline,
       emotion: this.emotion,
@@ -291,12 +329,41 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       notice: this.notice && Date.now() < this.notice.until ? this.notice.text : undefined,
       updating: this.updating(),
       muted: this.cfg.face.onBox && existsSync(join(this.cfg.face.runDir, 'muted')),
-      powerPress: this.powerPress(),
       card: this.card && Date.now() < this.card.until ? this.card : undefined,
       caption: this.ambient?.settings.captions && this.caption && Date.now() < this.caption.until ? { who: this.caption.who, text: this.caption.text } : undefined,
       glance: this.ambient?.glance(),
+      canLock: this.lock?.enabled || undefined,
+      faceStyle: this.ambient?.settings.faceStyle ?? 'robot',
+      dimAfterSec: this.ambient?.settings.dimAfterSec ?? 10,
+      powerAsk: this.powerAsk && Date.now() - this.powerAsk < POWER_ASK_MS ? this.powerAsk : undefined,
     };
   }
+
+  /**
+   * A short press on the box's power button: max-power-button.py leaves a note in /run/max; it's
+   * picked up here (and removed) and the screen asks "Turn off / Restart?".
+   */
+  private readPowerButton(): void {
+    if (!this.cfg.face.onBox) return;
+    const note = join(this.cfg.face.runDir, 'power-button');
+    let stamp: string;
+    try {
+      stamp = readFileSync(note, 'utf8').trim();
+    } catch {
+      return; // no press
+    }
+    try {
+      unlinkSync(note);
+    } catch {
+      // can't remove it: the press is still only asked about once (same note)
+    }
+    if (stamp === this.powerAskNote) return;
+    this.powerAskNote = stamp;
+    this.powerAsk = Date.now();
+    this.log.log('Power button pressed: asking on the screen');
+  }
+  private powerAsk?: number;
+  private powerAskNote = '';
 
   private tickLevel(): void {
     const now = Date.now();
@@ -327,6 +394,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   private async tickInfo(): Promise<void> {
     await this.readWifi();
+    this.readPowerButton();
     const info = this.info();
     const key = JSON.stringify({ ...info, timers: info.timers.map((t) => t.label) });
     if (key !== this.lastInfo) {
@@ -337,7 +405,11 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   private async pollMusic(): Promise<void> {
     const before = this.music?.title;
-    this.music = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
+    const now = (await this.musicService?.nowPlaying().catch(() => undefined)) ?? undefined;
+    this.music = now && { title: now.title, artist: now.artist };
+    this.musicMood = now ? moodFor(`${now.genre ?? ''} ${now.artist} ${now.title}`) : undefined;
+    if (this.music && this.ambient?.settings.dance !== false) void this.groove.start();
+    else this.groove.stop();
     // A new song: show the music card for a moment.
     if (this.music && this.music.title !== before) await this.musicCard(MUSIC_CARD_MS);
     else if (this.card?.id === 'music' && Date.now() < this.card.until) await this.musicCard(this.card.until - Date.now());
@@ -345,15 +417,29 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   // ---------- Cards ----------
 
-  private card?: Card & { until: number };
+  private card?: Card & { until: number; seq: number };
+  /** Each card shown gets a new number: closing one on the screen hides that card, not the next one with the same id. */
+  private cardSeq = 0;
   private handlers: CardHandlers = {};
   private caption?: { who: 'you' | 'max'; text: string; until: number };
 
   showCard(card: Card, handlers: CardHandlers = {}): void {
     if (!this.cfg.face.enabled) return;
-    this.card = { ...card, until: Date.now() + (card.ttlMs ?? CARD_MS) };
+    // An update of the card on screen (music position, recipe step) keeps its number; a new card gets a new one.
+    const same = this.card && this.card.id === card.id && Date.now() < this.card.until;
+    this.card = { ...card, until: Date.now() + (card.ttlMs ?? CARD_MS), seq: same ? this.card!.seq : ++this.cardSeq };
     this.handlers = handlers;
     void this.tickInfo();
+  }
+
+  /**
+   * You ended the conversation ("thank you", "stop", "that's all"...): the card Max showed for it
+   * goes and his face comes back. A recipe you're following, a timer or reminder going off and
+   * notifications stay until you close them.
+   */
+  conversationEnded(): void {
+    // Kept: timers, notifications, recipe steps, and a journey's Trainline QR code (time to scan it).
+    if (this.card && !/^(timer-|say-|notify-|steps$|journey$)/.test(this.card.id)) this.dismissCard();
   }
 
   dismissCard(id?: string): void {
@@ -365,6 +451,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   /** A button on the card was tapped ("dismiss" = Back to Max). */
   async cardAction(id: string, action: string): Promise<boolean> {
+    if (this.lock?.locked) return false;
     if (!this.card || this.card.id !== id) return false;
     if (action === 'dismiss') {
       this.dismissCard(id);
@@ -382,6 +469,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
 
   /** A short tap on the face: show what's useful right now (the music if it's playing, otherwise your day). */
   async tapped(): Promise<void> {
+    if (this.lock?.locked) return;
     if (this.music || (await this.musicService?.player().catch(() => undefined))) {
       await this.musicCard(TAP_CARD_MS);
       return;
@@ -425,16 +513,22 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       {
         id: 'music',
         kind: 'music',
-        icon: '♪',
         title: p.title,
         subtitle: p.artist,
         image: p.art,
         progress: p.duration ? { position: p.position ?? 0, duration: p.duration, at: Date.now(), paused: p.paused } : undefined,
-        actions: [
-          { id: 'previous', label: '⏮', style: 'icon' },
-          { id: p.paused ? 'resume' : 'pause', label: p.paused ? '▶' : '⏸', style: 'icon' },
-          { id: 'next', label: '⏭', style: 'icon' },
-        ],
+        // Radio: just stop. AirPlay: controlled from the phone. Spotify: the full set.
+        actions:
+          p.source === 'radio'
+            ? [{ id: 'pause', label: '⏹', style: 'icon' }]
+            : p.source === 'airplay'
+              ? []
+              : [
+                  { id: 'previous', label: '⏮', style: 'icon' },
+                  { id: p.paused ? 'resume' : 'pause', label: p.paused ? '▶' : '⏸', style: 'icon' },
+                  { id: 'next', label: '⏭', style: 'icon' },
+                ],
+        icon: p.source === 'radio' ? '📻' : p.source === 'airplay' ? '📱' : '♪',
         ttlMs,
       },
       { previous: press('previous'), pause: press('pause'), resume: press('resume'), next: press('next') },
@@ -484,6 +578,11 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     this.ambient?.noteEvents(events);
     const lines = eventLines(events);
     const day = this.card?.id === 'my-day' && Date.now() < this.card.until ? this.card : undefined;
+    if (day && this.actions) {
+      // Redrawn by its owner, so the to-dos' Done buttons keep working (and what was ticked stays).
+      this.actions.dayCard({ ...this.actions.dayInfo, events: lines }, true);
+      return;
+    }
     if (day) {
       const rest = (day.lines ?? []).filter((l) => l.tag !== 'event' && l.tag !== 'done');
       this.showCard({ ...day, lines: [...lines, ...rest], ttlMs: Math.max(DAY_CARD_MS, day.until - Date.now()) }, this.handlers);
@@ -532,16 +631,6 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
       lines: mails.slice(0, 10).map((m) => ({ time: when(m.at).slice(-5) || undefined, text: m.subject, sub: [m.from, m.snippet].filter(Boolean).join(' · ').slice(0, 140) || undefined })),
       ttlMs: DAY_CARD_MS * 2,
     });
-  }
-
-  /** The box's power button (max-power-button.py writes the time of each press to /run/max/power-button). */
-  private powerPress(): number | undefined {
-    if (!this.cfg.face.onBox) return undefined;
-    try {
-      return Number(readFileSync(join(this.cfg.face.runDir, 'power-button'), 'utf8').trim()) || undefined;
-    } catch {
-      return undefined;
-    }
   }
 
   /** Whether the box's updater is working (/run/max/update.json, written by max-update.py). */

@@ -215,6 +215,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   };
   SCENES.push(['speaking', 'happy', 'Card steps'], ['speaking', 'neutral', 'Card answer'], ['speaking', 'neutral', 'Card news']);
   SCENES.push(['idle', 'neutral', 'Notify email'], ['idle', 'concerned', 'Notify todo']);
+  SCENES.push(['idle', 'neutral', 'Muted']);
   DEMO_CARDS['Notify email'] = { id: 'd7', kind: 'notice', icon: '✉️', title: 'Important email', subtitle: 'From Anna Rossi', big: 'Contract signed: next steps for the Milan launch', until: FOREVER,
     actions: [{ id: 'read', label: 'Read it', style: 'primary' }, { id: 'ok', label: 'OK' }] };
   DEMO_CARDS['Notify todo'] = { id: 'd8', kind: 'alert', icon: '⏰', title: 'Overdue', big: 'Renew the car insurance', subtitle: 'Home admin · critical', until: FOREVER,
@@ -260,6 +261,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
         music: label === 'Speaking' ? { title: 'Yellow', artist: 'Coldplay' } : undefined,
         wifi: state === 'setup' ? { state: 'setup', ssid: 'Max-Setup', password: '48213097', qrSvg: demoQr() } : undefined,
         card: DEMO_CARDS[label],
+        muted: label === 'Muted' || undefined,
         caption: label === 'Captions' ? { who: 'you', text: "What's the weather like this afternoon?" } : undefined,
         glance: label === 'Glance' || label === 'Glance work' || label === 'Photo frame' ? {
           weather: { icon: '⛅', temp: 14, text: 'Partly cloudy', hi: 16, lo: 9, rain: 30 },
@@ -685,7 +687,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
       fetch('/power?action=' + action, { method: 'POST' }).then((r) => {
         if (!r.ok) throw new Error();
         menu(off
-          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button on the Raspberry Pi.</p>'
+          ? '<h1>Goodbye for now</h1><p>When the screen goes dark it is safe to unplug.</p><p>To turn Max on again, press the power button.</p>'
           : '<h1>Restarting…</h1><p>Back in about a minute.</p>', {});
         clearTimeout(menuIdle);
         // If the box hasn't gone down after 30 s, something stopped it: offer the way back.
@@ -1172,6 +1174,24 @@ ${ROBOT3D_JS}
       g.textAlign = 'center';
       if (sub) { g.font = '500 ' + Math.round(22 * s) + 'px system-ui, sans-serif'; g.fillStyle = rgb(0.5); g.fillText(fit(sub, 300 * s), cx, cy + 274 * s); }
       if (sub2) { g.font = '600 ' + Math.round(20 * s) + 'px system-ui, sans-serif'; g.fillStyle = sub2Warn ? '#ffb36b' : rgb(0.5); g.fillText(fit(sub2, 250 * s), cx, cy + (sub ? 304 : 274) * s); }
+    }
+    if (info.muted && state !== 'setup') {
+      // The mute button is on: a red "Microphone off" at the top, so it's clear Max can't hear.
+      const label = 'Microphone off';
+      g.font = '600 ' + Math.round(22 * s) + 'px system-ui, sans-serif';
+      const w = g.measureText(label).width + 64 * s, h = 42 * s, y = cy - 300 * s, x0 = cx - w / 2;
+      g.fillStyle = 'rgba(190, 45, 35, 0.92)';
+      g.beginPath(); g.roundRect(x0, y - h / 2, w, h, h / 2); g.fill();
+      // A small microphone with a line through it.
+      const mx = x0 + 26 * s;
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2.5 * s; g.lineCap = 'round';
+      g.beginPath(); g.roundRect(mx - 5 * s, y - 12 * s, 10 * s, 16 * s, 5 * s); g.stroke();
+      g.beginPath(); g.arc(mx, y - 2 * s, 9 * s, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+      g.beginPath(); g.moveTo(mx, y + 7 * s); g.lineTo(mx, y + 12 * s); g.stroke();
+      g.beginPath(); g.moveTo(mx - 11 * s, y - 13 * s); g.lineTo(mx + 11 * s, y + 13 * s); g.stroke();
+      g.fillStyle = '#ffffff'; g.textAlign = 'left';
+      g.fillText(label, mx + 18 * s, y + 8 * s);
+      g.textAlign = 'center';
     }
     if (demo && demoLabel && state !== 'setup') {
       g.font = '600 ' + Math.round(18 * s) + 'px system-ui, sans-serif'; g.fillStyle = 'rgba(255,255,255,0.35)';

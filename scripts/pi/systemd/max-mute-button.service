@@ -1,0 +1,12 @@
+[Unit]
+Description=Max mute button (turns the microphone off and on)
+After=local-fs.target
+
+[Service]
+Environment=MAX_RUN_DIR=/run/max
+ExecStart=/usr/bin/python3 /usr/local/lib/max/max-mute-button.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -74,7 +74,7 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
       <h1>Max Box</h1>
       <p class="sub">Enclosure for Max: round 4″ face, 4-mic array on top, sealed 2.5″ speaker below, Raspberry Pi 5 inside. Drag to rotate, pinch or scroll to zoom.</p>
     </div>
-    <div class="dims">136 W × 120 D × 218 H mm</div>
+    <div class="dims">142 W × 120 D × 226 H mm</div>
   </header>
 
   <div class="grid">
@@ -106,24 +106,24 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
       <div class="card">
         <h2>Specs</h2>
         <table>
-          <tr><td class="k">Outside</td><td class="v mono">136 × 120 × 218 mm</td></tr>
-          <tr><td class="k">Speaker chamber</td><td class="v">0.44 L sealed, behind a hex grille</td></tr>
-          <tr><td class="k">Screen window</td><td class="v mono">Ø 101.5 mm visible</td></tr>
+          <tr><td class="k">Outside</td><td class="v mono">142 × 120 × 226 mm</td></tr>
+          <tr><td class="k">Speaker chamber</td><td class="v">0.49 L sealed, behind a hex grille</td></tr>
+          <tr><td class="k">Screen window</td><td class="v mono">Ø 102.3 mm visible</td></tr>
           <tr><td class="k">Mic grille</td><td class="v">Ø 92 mm perforated top, foam-sealed to the board</td></tr>
           <tr><td class="k">Cooling</td><td class="v">Bottom intake, rear exhaust behind the Pi cooler</td></tr>
           <tr><td class="k">Storage</td><td class="v">microSD card, swappable through a slot in the left side (room inside for an SSD later)</td></tr>
           <tr><td class="k">Power</td><td class="v">USB-C cable exits through a notch at the back</td></tr>
-          <tr><td class="k">Fixings</td><td class="v mono">11 × M3 heat-set inserts, 11 × M3 screws, 12 × M2.5 self-tapping</td></tr>
+          <tr><td class="k">Fixings</td><td class="v mono">12 × M3 heat-set inserts, 12 × M3 screws, 11 × M2.5 self-tapping</td></tr>
         </table>
       </div>
       <div class="card">
-        <h2>Measure before printing</h2>
+        <h2>How it goes together</h2>
         <ol class="measure">
-          <li>Screen: glass diameter, visible diameter and the size of the module behind it.</li>
-          <li>Mic board: diameter and mounting-hole positions.</li>
-          <li>Speaker: spacing of the 4 mounting holes.</li>
+          <li>Front unit: screen and its ring, speaker and its sealed chamber all fix to the front panel.</li>
+          <li>Body: holds the Pi (back wall), the mic board (under the top) and the two buttons.</li>
+          <li>The front unit slides into the body and four side screws hold it.</li>
         </ol>
-        <p class="note">These are best estimates until the parts arrive. Each is one setting at the top of the design file.</p>
+        <p class="note">Sizes are measured from the real parts (see the design file and README).</p>
       </div>
     </aside>
   </div>
@@ -135,13 +135,14 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
 <script>
 (() => {
   // Dimensions from max-box.scad (mm, OpenSCAD axes: X width, Y depth with the front at 0, Z up).
-  const W = 136, D = 120, H = 218, frontT = 4, lip = 1.4;
-  const screen = { glass: 108, body: 100, glassT: 2.4, depth: 12, cz: H - 80 };
+  const W = 142, D = 120, H = 226, frontT = 4, lip = 1.4;
+  const screen = { glass: 126, pcb: [85.3, 68.6], glassT: 6, depth: 16.8, cz: H - 77 };
+  const ring = { collar: (frontT - 0.5 + 7) - (lip + 6), t: 3 };
   const spk = { frame: 66.5, cz: 46, depth: 32 };
-  const ch = { d: 58 };
-  const pi = { x0: 2.6 + 4, z0: 40, l: 85, w: 56, standoff: 8, stack: 30 };
-  const mic = { d: 100, gap: 4 };
-  const cx = W / 2, cy = D / 2;
+  const ch = { d: 70, y0: frontT + 1.5 };
+  const pi = { x0: 2.6 + 3, z0: 40, l: 85, w: 56, standoff: 8, stack: 30 };
+  const mic = { d: 100.2, gap: 4, stack: 15.5 };
+  const cx = W / 2, cy = D / 2, micCy = D / 2 + 5;
 
   const stage = document.getElementById('stage');
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -173,8 +174,8 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
   const place = {
     body: (g) => { g.rotateX(Math.PI / 2); g.translate(0, D, 0); },
     front: (g) => { g.rotateX(-Math.PI / 2); },
-    chamber: (g) => { g.rotateX(Math.PI / 2); g.translate(0, frontT + ch.d, 0); },
-    screen_ring: (g) => { g.rotateX(-Math.PI / 2); g.translate(cx, lip + screen.glassT + 0.5, screen.cz); },
+    chamber: (g) => { g.rotateX(Math.PI / 2); g.translate(0, ch.y0 + ch.d, 0); },
+    screen_ring: (g) => { g.rotateX(Math.PI); g.translate(0, 0, ring.collar + ring.t); g.rotateX(-Math.PI / 2); g.translate(cx, lip + screen.glassT, screen.cz); },
   };
   const materials = { body: shellMat, front: frontMat, chamber: innerMat, screen_ring: ringMat };
   const groups = { front: new THREE.Group(), inside: new THREE.Group(), mic: new THREE.Group(), pi: new THREE.Group() };
@@ -186,7 +187,7 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
   const face = new THREE.Mesh(new THREE.CircleGeometry(screen.glass / 2, 96), new THREE.MeshBasicMaterial({ map: faceTex }));
   face.rotation.x = Math.PI / 2; face.position.set(cx, lip - 0.05, screen.cz);
   groups.front.add(face);
-  const module = new THREE.Mesh(new THREE.CylinderGeometry(screen.body / 2, screen.body / 2, screen.depth, 64), mat('#2f6b4f'));
+  const module = new THREE.Mesh(new THREE.BoxGeometry(screen.pcb[0], screen.depth, screen.pcb[1]), mat('#2f6b4f'));
   module.position.set(cx, lip + screen.glassT + screen.depth / 2, screen.cz);
   groups.front.add(module);
   const frameM = new THREE.Mesh(new THREE.BoxGeometry(spk.frame, 4, spk.frame), mat('#3c4043', { metalness: 0.3, roughness: 0.5 }));
@@ -197,8 +198,8 @@ ul.parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; ga
   piBoard.position.set(pi.x0 + pi.l / 2, D - 2.6 - pi.standoff - 0.8, pi.z0 + pi.w / 2); groups.pi.add(piBoard);
   const piStack = new THREE.Mesh(new THREE.BoxGeometry(pi.l - 10, pi.stack - 1.6, pi.w - 6), mat('#9ea4a6', { metalness: 0.5, roughness: 0.45 }));
   piStack.position.set(pi.x0 + pi.l / 2, D - 2.6 - pi.standoff - 1.6 - (pi.stack - 1.6) / 2, pi.z0 + pi.w / 2); groups.pi.add(piStack);
-  const micBoard = new THREE.Mesh(new THREE.CylinderGeometry(mic.d / 2, mic.d / 2, 1.6, 72), mat('#2c4f9a'));
-  micBoard.rotation.x = Math.PI / 2; micBoard.position.set(cx, cy, H - 2.6 - mic.gap - 0.8); groups.mic.add(micBoard);
+  const micBoard = new THREE.Mesh(new THREE.CylinderGeometry(mic.d / 2, mic.d / 2, mic.stack, 72), mat('#2c4f9a'));
+  micBoard.rotation.x = Math.PI / 2; micBoard.position.set(cx, micCy, H - 2.6 - mic.gap - mic.stack / 2); groups.mic.add(micBoard);
 
   function drawFace(t) {
     const g = faceCanvas.getContext('2d'), s = 512;

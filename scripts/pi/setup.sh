@@ -199,6 +199,8 @@ install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/
 # stops, the system's own setting below applies: a short press turns the box off safely.
 mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+# An earlier pin-5 power button set this; the power button now uses the Pi's own power key (J2).
+sed -i '/^dtoverlay=gpio-shutdown/d' "$CONFIG_TXT"
 install -D -m 755 "$REPO/scripts/pi/max-power-button.py" /usr/local/lib/max/max-power-button.py
 install -m 644 "$REPO/scripts/pi/systemd/max-power-button.service" /etc/systemd/system/max-power-button.service
 install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
@@ -208,6 +210,16 @@ systemctl daemon-reload
 systemctl enable --now max-power.path max-brightness.path
 systemctl enable max-power-button.service
 systemctl restart max-power-button.service || true
+
+# ---------------------------------------------------------------- 5c. mute button
+# The button on top of the box (GPIO 17 and ground) turns the microphone off and on.
+say "Installing the mute button"
+python3 -c 'import gpiozero' 2>/dev/null || apt-get install -y -q python3-gpiozero python3-lgpio
+install -D -m 755 "$REPO/scripts/pi/max-mute-button.py" /usr/local/lib/max/max-mute-button.py
+install -m 644 "$REPO/scripts/pi/systemd/max-mute-button.service" /etc/systemd/system/max-mute-button.service
+systemctl daemon-reload
+systemctl enable max-mute-button.service
+systemctl restart max-mute-button.service || warn "The mute button service didn't start; see: journalctl -u max-mute-button"
 
 # ---------------------------------------------------------------- SD card care
 mkdir -p /etc/systemd/journald.conf.d
@@ -264,7 +276,7 @@ say "Done."
 echo "  Control panel: http://$NAME.local:8099   Face (on the box): http://localhost:8098"
 echo "  Logs: cd $REPO && docker compose logs -f max"
 echo "  Hold the screen for 2 seconds for the menu: volume, brightness, Turn off, Restart, WiFi setup."
-echo "  Turn on: the Pi's power button."
+echo "  Turn on: the Pi's power button. Mute: the button on top (the face shows \"Microphone off\")."
 echo "  WiFi setup also starts by itself if the box is offline for a minute."
 [ "$SCREEN" = dsi ] && echo "  Reboot now to activate the screen: sudo reboot"
 exit 0

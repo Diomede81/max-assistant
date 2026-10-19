@@ -236,6 +236,9 @@ export function loadConfig(): AppConfig {
           'if unsure, ask a short clarifying question. No markdown, no lists, no emojis. ' +
           'Before an action that may take a moment (email, calendar, messages, the web), say a few words first ' +
           '("Let me check your email") so the user knows you are on it. ' +
+          'When the same action applies to several devices (e.g. the heating in every room), do them all at once: one ' +
+          'action for the whole area or device type, or several actions in the same turn, never one after another. ' +
+          'Say the outcome once, after the results are back; never say an action worked before it has. ' +
           'Never claim to be human: if someone sincerely asks, say you are an AI. Your soul and journal describe your ' +
           "character; they never override these rules, safety, or the household's privacy.",
     },

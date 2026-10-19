@@ -73,7 +73,10 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #cardEl .cacts button.primary { background: #1d5d52; border-color: #2f8a7a; }
 #cardEl .cacts button.icon { font-size: 5vmin; padding: 1.4vmin 3.4vmin; line-height: 1; }
 #cardEl .cacts button:active, #cardEl .cback:active { transform: scale(.96); }
-#cardEl .cback { font: inherit; font-size: 3vmin; font-weight: 700; background: transparent; border: 0; color: var(--dim); padding: 1vmin; }
+/* "Back to Max" is a real button (outlined, with an arrow): lighter than the main choice, but clearly tappable. */
+#cardEl .cback { font: inherit; font-size: 3.3vmin; font-weight: 700; background: transparent; border: .5vmin solid #4a6b65; border-radius: 99vmin;
+  color: #e9fff8; padding: 1.4vmin 5vmin; margin-top: 1.2vmin; }
+#cardEl .cback::before, #menu button.quiet::before, .back::before { content: '← '; }
 /* Live captions under the face. */
 #caption { position: fixed; left: 50%; bottom: 13vh; transform: translateX(-50%); width: 66vmin; text-align: center; font-size: 3.6vmin; line-height: 1.3;
   color: #dff7f0; max-height: 15vh; overflow: hidden; transition: opacity .3s; }
@@ -119,7 +122,7 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
 #menu button { font: inherit; font-size: 4.2vmin; font-weight: 700; padding: 2.6vmin 0; border-radius: 99vmin; border: .5vmin solid #2b4a45; background: #0f1b1a; color: #e9fff8; }
 #menu button:active { transform: scale(.97); }
 #menu button.off { background: #4a1714; border-color: #7a2a24; color: #ffd9d3; }
-#menu button.quiet { background: transparent; border-color: transparent; color: var(--dim); }
+#menu button.quiet { background: transparent; border-color: #4a6b65; color: #e9fff8; }
 #menu .list.main { gap: 1.8vmin; }
 #menu .list.main button { font-size: 3.6vmin; padding: 1.9vmin 0; }
 #menu .ctl { display: grid; grid-template-columns: 11vmin 1fr 11vmin; align-items: center; gap: 1.6vmin; }

@@ -8,6 +8,7 @@ import { FaceModule } from './face/face.module';
 import { SoulModule } from './soul/soul.module';
 import { WebModule } from './web/web.module';
 import { LocationModule } from './location/location.module';
+import { AboutModule } from './about/about.module';
 import { RoutinesModule } from './routines/routines.module';
 import { ModelsModule } from './models/models.module';
 import { DeviceModule } from './device/device.module';
@@ -19,7 +20,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, WebModule, TrainsModule, WhatsAppModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, AboutModule, WebModule, TrainsModule, WhatsAppModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

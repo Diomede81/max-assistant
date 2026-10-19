@@ -56,7 +56,8 @@ cd ~/max-assistant
 sudo ./scripts/pi/setup.sh
 ```
 
-It asks which screen is fitted (round DSI, round HDMI or none), installs everything, then builds and
+It asks which screen is fitted (round DSI, round HDMI or none) and whether to run Home Assistant on the box
+(see [Home Assistant on the box](#home-assistant-on-the-box)), installs everything, then builds and
 starts Max. The first build takes 10–15 minutes on a Pi 5. When it finishes:
 
 ```bash
@@ -192,6 +193,32 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 - **Preview on your Mac:** with Max running in Docker on the Mac, open <http://localhost:8098/?demo> to
   see every expression. To hold one, use its name, e.g. `?demo=happy`, `?demo=speaking-concerned`
   or `?demo=asleep`.
+
+## Home Assistant on the box
+
+Max can run his own Home Assistant, so you don't need a separate one. Setup asks
+("Run Home Assistant on this box…?"). Answer **y**, and Max then does the rest:
+
+- **Hands-off setup.** On first start, Max creates the Home Assistant account and connects to it. You never
+  see Home Assistant's own setup screens, and you don't need a token in `.env`.
+- **Devices tab** in the control panel (<http://max.local:8099>). It shows every device by room, with simple
+  controls: on/off, brightness, open/close, temperature. Each card has:
+  - **Max can use**, to choose what Max may control by voice;
+  - **Edit**, to rename a device or move it to a room.
+- **Add a device.** Search by brand (Shelly, Tapo, Philips Hue, Sonos…) and answer a few plain questions.
+  Devices Home Assistant finds on your WiFi by itself appear under **Found on your network**, ready to add with
+  one tap. Brands that only work through their own cloud are marked "Uses the internet".
+- **Advanced.** For the rare job the Devices tab doesn't cover, the full Home Assistant is at
+  <http://max.local:8123>. Its username and password are under **Devices → Advanced** (Show).
+
+Good to know:
+
+- It's built for WiFi devices. Zigbee needs a USB stick and isn't set up.
+- Home Assistant's data lives in `/var/lib/max/home-assistant` on the SD card. History is kept for 7 days and
+  saved every 30 seconds, to spare the card. When you add an SSD later, this folder is the one to move.
+- Already have a Home Assistant at that folder with your own account? The Devices tab asks you to sign in once.
+- Turning it off: run setup again and answer **n**. Home Assistant stops, but its data stays in the folder, so
+  answering **y** later brings everything back.
 
 ## Trying the face on your Mac (before the box arrives)
 

@@ -227,7 +227,7 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   private async keepToken(access: string): Promise<void> {
     const once = new HaSocket(this.base, () => access);
     try {
-      this.saved.token = await once.call<string>('auth/long_lived_access_token', { client_name: 'Max', lifespan: 3650 });
+      this.saved.token = await once.call<string>('auth/long_lived_access_token', { client_name: `Max (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`, lifespan: 3650 });
       this.save();
     } finally {
       once.close();
@@ -332,7 +332,8 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
           .sort((a, b) => Number(b.control !== 'none') - Number(a.control !== 'none')),
       });
     }
-    list.sort((a, b) => (a.area ?? '~').localeCompare(b.area ?? '~') || a.name.localeCompare(b.name));
+    // Rooms first (alphabetically), then devices without a room.
+    list.sort((a, b) => Number(!a.area) - Number(!b.area) || (a.area ?? '').localeCompare(b.area ?? '') || a.name.localeCompare(b.name));
     const found = await Promise.all(
       flows
         .filter((f) => DISCOVERY.has(f.context?.source ?? '') || f.context?.source === 'reauth')

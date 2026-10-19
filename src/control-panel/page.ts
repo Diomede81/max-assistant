@@ -1,11 +1,14 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
+import { DEVICES_CSS, devicesPane } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 import { SPEAKER_TONES } from '../device/device.service';
 import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 
 export interface PanelData {
+  /** Home Assistant on the Max box: the Devices tab. */
+  homeDevices?: { enabled: boolean };
   music?: {
     state: string;
     account?: string;
@@ -401,7 +404,7 @@ const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
 /** One tap away at the top: what's used most. Everything else is in the menu drawer (DRAWER). */
-const QUICK = ['overview', 'myday', 'projects'];
+const QUICK = ['overview', 'devices', 'myday', 'projects'];
 
 /** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
 const DRAWER: [string, [string, string, string][]][] = [
@@ -412,6 +415,7 @@ const DRAWER: [string, [string, string, string][]][] = [
 
 const TABS: [string, string][] = [
   ['overview', 'Home'],
+  ['devices', 'Devices'],
   ['myday', 'My Day'],
   ['routines', 'Routines'],
   ['max', 'Max'],
@@ -558,7 +562,7 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
-  const show: Record<string, boolean> = { overview: true, myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
+  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
   const attention: Record<string, boolean> = {
     connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
     settings: Boolean(d.location && !d.location.place),
@@ -583,7 +587,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
-${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}
+${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
@@ -635,6 +639,8 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
 
 <div class="pane" id="tab-memory">${d.memory ? memorySection(d.memory) : ''}</div>
+
+${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}</div>` : ''}
 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 

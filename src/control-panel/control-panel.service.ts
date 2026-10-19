@@ -26,6 +26,7 @@ import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
 import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
+import { HomeService } from '../home/home.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
 /**
@@ -37,6 +38,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ControlPanel');
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
+  @Optional() @Inject(HomeService) private readonly home?: HomeService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
@@ -151,6 +153,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url, req);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (this.home?.enabled && (url.pathname.startsWith('/api/home') || url.pathname.startsWith('/home/'))) return this.homeRoute(req, res, url);
     if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
       const f = await readForm(req);
       const on = f.get('for') ?? 'off'; // minutes, 'always' or 'off'
@@ -566,6 +569,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const workApps = this.composio.enabled ? await this.composio.apps('work').catch(() => []) : [];
     const ha = await this.ha.status(0);
     return {
+      homeDevices: this.home?.enabled ? { enabled: true } : undefined,
       music: this.music && {
         state: this.music.state,
         account: this.music.account,
@@ -702,6 +706,50 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const q = url.searchParams;
     d.tab = q.get('tab') ?? (q.has('doc') ? 'max' : q.has('project') ? 'projects' : q.has('vault') || q.has('q') ? 'memory' : q.has('connected') ? 'connections' : undefined);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(renderPanel(d));
+  }
+
+  /** The Devices tab (Home Assistant on the box): its data and actions, all answered as JSON. */
+  private async homeRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const home = this.home!;
+    const p = url.pathname;
+    try {
+      if (req.method === 'GET') {
+        if (p === '/api/home') return this.json(res, await home.overview());
+        if (p === '/api/home/search') return this.json(res, await home.integrations(url.searchParams.get('q') ?? ''));
+        if (p === '/api/home/flow') return this.json(res, await home.getFlow(url.searchParams.get('id') ?? ''));
+      } else if (req.method === 'POST') {
+        const f = await readForm(req);
+        const value = f.get('value');
+        if (p === '/home/act') return this.json(res, { message: await home.act(f.get('entity') ?? '', f.get('action') ?? '', value === null ? undefined : Number(value)) });
+        if (p === '/home/allow') return this.json(res, { message: await home.allowMax(f.get('device') ?? '', f.get('on') === '1') });
+        if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
+        if (p === '/home/login') return this.json(res, { message: await home.login(f.get('username') ?? '', f.get('password') ?? '') });
+        if (p === '/home/flow/start') return this.json(res, await home.startFlow(f.get('domain') ?? ''));
+        if (p === '/home/flow/next') {
+          let data: Record<string, unknown> = {};
+          try {
+            data = JSON.parse(f.get('data') ?? '{}') as Record<string, unknown>;
+          } catch {
+            /* an empty step */
+          }
+          return this.json(res, await home.continueFlow(f.get('flow') ?? '', data));
+        }
+        if (p === '/home/flow/cancel') {
+          await home.cancelFlow(f.get('flow') ?? '');
+          return this.json(res, { ok: true });
+        }
+        if (p === '/home/ignore') {
+          await home.ignoreFound(f.get('flow') ?? '');
+          return this.json(res, { ok: true });
+        }
+      }
+      res.writeHead(404, { 'Content-Type': 'application/json' }).end('{"message":"Not found"}');
+    } catch (err) {
+      const message = (err as Error).message;
+      // A step that went wrong comes back as a "stopped" step, so the add-a-device box can say so.
+      if (p.startsWith('/home/flow') || p === '/api/home/flow') return this.json(res, { kind: 'stopped', integration: '', title: "That didn't work", text: message });
+      res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message }));
+    }
   }
 
   private json(res: ServerResponse, body: unknown): void {

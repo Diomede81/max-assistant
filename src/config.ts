@@ -39,7 +39,13 @@ export interface AppConfig {
     timeoutMs: number;
     systemPrompt: string;
   };
-  ha: { mcpUrl: string; token: string };
+  ha: {
+    mcpUrl: string;
+    token: string;
+    /** Home Assistant runs on the Max box (HA_LOCAL=1, set by the box setup): Max sets it up and manages it. */
+    local: boolean;
+    localUrl: string;
+  };
   face: {
     enabled: boolean;
     /** The face page for the box's screen (kiosk browser): http://localhost:<port> */
@@ -328,6 +334,8 @@ export function loadConfig(): AppConfig {
     ha: {
       mcpUrl: env.HA_MCP_URL ?? 'http://homeassistant.local:8123/api/mcp',
       token: env.HA_TOKEN ?? '',
+      local: env.HA_LOCAL === '1',
+      localUrl: env.HA_LOCAL_URL || 'http://localhost:8123',
     },
     face: {
       enabled: env.FACE !== 'off',

@@ -43,7 +43,8 @@ for printing: tell the service to keep that orientation, which needs **no suppor
 - 2 × 12 mm momentary push buttons with a **3–6 V** light (e.g. sourcing map "Momentary Metal Push
   Button Switch Flat Head 12mm 1NO 3-6V Red LED")
 - 8 female-to-female jumper wires (some 30 cm, or extensions, for the mute button) and a 2-pin
-  2.54 mm header for the Pi's J2 power button pads
+  2.54 mm **locking** header (e.g. SparkFun "Break Away Headers - Long Locking") for the Pi's J2
+  power button pads: it grips the holes without solder
 - Closed-cell EVA foam strip, adhesive, ~10 mm wide: 5 mm thick (mic board seal) and 3 mm thick
   (speaker chamber gasket)
 - 4 × 10 mm rubber feet; ~30 cm speaker wire; heat-shrink

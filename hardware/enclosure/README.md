@@ -119,16 +119,17 @@ front panel take a few minutes each to compute because of the grille holes.
 
    | Button | Tab | Goes to |
    | --- | --- | --- |
-   | Power | switch (both) | the 2-pin header on the Pi 5's J2 pads (either way round) |
+   | Power | switch (both) | pin 5 (GPIO 3) and pin 6 (ground), either way round: no soldering. Or the 2-pin header on the Pi 5's J2 pads (soldered), which can also turn the box on |
    | Power | light + | pin 1 (3.3 V) |
-   | Power | light - | pin 6 (ground) |
+   | Power | light - | pin 20 (ground) |
    | Mute | switch | pin 11 (GPIO 17) and pin 9 (ground), either way round |
    | Mute | light + | pin 13 (GPIO 27) |
    | Mute | light - | pin 14 (ground) |
 
-   - **Power** works like the Pi's own button (see "Adding your own power button" in the Raspberry
-     Pi 5 documentation): press to turn on, press to turn off safely, hold to force off. Its light is
-     on while the box is on.
+   - **Power** on pins 5 and 6: a press turns the box off safely. To turn it on again, unplug and
+     replug the power (the Pi starts by itself). Soldered to J2 instead, it works exactly like the
+     Pi's own button: press to turn on, press to turn off safely, hold to force off. Its light is on
+     while the box is on.
    - **Mute:** each press turns the microphone off or back on. While it is off, the button's light
      is on and the face shows "Microphone off".
 6. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts

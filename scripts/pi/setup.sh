@@ -171,6 +171,9 @@ install -m 644 "$REPO/scripts/pi/systemd/max-power.service" /etc/systemd/system/
 # The Pi 5's own power button: a short press turns the box off safely (pressed again, it starts).
 mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=poweroff\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/max-power-key.conf
+# A power button can also plug onto the 40-pin header with no soldering: GPIO 3 (pin 5) and ground
+# (pin 6). A press shuts the box down safely, like the Pi's own button (takes effect after a restart).
+grep -q '^dtoverlay=gpio-shutdown' "$CONFIG_TXT" || echo 'dtoverlay=gpio-shutdown' >> "$CONFIG_TXT"
 install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-brightness.sh
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service

@@ -38,7 +38,7 @@ export interface PanelRoutine {
 
 type Esc = (s: unknown) => string;
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const LIST = { personal: 'Personal', work: 'Work', household: 'Household (shared)' } as Record<string, string>;
+const LIST = { personal: 'Personal (personal mode)', work: 'Work (work mode)', household: 'Household (every mode)' } as Record<string, string>;
 
 export function routinesSection(r: PanelRoutines, esc: Esc): string {
   const cards = r.list.map((x) => routineCard(x, r.firecrawl, esc)).join('');
@@ -132,7 +132,7 @@ function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc):
 <label class="check"><input type="checkbox" name="search" value="yes" ${(x ? x.search : firecrawl) ? 'checked' : ''} ${firecrawl ? '' : 'disabled'}> Research: also search the news for each of my interests${firecrawl ? ' (recommended; a few Firecrawl credits a day)' : ' (needs Firecrawl)'}</label>
 ${x ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${x.enabled ? 'checked' : ''}> On</label>` : ''}
 <div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button></div>
-<p class="meta">Work briefings are only read out in work mode, personal ones in personal mode. Pick a time a little before you usually ask: gathering takes a minute or two.</p></form>`;
+<p class="meta">Each briefing belongs to a mode: work briefings are only read out in work mode, personal ones in personal mode, household ones in every mode. You can have several (e.g. "Morning news" for personal mode and "Work news" for work mode): create another one below. Pick a time a little before you usually ask: gathering takes a minute or two.</p></form>`;
 }
 
 export const ROUTINES_CSS =

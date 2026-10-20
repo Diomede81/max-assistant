@@ -10,7 +10,7 @@
  */
 
 /** A clear yes ("yes", "go ahead", "send it"...). */
-const YES = /\b(yes|yeah|yep|yup|sure|ok|okay|go ahead|go for it|do it|send it|confirm|confirmed|please do|correct|absolutely|of course|definitely|that'?s right|si|sì)\b/i;
+const YES = /\b(yes|yeah|yep|yup|yea|sure|ok|okay|alright|all right|go ahead|go on|go for it|do it|send it|join it|proceed|confirm|confirmed|please do|yes please|correct|absolutely|of course|definitely|sounds good|perfect|that'?s right|si|sì)\b/i;
 /** Any sign of a no or a change, which wins over a yes ("yes, actually no", "send it to John instead"). */
 const NO = /\b(no|nope|don'?t|do not|cancel|stop|wait|hold on|never ?mind|not yet|not now|instead|change|actually)\b/i;
 
@@ -18,8 +18,11 @@ export const isYes = (t: string) => YES.test(t) && !NO.test(t);
 
 /** How long a question waits for its answer. */
 const WINDOW_MS = 3 * 60_000;
-/** The answer's words can arrive a moment after the model acts on them (real-time voice): wait this long. */
-const WORDS_WAIT_MS = 2500;
+/**
+ * The answer's words can arrive a moment after the model acts on them (real-time voice: Gemini's transcript of what the
+ * user said often trails by a few seconds): wait this long for them.
+ */
+const WORDS_WAIT_MS = 5000;
 
 export type Verdict = 'yes' | 'no' | 'unclear' | 'no-answer' | 'not-asked';
 

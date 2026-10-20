@@ -217,6 +217,8 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   listed under **Batteries and connections**, which says when one needs attention.
 - **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
   each one works, and **Remove**.
+- **Names and rooms by voice:** "Max, rename the hallway sensor to Front door motion", "move the lamp to the
+  bedroom" (the same as **Edit** on a card).
 - **Cameras and doorbells** (e.g. Ring): "Max, show me the front door" puts the camera's latest picture on his screen,
   and he says when it last saw motion or someone rang ("who was at the door?"); with no camera named, the one that saw
   something last. An automation can do it too: "every time the front camera sees motion, show it on the screen and

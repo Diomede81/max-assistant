@@ -20,6 +20,7 @@ import { UpdatesService } from '../updates/updates.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { AutomationsService } from '../home/automations.service';
 import { CamerasService } from '../home/cameras.service';
+import { DeviceNamesService } from '../home/device-names.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
@@ -81,6 +82,7 @@ export class ToolRouterService {
     @Optional() private readonly meetings?: MeetingsService,
     @Optional() private readonly automations?: AutomationsService,
     @Optional() private readonly cameras?: CamerasService,
+    @Optional() private readonly deviceNames?: DeviceNamesService,
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly trains?: TrainsService,
@@ -139,7 +141,7 @@ export class ToolRouterService {
   private get automationTools(): ChatCompletionTool[] {
     if (this.modes.mode === 'guest') return [];
     // Cameras too: visitors shouldn't look through the house's cameras.
-    return [...(this.automations?.tools ?? []), ...(this.cameras?.tools ?? [])];
+    return [...(this.automations?.tools ?? []), ...(this.cameras?.tools ?? []), ...(this.deviceNames?.tools ?? [])];
   }
 
   /** The meeting notetaker: not in guest mode (visitors shouldn't send Max into, or read, the user's meetings). */
@@ -168,7 +170,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -348,6 +350,10 @@ export class ToolRouterService {
         const draft = args.action === 'draft' ? /draft_id ([0-9a-f]+)/.exec(out)?.[1] : undefined;
         if (draft) this.gate.ask(confirmKey(name, { action: 'save', draft_id: draft }));
         return out;
+      }
+      if (this.deviceNames?.has(name)) {
+        if (this.modes.mode === 'guest') return "Not done: devices can't be renamed or moved in guest mode.";
+        return await this.deviceNames.call(name, args);
       }
       if (this.cameras?.has(name)) {
         if (this.modes.mode === 'guest') return "Not done: the cameras aren't available in guest mode.";

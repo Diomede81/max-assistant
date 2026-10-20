@@ -51,6 +51,8 @@ export interface PanelData {
     enabled: boolean;
     /** Max can listen live and answer in meetings (the secure link is set up). */
     live: boolean;
+    /** Max answers out loud in meetings (off: notes only). */
+    speaks: boolean;
     projects: { id: string; name: string }[];
     settings: { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string };
     monthMinutes: number;
@@ -254,7 +256,8 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
 <form class="stack" method="post" action="/meetings/join">
 <div class="addfact"><input name="link" type="url" required placeholder="Paste the meeting link (Teams, Zoom or Google Meet)" aria-label="Meeting link"></div>
 <div class="addfact"><input name="title" maxlength="120" placeholder="What it's about (optional), e.g. Acme weekly with Marco" aria-label="Meeting name">${m.projects.length ? `<select name="project" aria-label="Project"><option value="">Project: from the name</option>${m.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}<button class="btn" type="submit">Send Max</button></div></form>
-<p class="meta">${m.live ? '<b>Max can answer you in meetings:</b> start with "Max, …" (only you, by your name in the meeting). He answers out loud from the meeting, general knowledge of its topic and its project, never anything personal.' : 'Max can also answer you out loud in meetings ("Max, what did we decide?"): this needs the secure link (Cloudflare Tunnel), see docs/MEETINGS.md.'}</p>
+<p class="meta">${m.live && !m.speaks ? `<b>Max only takes notes in meetings</b> (he won't answer out loud, even when you say "Max, …").` : m.live ? `<b>Max can answer you in meetings:</b> start with "Max, …" (only you, by your name in the meeting). He answers out loud from the meeting, general knowledge of its topic and its project, never anything personal.` : 'Max can also answer you out loud in meetings ("Max, what did we decide?"): this needs the secure link (Cloudflare Tunnel), see docs/MEETINGS.md.'}</p>
+${m.live ? `<div class="acts">${m.speaks ? post('/meetings/speak', { on: '0' }, 'Notes only: don\'t answer out loud') : post('/meetings/speak', { on: '1' }, 'Let Max answer out loud')}</div>` : ''}
 <p class="meta">Teams: if the meeting has a lobby, someone in it has to let Max in. This month: ${len(m.monthMinutes) || '0 min'} of meetings, about $${cost.toFixed(2)} at Recall.ai.</p>
 ${now.length ? `<h3>On now</h3><ul>${now.map(row).join('')}</ul>` : ''}
 ${past.length ? `<h3>Earlier</h3><ul>${past.slice(0, 30).map(row).join('')}</ul>` : '<p class="meta">No meetings yet.</p>'}

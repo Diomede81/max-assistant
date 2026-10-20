@@ -184,11 +184,28 @@ export class LiveVoiceService implements OnModuleInit {
    * `text` in the live voice from the provider's own speech service (same voices as the live one: Gemini's text-to-
    * speech, or OpenAI's), which makes a whole line in a second or two instead of at speaking pace. 24 kHz PCM.
    * Throws when the provider has no speech service for this voice; the caller then records the line live instead.
+   *
+   * Kept quick and steady: each sentence is voiced at the same time as the others (so a longer answer takes about as
+   * long as its longest sentence), and a request still unanswered after a few seconds is sent again, whichever copy
+   * comes back first being used (the speech service is sometimes slow on one request and quick on the next).
    */
   async speech(text: string, timeoutMs = 20_000): Promise<Buffer> {
     if (!this.active) throw new Error('live voice is off');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(new Error(`timeout after ${timeoutMs / 1000}s`)), timeoutMs);
+    try {
+      const parts = await Promise.all(sentences(text).map((part) => hedged((signal) => this.speechOnce(part, signal), ctrl.signal)));
+      const gap = Buffer.alloc(Math.round(24_000 * 0.2) * 2); // a short pause between sentences
+      return Buffer.concat(parts.flatMap((pcm, i) => (i ? [gap, pcm] : [pcm])));
+    } finally {
+      clearTimeout(timer);
+      ctrl.abort();
+    }
+  }
+
+  /** One request to the speech service. */
+  private async speechOnce(text: string, signal: AbortSignal): Promise<Buffer> {
     const r = this.cfg.realtime;
-    const signal = AbortSignal.timeout(timeoutMs);
     if (r.provider === 'gemini') {
       const models = [process.env.MEETING_VOICE_MODEL, this.speechModel, 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'].filter(
         (m, i, a): m is string => Boolean(m) && a.indexOf(m) === i,
@@ -388,4 +405,50 @@ export class LineRecorder {
       this.idle.unref?.();
     }
   }
+}
+
+/** A request not answered within this long is sent a second time (the first one stays in the race). */
+const HEDGE_MS = 3_500;
+
+/**
+ * `run` once, and again if it's slow (after HEDGE_MS) or fails: the first answer wins and the other is cancelled. Gives
+ * up when both copies failed, or when `outer` is aborted (the overall time limit).
+ */
+function hedged(run: (signal: AbortSignal) => Promise<Buffer>, outer: AbortSignal): Promise<Buffer> {
+  const ctrl = new AbortController();
+  const stop = () => ctrl.abort(outer.reason);
+  outer.addEventListener('abort', stop, { once: true });
+  let started = 0;
+  let failed = 0;
+  let again: NodeJS.Timeout | undefined;
+  return new Promise<Buffer>((resolve, reject) => {
+    const go = () => {
+      started++;
+      run(ctrl.signal).then(resolve, (err: Error) => {
+        failed++;
+        if (outer.aborted || ctrl.signal.aborted) return reject(outer.reason instanceof Error ? outer.reason : err);
+        if (started < 2) {
+          clearTimeout(again);
+          go(); // failed quickly: try once more straight away
+        } else if (failed >= started) reject(err);
+      });
+    };
+    go();
+    again = setTimeout(() => started < 2 && go(), HEDGE_MS);
+  }).finally(() => {
+    clearTimeout(again);
+    outer.removeEventListener('abort', stop);
+    ctrl.abort();
+  });
+}
+
+/** `text` in sentence-sized parts to voice side by side (very short ones joined to the next, at most 4 parts). */
+function sentences(text: string): string[] {
+  const parts: string[] = [];
+  for (const s of text.split(/(?<=[.!?])\s+/)) {
+    const last = parts[parts.length - 1];
+    if (last !== undefined && (last.split(/\s+/).length < 5 || parts.length >= 4)) parts[parts.length - 1] = `${last} ${s}`;
+    else parts.push(s);
+  }
+  return parts.filter((p) => p.trim());
 }

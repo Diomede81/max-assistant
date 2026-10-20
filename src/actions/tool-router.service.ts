@@ -19,6 +19,7 @@ import { RoutinesService } from '../routines/routines.service';
 import { UpdatesService } from '../updates/updates.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { AutomationsService } from '../home/automations.service';
+import { CamerasService } from '../home/cameras.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
@@ -79,6 +80,7 @@ export class ToolRouterService {
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly meetings?: MeetingsService,
     @Optional() private readonly automations?: AutomationsService,
+    @Optional() private readonly cameras?: CamerasService,
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly trains?: TrainsService,
@@ -135,7 +137,9 @@ export class ToolRouterService {
 
   /** Home automations: not in guest mode (visitors shouldn't change what the house does by itself). */
   private get automationTools(): ChatCompletionTool[] {
-    return this.automations && this.modes.mode !== 'guest' ? this.automations.tools : [];
+    if (this.modes.mode === 'guest') return [];
+    // Cameras too: visitors shouldn't look through the house's cameras.
+    return [...(this.automations?.tools ?? []), ...(this.cameras?.tools ?? [])];
   }
 
   /** The meeting notetaker: not in guest mode (visitors shouldn't send Max into, or read, the user's meetings). */
@@ -164,7 +168,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -344,6 +348,10 @@ export class ToolRouterService {
         const draft = args.action === 'draft' ? /draft_id ([0-9a-f]+)/.exec(out)?.[1] : undefined;
         if (draft) this.gate.ask(confirmKey(name, { action: 'save', draft_id: draft }));
         return out;
+      }
+      if (this.cameras?.has(name)) {
+        if (this.modes.mode === 'guest') return "Not done: the cameras aren't available in guest mode.";
+        return await this.cameras.call(name, args);
       }
       if (this.screenTools?.has(name)) return await this.screenTools.call(name, args);
       if (this.whatsapp?.has(name)) {

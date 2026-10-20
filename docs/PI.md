@@ -217,6 +217,10 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   listed under **Batteries and connections**, which says when one needs attention.
 - **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
   each one works, and **Remove**.
+- **Cameras and doorbells** (e.g. Ring): "Max, show me the front door" puts the camera's latest picture on his screen,
+  and he says when it last saw motion or someone rang ("who was at the door?"). Only for devices ticked **Max can
+  use**; never in guest mode. Anything you add from the Devices tab is ready for Max straight away (untick any you'd
+  rather he didn't use).
 - **Automations.** Things the house does by itself. Describe one in your own words under **Automations** (or say
   "Max, make an automation: when the alarm is on and there's motion in the hallway, turn on all the lights and tell
   me"). Max writes it, shows it (or reads it back), and saves it once you agree. He can make on/off **switches** for

@@ -165,7 +165,10 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
           '"When I\'m out / away": a person entity\'s state "not_home" if one is listed and it is not "unknown"; otherwise, or for ' +
           '"when the alarm is on / active" with no alarm listed, use an on/off switch: put its name in new_switches (e.g. "Alarm") ' +
           'and use the entity id input_boolean.<name in lower case, spaces as underscores>. Motion: binary_sensor with ' +
-          'device_class motion or occupancy, to "on". Never unlock locks, disarm alarms, or open doors, gates, covers or the garage: ' +
+           'device_class motion or occupancy, to "on". A doorbell ring or a camera\'s motion as an event entity (event.…): ' +
+          'trigger "state" on that entity with no "to" (it changes each time it happens), plus the condition ' +
+          '{"condition": "template", "value_template": "{{ trigger.from_state.state not in [\'unavailable\', \'unknown\'] }}"} ' +
+          'so it doesn\'t fire when Home Assistant restarts. Never unlock locks, disarm alarms, or open doors, gates, covers or the garage: ' +
           'if asked, leave it out and say so in the summary. Plain British English in name and summary.',
         user: `What the user wants: ${wanted}${name ? `\nName: ${name}` : ''}\n\nWhat's in the house (entity id | name | now):\n${things || '(nothing yet)'}`,
         maxTokens: 1500,

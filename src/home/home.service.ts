@@ -125,7 +125,8 @@ function newPassword(): string {
   return [0, 4, 8, 12].map((i) => chars.slice(i, i + 4).join('')).join('-');
 }
 const TOGGLE = new Set(['light', 'switch', 'fan', 'input_boolean', 'humidifier', 'siren']);
-const SHOWN = new Set([...TOGGLE, 'cover', 'valve', 'lock', 'climate', 'media_player', 'vacuum', 'water_heater', 'button', 'sensor', 'binary_sensor', 'scene']);
+// Cameras and doorbell events too: a Ring doorbell gets its own card (and its "Max can use" tick).
+const SHOWN = new Set([...TOGGLE, 'cover', 'valve', 'lock', 'climate', 'media_player', 'vacuum', 'water_heater', 'button', 'sensor', 'binary_sensor', 'scene', 'camera', 'event']);
 const NOT_SET_UP_HERE = new Set(['helper', 'entity', 'system', 'hardware', 'virtual']);
 const DISCOVERY = new Set(['zeroconf', 'ssdp', 'dhcp', 'homekit', 'bluetooth', 'discovery', 'integration_discovery', 'usb', 'mqtt', 'hassio']);
 
@@ -376,6 +377,33 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
   async rest<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
     if (this.stateNow !== 'ready') throw new Error('Home Assistant is still starting: try again in a minute');
     return this.json<T>(method, path, body, this.token());
+  }
+
+  /** A camera's latest picture (JPEG). */
+  async snapshot(entityId: string): Promise<Buffer> {
+    if (this.stateNow !== 'ready') throw new Error('Home Assistant is still starting: try again in a minute');
+    if (!/^camera\.[a-z0-9_]+$/.test(entityId)) throw new Error('Not a camera');
+    const res = await fetch(`${this.base}/api/camera_proxy/${entityId}`, { headers: { Authorization: `Bearer ${this.token()}` }, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(res.status === 404 ? 'no picture from that camera yet' : `the camera answered ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /**
+   * Something just added (Ring, Tado...): lets Max use all its devices, as the page promises. Home Assistant only does
+   * that by itself for some kinds (lights, switches...), not cameras or doorbells. The devices appear over the first
+   * minute, so this looks a few times.
+   */
+  private allowNewEntry(entryId: string): void {
+    const done = new Set<string>();
+    const look = async () => {
+      const entries = await this.ws().call<{ entity_id: string; config_entry_id: string | null; disabled_by: string | null }[]>('config/entity_registry/list');
+      const ids = entries.filter((e) => e.config_entry_id === entryId && !e.disabled_by && !done.has(e.entity_id)).map((e) => e.entity_id);
+      if (!ids.length) return;
+      await this.ws().call('homeassistant/expose_entity', { assistants: ['conversation'], entity_ids: ids, should_expose: true });
+      ids.forEach((id) => done.add(id));
+      this.log.log(`New devices ready for Max: ${ids.length} (${ids.slice(0, 4).join(', ')}${ids.length > 4 ? '…' : ''})`);
+    };
+    for (const delay of [3_000, 20_000, 60_000, 180_000]) setTimeout(() => void look().catch((err) => this.log.warn(`Couldn't make the new devices available to Max: ${(err as Error).message}`)), delay).unref();
   }
 
   /** Listens for an event Home Assistant fires (e.g. an automation asking Max to say something). */
@@ -813,9 +841,11 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
       // A sign-in on the brand's own site while this waits (e.g. Tado): offer it as a button too.
       if (typeof ph.url === 'string' && /^https:\/\//.test(ph.url)) out.url = ph.url;
     } else if (raw.type === 'create_entry') {
+      const entryId = (raw as { result?: { entry_id?: string } }).result?.entry_id;
+      if (entryId) this.allowNewEntry(entryId);
       out.kind = 'done';
       out.title = `${raw.title || integration} added`;
-      out.text = "It's on your Devices page. New devices are ready for Max to control.";
+      out.text = "It's on your Devices page. Its devices are ready for Max to use (untick \"Max can use\" on any you'd rather he didn't).";
       out.flowId = undefined;
     } else if (raw.type === 'abort') {
       out.kind = 'stopped';
@@ -930,7 +960,12 @@ function describe(id: string, ownName: string, deviceName: string, s?: { state: 
     const now = a.current_temperature;
     e.state = `${nice(raw)}${typeof now === 'number' ? ` · ${now}°` : ''}`;
   } else if (domain === 'sensor') e.state = `${raw}${a.unit_of_measurement ? ` ${a.unit_of_measurement}` : ''}`;
-  else if (domain === 'binary_sensor') e.state = raw === 'on' ? (BINARY_ON[String(a.device_class)] ?? 'On') : raw === 'off' ? (BINARY_OFF[String(a.device_class)] ?? 'Off') : nice(raw);
+  else if (domain === 'camera') e.state = raw === 'unavailable' ? nice(raw) : 'Camera: ask Max to show it';
+  else if (domain === 'event') {
+    const t = Date.parse(raw);
+    e.state = isNaN(t) ? 'Nothing yet' : `Last: ${new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    e.unavailable = raw === 'unavailable' || undefined;
+  } else if (domain === 'binary_sensor') e.state = raw === 'on' ? (BINARY_ON[String(a.device_class)] ?? 'On') : raw === 'off' ? (BINARY_OFF[String(a.device_class)] ?? 'Off') : nice(raw);
   return e;
 }
 

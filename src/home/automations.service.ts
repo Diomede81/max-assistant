@@ -179,7 +179,8 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
           'never invent one. To make Max (the voice assistant in the room) say something out loud, use the action ' +
           `{"event": "${SAY_EVENT}", "event_data": {"message": "what to say"}}. To put a camera's latest picture on Max's screen ` +
           `(and say a line), use {"event": "${CAMERA_EVENT}", "event_data": {"camera": "camera.…", "message": "what to say"}}: ` +
-          'for "show me the camera / the picture when…", use this one, not max_say. ' +
+          'for "show me the camera / the picture when…", use this one, not max_say: it does both, the picture and the line. ' +
+          'Never say in the summary that Max can\'t show pictures or combine them with an announcement: he can. ' +
           (phones.length ? `To send a notification to a phone, use "action": "notify.<name>" with data.title/message; phones: ${phones.join(', ')}. ` : 'No phone notifications are set up (Home Assistant app): use Max saying it instead, and say so in the summary. ') +
           '"When I\'m out / away": a person entity\'s state "not_home" if one is listed and it is not "unknown"; otherwise, or for ' +
           '"when the alarm is on / active" with no alarm listed, use an on/off switch: put its name in new_switches (e.g. "Alarm") ' +
@@ -334,7 +335,10 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
             'Home automations (Home Assistant): things that happen by themselves. draft: write one from what the user describes ' +
             '(when, only if, then: e.g. "when I\'m out and the alarm is on, if the hallway sensor sees motion, turn on all the lights ' +
             'and tell me"); you get a plain summary and a draft_id. Read the summary back and ask "Shall I save it?"; on yes call save ' +
-            'with the draft_id. ONLY draft when the user describes a NEW automation. When they name one that exists ("turn off the ' +
+            'with the draft_id. What an automation can do: control devices, make you SAY something out loud on the box, ' +
+            'send a phone notification, and put a camera\'s latest picture ON YOUR SCREEN while you say a line, all in the ' +
+            'same automation (e.g. "every time the front camera sees motion, show the picture and say there\'s movement at ' +
+            'the front"): never tell the user that can\'t be done, draft it. ONLY draft when the user describes a NEW automation. When they name one that exists ("turn off the ' +
             'alarm automation", "switch the hallway one back on"), never draft: use on / off with its name (a few words of it are ' +
             'enough). on / off: turn an automation, or a switch like "Alarm", on or off. run: run one now (to test it). rename: give ' +
             'one a new name (name, new_name). delete: delete one. list: all of them. Automations never unlock, disarm or open ' +

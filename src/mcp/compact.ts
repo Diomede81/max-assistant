@@ -20,7 +20,7 @@ const NOISE = new Set([
   'allownewtimeproposals', 'hideattendees', 'isdraft', 'isreminderon', 'reminderminutesbeforestart', 'responserequested',
   'createddatetime', 'lastmodifieddatetime', 'occurrenceid', 'conversationid', 'conversationindex', 'internetmessageid',
   'parentfolderid', 'inferenceclassification', 'flag', 'categories', 'hasattachments', 'isreadreceiptrequested',
-  'isdeliveryreceiptrequested', 'uniquebody', 'onlinemeetingprovider', 'onlinemeetingurl', 'isonlinemeeting',
+  'isdeliveryreceiptrequested', 'uniquebody', 'onlinemeetingprovider', 'isonlinemeeting',
   'allowedonlinemeetingproviders', 'defaultonlinemeetingprovider', 'cancelledoccurrences', 'exceptionoccurrences',
   'uniqueid', 'uniqueidtype', 'locationuri', 'locationtype', 'coordinates', 'sensitivity', 'importance',
   'thumbnail', 'thumbnailurl', 'logo', 'icon', 'favicon', 'headers', 'payload_headers', 'mimetype', 'sizeestimate',

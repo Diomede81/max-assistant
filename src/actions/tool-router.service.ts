@@ -17,6 +17,7 @@ import { WebService } from '../web/web.service';
 import { TrainsService } from '../trains/trains.service';
 import { RoutinesService } from '../routines/routines.service';
 import { UpdatesService } from '../updates/updates.service';
+import { MeetingsService } from '../meetings/meetings.service';
 import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
@@ -75,6 +76,7 @@ export class ToolRouterService {
     @Optional() private readonly web?: WebService,
     @Optional() private readonly routines?: RoutinesService,
     @Optional() private readonly updates?: UpdatesService,
+    @Optional() private readonly meetings?: MeetingsService,
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly trains?: TrainsService,
@@ -120,13 +122,18 @@ export class ToolRouterService {
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
-    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...ha, ...external];
+    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...ha, ...external];
   }
 
   /** The user's own WhatsApp: never in guest mode (visitors shouldn't read or send anyone's messages). */
   private get whatsappTools(): ChatCompletionTool[] {
     if (!this.whatsapp || this.modes.mode === 'guest') return [];
     return this.whatsapp.tools.filter((t) => t.type !== 'function' || !this.isLockedWorkApp(t.function.name)).map((t) => (t.type === 'function' && t.function.name === 'whatsapp_send' ? withConfirmParam(t, 'read back who it goes to and the message') : t));
+  }
+
+  /** The meeting notetaker: not in guest mode (visitors shouldn't send Max into, or read, the user's meetings). */
+  private get meetingTools(): ChatCompletionTool[] {
+    return this.meetings && this.modes.mode !== 'guest' ? this.meetings.tools : [];
   }
 
   get homeAssistantConnected(): boolean {
@@ -141,6 +148,7 @@ export class ToolRouterService {
   needsConfirmation(name: string, args: Record<string, unknown> = {}): boolean {
     if (name === 'device_power' || name === 'whatsapp_send') return true;
     if (name === 'software_update') return args.action === 'install';
+    if (name === 'meeting') return args.action === 'join';
     if (name === 'forget') return args.all === true;
     const server = this.ha.has(name) ? undefined : this.mcp.serverFor(name);
     if (server) return RISKY.test(name) || matchesAny(name, server.config.confirmTools);
@@ -148,7 +156,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -294,7 +302,7 @@ export class ToolRouterService {
         const c = await this.confirmation(name, args);
         if ('say' in c) return c.say;
         // Max's own actions still expect their flag; external apps and Home Assistant get the plain details.
-        args = this.builtin.has(name) || this.updates?.has(name) ? { ...c.args, [CONFIRM_PARAM]: true } : c.args;
+        args = this.builtin.has(name) || this.updates?.has(name) || this.meetings?.has(name) ? { ...c.args, [CONFIRM_PARAM]: true } : c.args;
       }
       if (this.builtin.has(name)) return this.builtin.call(name, args);
       if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''))) {
@@ -315,6 +323,12 @@ export class ToolRouterService {
         return await this.routines.call(name, args);
       }
       if (this.updates?.has(name)) return await this.updates.call(name, args);
+      if (this.meetings?.has(name)) {
+        if (this.modes.mode === 'guest') return "Not done: meetings aren't available in guest mode.";
+        // A transcript is other people's words: anything filed after reading it is marked unverified.
+        if (args.action === 'transcript') this.externalContentAt = Date.now();
+        return await this.meetings.call(name, args);
+      }
       if (this.screenTools?.has(name)) return await this.screenTools.call(name, args);
       if (this.whatsapp?.has(name)) {
         if (name === 'whatsapp_messages') this.externalContentAt = Date.now(); // other people's words

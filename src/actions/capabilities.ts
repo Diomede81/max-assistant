@@ -20,7 +20,7 @@ const APPS: Record<string, string> = {
   TODOIST: 'Todoist: tasks',
 };
 
-const BUILTIN = new Set(['get_current_datetime', 'end_conversation', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'remember', 'forget', 'recall', 'about_you']);
+const BUILTIN = new Set(['meeting', 'get_current_datetime', 'end_conversation', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'remember', 'forget', 'recall', 'about_you']);
 
 /**
  * A short briefing of what Max can reach right now, built from the actions actually
@@ -35,6 +35,7 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
     const slug = Object.keys(APPS).find((s) => n.startsWith(`${s}_`)) ?? n.split('_')[0];
     apps.set(slug, APPS[slug] ?? `${slug.charAt(0)}${slug.slice(1).toLowerCase()}`);
   }
+  if (names.includes('meeting')) apps.set('MEETINGS', 'meeting notetaker: join the user\'s Teams, Zoom and Google Meet meetings (link from their calendar or from them), take notes, leave, and say afterwards what was said');
   // Built-in web search (Firecrawl, no Composio).
   if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
   if (names.includes('train_departures') || names.includes('plan_train_journey')) {

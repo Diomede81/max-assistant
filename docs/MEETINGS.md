@@ -23,7 +23,20 @@ The key is a password for your Recall.ai account: keep it in `.env` only (never 
 
 ## Using it
 
-On the **Meetings** page, paste the meeting link (from the invitation or your calendar), optionally say what
+**By voice:**
+
+| You say | Max does |
+| --- | --- |
+| "Max, join my 10 o'clock" / "join the Acme call" | Finds it in your calendar, says which meeting, and joins after your yes |
+| "Join this meeting" (with a link on screen) / "join the meeting I'm sending you" | Asks for the link if he can't find one |
+| "Are you in the meeting?" | Says what he's doing (joining, in the lobby, taking notes) |
+| "Leave the meeting" | Leaves |
+| "What did Marco say in this morning's meeting?" | Answers from the transcript |
+
+Work meetings are in your work calendar, which Max sees in work mode (during your working hours, or "Max, work
+mode"). Not in guest mode.
+
+**On the control panel:** on the **Meetings** page, paste the meeting link (from the invitation or your calendar), optionally say what
 it's about, and press **Send Max**.
 
 - Max joins as **"Max (your first name's notetaker)"** and posts in the meeting chat that he's transcribing
@@ -47,6 +60,5 @@ transcript (check recall.ai/pricing). The Meetings page shows this month's meeti
 
 - Max reads the transcript and proposes a summary, decisions, tasks and notes, which you approve before they go
   into your projects, to-do list and memory.
-- "Max, join my 10 o'clock": he finds the meeting in your calendar and asks before joining.
 - Announcements ("Max is in the lobby", "your notes are ready"), a monthly spending cap, and how long
   transcripts are kept.

@@ -58,6 +58,7 @@ Max can also answer you **out loud** in the meeting. Start with his name:
 - "Max, what did we decide about the opening?"
 - "Max, who's our supplier on this project?"
 - "Max?" … (pause) … "what's still open for Marco?"
+- "Thanks Max, you can go now" / "Max, please leave": he says goodbye and leaves the meeting.
 
 He answers in one to three sentences in his own voice, about 3 to 5 seconds later, and **everyone in the meeting
 hears it**. So:
@@ -68,6 +69,8 @@ hears it**. So:
 - **While a meeting is on**, the Meetings page shows what Max hears live: how many lines arrived, and the last
   time someone said "Max" (answered, or why not, e.g. "heard from Luca L.: not you"). Nothing there means
   the live transcript isn't reaching the box: press **Check the secure link**.
+- **In the meeting he can only answer, and leave when you ask.** For anything else (a reminder, an email, a task)
+  he says to ask him after the meeting, rather than promising it.
 - **He only uses** what's been said in the meeting, general knowledge about its topic, and the **project the
   meeting is about**. Nothing personal: no email, calendar, family, memories or other projects, even if asked.
 - **The project:** pick it when you send Max (Meetings page), say it ("join my 10 o'clock for the Milan

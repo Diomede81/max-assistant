@@ -217,6 +217,13 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   listed under **Batteries and connections**, which says when one needs attention.
 - **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
   each one works, and **Remove**.
+- **Automations.** Things the house does by itself. Describe one in your own words under **Automations** (or say
+  "Max, make an automation: when the alarm is on and there's motion in the hallway, turn on all the lights and tell
+  me"). Max writes it, shows it (or reads it back), and saves it once you agree. He can make on/off **switches** for
+  them to check ("Alarm", "Holiday": "Max, turn on the alarm"), and say things out loud on the box when an
+  automation asks him to. Each one can be turned off, run now (to test it) or deleted. Automations never unlock,
+  disarm or open anything, and only use devices you have. (Boxes set up before this: the next update turns
+  automations on in Home Assistant, which restarts once.)
 - **Advanced.** For the rare job the Devices tab doesn't cover, the full Home Assistant is at
   <http://max.local:8123>. Its username and password are under **Devices → Advanced** (Show).
 

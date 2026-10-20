@@ -36,6 +36,7 @@ export function describeCapabilities(tools: ChatCompletionTool[]): string {
     apps.set(slug, APPS[slug] ?? `${slug.charAt(0)}${slug.slice(1).toLowerCase()}`);
   }
   if (names.includes('meeting')) apps.set('MEETINGS', 'meeting notetaker: join the user\'s Teams, Zoom and Google Meet meetings (link from their calendar or from them), take notes, leave, and say afterwards what was said');
+  if (names.includes('home_automation')) apps.set('HOME AUTOMATIONS', 'create home automations from what the user describes (when…, only if…, then…: e.g. an alarm that turns the lights on and warns them when motion is seen while they are out), on/off switches for them like "Alarm", and turn automations on, off, run or delete them');
   // Built-in web search (Firecrawl, no Composio).
   if (names.includes('web_search')) apps.set('WEB', 'the internet: search the web and news, and read any web page');
   if (names.includes('train_departures') || names.includes('plan_train_journey')) {

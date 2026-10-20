@@ -1,0 +1,416 @@
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { EventEmitter } from 'node:events';
+import { randomBytes } from 'node:crypto';
+import type { ChatCompletionTool } from 'openai/resources/chat/completions';
+import { ModelsService } from '../models/models.service';
+import { HomeService } from './home.service';
+
+/** One automation, as the Devices page and Max see it. */
+export interface Automation {
+  /** Home Assistant's automation id (its config id), when it can be changed here. */
+  id?: string;
+  entityId: string;
+  name: string;
+  /** What it does, in plain words (Max writes this for the ones he makes). */
+  description?: string;
+  on: boolean;
+  lastRun?: string;
+  /** Made by Max (from what you described). */
+  byMax: boolean;
+}
+
+/** An on/off switch Max made for automations to check (e.g. "Alarm"). */
+export interface HomeSwitch {
+  entityId: string;
+  name: string;
+  on: boolean;
+}
+
+/** An automation Max drafted from what you described: shown or read back before it's saved. */
+export interface AutomationDraft {
+  id: string;
+  name: string;
+  /** In plain words: when, only if, then. */
+  summary: string;
+  /** New on/off switches it needs (created when it's saved). */
+  newSwitches: string[];
+  config: Record<string, unknown>;
+  at: number;
+}
+
+/** The event an automation fires to make Max say something on the box. */
+export const SAY_EVENT = 'max_say';
+/** What marks the automations Max made (in their description). */
+const MADE_BY_MAX = '(Made by Max)';
+/** How long a draft waits to be saved. */
+const DRAFT_TTL_MS = 30 * 60_000;
+/** Kinds of things the AI is shown (and may use) when writing an automation. */
+const USEFUL = /^(binary_sensor|sensor|light|switch|siren|alarm_control_panel|lock|cover|climate|fan|media_player|person|device_tracker|input_boolean|scene|vacuum|camera|button|event|sun|zone|water_heater|humidifier|valve)\./;
+/** What an automation may do. Never unlock, disarm, or open doors, gates or the garage: those stay by hand (or by voice, with a yes). */
+const ALLOWED_DOMAINS = /^(light|switch|siren|media_player|input_boolean|scene|notify|cover|lock|alarm_control_panel|climate|fan|vacuum|humidifier|water_heater|button|camera|persistent_notification|tts)$/;
+const BLOCKED = /^(lock\.(unlock|open)|alarm_control_panel\.alarm_disarm|cover\.(open_cover|toggle|set_cover_position|stop_cover)|valve\.open_valve|camera\.(turn_off|disable_motion_detection))$/;
+
+/**
+ * Home automations: Max turns what you describe ("when I'm out and the alarm is on, if the hallway sensor sees
+ * motion, turn on all the lights and tell me") into a Home Assistant automation, reads it back, and saves it once you
+ * say yes. He can also make simple on/off switches for automations to check ("Alarm"), and say things on the box
+ * when an automation asks him to. Automations never unlock, disarm or open anything.
+ */
+@Injectable()
+export class AutomationsService extends EventEmitter implements OnModuleInit {
+  private readonly log = new Logger('Automations');
+  private readonly drafts = new Map<string, AutomationDraft>();
+
+  constructor(
+    private readonly home: HomeService,
+    @Optional() private readonly models?: ModelsService,
+  ) {
+    super();
+  }
+
+  get enabled(): boolean {
+    return this.home.enabled;
+  }
+
+  onModuleInit(): void {
+    if (!this.enabled) return;
+    // Automations that say something on the box ("Motion in the hallway while the alarm is on").
+    void this.home.ready().then(() =>
+      this.home.listen(SAY_EVENT, (data) => {
+        const text = String(data.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        if (!text) return;
+        this.log.log(`An automation asked Max to say: ${text}`);
+        this.emit('say', text);
+      }),
+    );
+  }
+
+  // ---------- Reading ----------
+
+  async list(): Promise<{ automations: Automation[]; switches: HomeSwitch[] }> {
+    type State = { entity_id: string; state: string; attributes: Record<string, unknown>; last_changed?: string };
+    const states = await this.home.rest<State[]>('GET', '/api/states');
+    const automations = states
+      .filter((s) => s.entity_id.startsWith('automation.'))
+      .map((s): Automation => {
+        const id = typeof s.attributes.id === 'string' ? s.attributes.id : undefined;
+        return {
+          id,
+          entityId: s.entity_id,
+          name: String(s.attributes.friendly_name ?? s.entity_id),
+          on: s.state === 'on',
+          lastRun: typeof s.attributes.last_triggered === 'string' ? s.attributes.last_triggered : undefined,
+          byMax: Boolean(id?.startsWith('max_')),
+        };
+      })
+      .sort((a, b) => Number(b.byMax) - Number(a.byMax) || a.name.localeCompare(b.name));
+    // Max's own: their description says what they do.
+    await Promise.all(
+      automations
+        .filter((a) => a.byMax && a.id)
+        .map(async (a) => {
+          const c = await this.home.rest<{ description?: string }>('GET', `/api/config/automation/config/${encodeURIComponent(a.id!)}`).catch(() => undefined);
+          a.description = c?.description?.replace(MADE_BY_MAX, '').trim() || undefined;
+        }),
+    );
+    const switches = states
+      .filter((s) => s.entity_id.startsWith('input_boolean.'))
+      .map((s) => ({ entityId: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), on: s.state === 'on' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { automations, switches };
+  }
+
+  draft(id: string): AutomationDraft | undefined {
+    this.prune();
+    return this.drafts.get(id);
+  }
+
+  // ---------- Drafting (the AI) ----------
+
+  /** Writes an automation from what the user described. Nothing is saved yet. */
+  async describe(text: string, name?: string): Promise<{ ok: true; draft: AutomationDraft } | { ok: false; message: string }> {
+    if (!this.models) return { ok: false, message: 'No AI model is set up to write automations.' };
+    const wanted = text.replace(/\s+/g, ' ').trim().slice(0, 1500);
+    if (!wanted) return { ok: false, message: 'Describe the automation: when it should happen, only if what, and what it should do.' };
+    type State = { entity_id: string; state: string; attributes: Record<string, unknown> };
+    const states = (await this.home.rest<State[]>('GET', '/api/states')).filter((s) => USEFUL.test(s.entity_id));
+    const services = await this.home.rest<{ domain: string; services: Record<string, unknown> }[]>('GET', '/api/services').catch(() => []);
+    const notify = services.find((s) => s.domain === 'notify');
+    const phones = notify ? Object.keys(notify.services).filter((s) => s.startsWith('mobile_app_')) : [];
+    const things = states
+      .slice(0, 500)
+      .map((s) => {
+        const a = s.attributes;
+        const extra = a.device_class ? ` (${String(a.device_class)})` : '';
+        return `${s.entity_id} | ${String(a.friendly_name ?? '')}${extra} | now: ${s.state}`;
+      })
+      .join('\n');
+    const raw = await this.models
+      .complete('home', {
+        system:
+          'You write Home Assistant automations from what the user describes. Answer with JSON only:\n' +
+          '{"name": "short name", "summary": "what it does in plain words, one or two sentences: when…, only if…, then…", ' +
+          '"new_switches": ["names of new on/off switches it needs, if any"], "automation": {"triggers": [...], "conditions": [...], "actions": [...], "mode": "single"}}\n' +
+          'Use current Home Assistant syntax: triggers with "trigger": "state" (entity_id, to, from, for), "time", "sun", "numeric_state"; ' +
+          'conditions with "condition": "state", "time", "sun", "numeric_state", "or"/"and"; actions with "action": "domain.service", ' +
+          '"target": {"entity_id": [...]}, "data": {...}, plus "delay", "repeat" when needed.\n' +
+          'Only use the entity ids listed. If the user means something that is not listed, say so in the summary and leave it out; ' +
+          'never invent one. To make Max (the voice assistant in the room) say something out loud, use the action ' +
+          `{"event": "${SAY_EVENT}", "event_data": {"message": "what to say"}}. ` +
+          (phones.length ? `To send a notification to a phone, use "action": "notify.<name>" with data.title/message; phones: ${phones.join(', ')}. ` : 'No phone notifications are set up (Home Assistant app): use Max saying it instead, and say so in the summary. ') +
+          '"When I\'m out / away": a person entity\'s state "not_home" if one is listed and it is not "unknown"; otherwise, or for ' +
+          '"when the alarm is on / active" with no alarm listed, use an on/off switch: put its name in new_switches (e.g. "Alarm") ' +
+          'and use the entity id input_boolean.<name in lower case, spaces as underscores>. Motion: binary_sensor with ' +
+          'device_class motion or occupancy, to "on". Never unlock locks, disarm alarms, or open doors, gates, covers or the garage: ' +
+          'if asked, leave it out and say so in the summary. Plain British English in name and summary.',
+        user: `What the user wants: ${wanted}${name ? `\nName: ${name}` : ''}\n\nWhat's in the house (entity id | name | now):\n${things || '(nothing yet)'}`,
+        maxTokens: 1500,
+        temperature: 0.1,
+        timeoutMs: 60_000,
+      })
+      .catch((err: Error) => {
+        this.log.warn(`The AI model couldn't write the automation: ${err.message}`);
+        return '';
+      });
+    let j: { name?: unknown; summary?: unknown; new_switches?: unknown; automation?: Record<string, unknown> };
+    try {
+      j = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+    } catch {
+      return { ok: false, message: raw ? "The automation didn't come out right: try describing it again, a little differently." : "The AI model didn't answer: check Settings → AI models (Home automations)." };
+    }
+    const auto = j.automation ?? {};
+    const newSwitches = (Array.isArray(j.new_switches) ? j.new_switches : []).map((x) => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 3);
+    const known = new Set([...states.map((s) => s.entity_id), ...newSwitches.map((n) => `input_boolean.${slug(n)}`)]);
+    const problem = check(auto, known);
+    if (problem) return { ok: false, message: `That automation can't be made: ${problem}` };
+    const draft: AutomationDraft = {
+      id: randomBytes(4).toString('hex'),
+      name: String(name || j.name || 'New automation').trim().slice(0, 80),
+      summary: String(j.summary ?? '').replace(/\s+/g, ' ').trim().slice(0, 600),
+      newSwitches,
+      config: { triggers: auto.triggers ?? auto.trigger, conditions: auto.conditions ?? auto.condition ?? [], actions: auto.actions ?? auto.action, mode: auto.mode ?? 'single' },
+      at: Date.now(),
+    };
+    this.prune();
+    this.drafts.set(draft.id, draft);
+    return { ok: true, draft };
+  }
+
+  // ---------- Changing ----------
+
+  /** Saves a draft in Home Assistant (making its new switches first), switched on. */
+  async save(draftId: string): Promise<string> {
+    const d = this.draft(draftId);
+    if (!d) return 'That draft has expired: describe the automation again.';
+    let json = JSON.stringify(d.config);
+    for (const name of d.newSwitches) {
+      const entityId = await this.ensureSwitch(name);
+      json = json.split(`input_boolean.${slug(name)}`).join(entityId);
+    }
+    const id = `max_${Date.now().toString(36)}`;
+    const config = { id, alias: d.name, description: `${d.summary} ${MADE_BY_MAX}`.trim(), ...JSON.parse(json) };
+    try {
+      await this.home.rest('POST', `/api/config/automation/config/${id}`, config);
+    } catch (err) {
+      return `Home Assistant didn't accept it: ${(err as Error).message.replace(/^\d+\s*/, '').slice(0, 200)}`;
+    }
+    this.drafts.delete(draftId);
+    this.log.log(`Automation "${d.name}" saved`);
+    // Home Assistant only runs saved automations when its configuration reads them (the box's setup adds that).
+    const entityId = await this.loaded(id);
+    if (!entityId) {
+      this.log.warn(`"${d.name}" was saved but Home Assistant didn't load it (no "automation: !include automations.yaml")`);
+      return `Saved "${d.name}", but Home Assistant isn't running automations yet: update the box (run the setup again) once, and it will start.`;
+    }
+    // On from the start: Home Assistant would otherwise keep an earlier automation's "off" when the name is the same.
+    await this.setOn(entityId, true).catch(() => undefined);
+    return `Saved "${d.name}": it's on.${d.newSwitches.length ? ` New switch${d.newSwitches.length === 1 ? '' : 'es'}: ${d.newSwitches.join(', ')} (say "turn on the ${d.newSwitches[0].toLowerCase()}", or use the Devices page).` : ''}`;
+  }
+
+  /** The automation Home Assistant loaded for this id (it takes a moment after saving), if it did. */
+  private async loaded(id: string): Promise<string | undefined> {
+    for (let i = 0; i < 10; i++) {
+      const states = await this.home.rest<{ entity_id: string; attributes: Record<string, unknown> }[]>('GET', '/api/states').catch(() => []);
+      const found = states.find((s) => s.entity_id.startsWith('automation.') && s.attributes.id === id);
+      if (found) return found.entity_id;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return undefined;
+  }
+
+  /** An on/off switch automations can check ("Alarm"): made if it doesn't exist, and Max can turn it on and off. */
+  async ensureSwitch(name: string): Promise<string> {
+    const clean = name.replace(/\s+/g, ' ').trim().slice(0, 40);
+    const list = await this.home.command<{ id: string; name: string }[]>('input_boolean/list').catch(() => []);
+    const found = list.find((x) => x.name.toLowerCase() === clean.toLowerCase());
+    const id = found?.id ?? (await this.home.command<{ id: string }>('input_boolean/create', { name: clean, icon: /alarm/i.test(clean) ? 'mdi:shield-home' : 'mdi:toggle-switch' })).id;
+    const entityId = `input_boolean.${id}`;
+    // So "Max, turn on the alarm" works by voice.
+    await this.home.command('homeassistant/expose_entity', { assistants: ['conversation'], entity_ids: [entityId], should_expose: true }).catch(() => undefined);
+    if (!found) this.log.log(`Made the switch "${clean}" (${entityId})`);
+    return entityId;
+  }
+
+  async setOn(entityId: string, on: boolean): Promise<string> {
+    if (!/^(automation|input_boolean)\.[a-z0-9_]+$/.test(entityId)) return 'Not an automation or switch.';
+    const domain = entityId.split('.')[0];
+    await this.home.rest('POST', `/api/services/${domain}/turn_${on ? 'on' : 'off'}`, { entity_id: entityId });
+    return on ? 'Turned on.' : 'Turned off.';
+  }
+
+  async run(entityId: string): Promise<string> {
+    if (!/^automation\.[a-z0-9_]+$/.test(entityId)) return 'Not an automation.';
+    await this.home.rest('POST', '/api/services/automation/trigger', { entity_id: entityId });
+    return 'Ran it.';
+  }
+
+  /** Deletes an automation (only ones with a config: made here, or in Home Assistant's own screens). */
+  async remove(id: string): Promise<string> {
+    if (!/^[\w-]+$/.test(id)) return 'Automation not found.';
+    await this.home.rest('DELETE', `/api/config/automation/config/${encodeURIComponent(id)}`);
+    return 'Automation deleted.';
+  }
+
+  /** Deletes a switch Max made. */
+  async removeSwitch(entityId: string): Promise<string> {
+    const id = entityId.replace(/^input_boolean\./, '');
+    if (!/^[a-z0-9_]+$/.test(id)) return 'Switch not found.';
+    await this.home.command('input_boolean/delete', { input_boolean_id: id });
+    return 'Switch deleted.';
+  }
+
+  private prune(): void {
+    for (const [k, d] of this.drafts) if (Date.now() - d.at > DRAFT_TTL_MS) this.drafts.delete(k);
+  }
+
+  // ---------- For Max (by voice) ----------
+
+  get tools(): ChatCompletionTool[] {
+    if (!this.enabled) return [];
+    return [
+      {
+        type: 'function',
+        function: {
+          name: 'home_automation',
+          description:
+            'Home automations (Home Assistant): things that happen by themselves. draft: write one from what the user describes ' +
+            '(when, only if, then: e.g. "when I\'m out and the alarm is on, if the hallway sensor sees motion, turn on all the lights ' +
+            'and tell me"); you get a plain summary and a draft_id. Read the summary back and ask "Shall I save it?"; on yes call save ' +
+            'with the draft_id. list: the automations and switches. on / off: turn an automation (or a switch like "Alarm") on or off. ' +
+            'run: run one now (to test it). delete: delete one. Automations never unlock, disarm or open anything.',
+          parameters: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['draft', 'save', 'list', 'on', 'off', 'run', 'delete'] },
+              description: { type: 'string', description: 'draft: what the automation should do, in the user\'s words (when, only if, then)' },
+              name: { type: 'string', description: 'draft: a short name (optional); on / off / run / delete: which automation or switch' },
+              draft_id: { type: 'string', description: 'save: the draft_id from draft' },
+              confirmed: { type: 'boolean' },
+            },
+            required: ['action'],
+          },
+        },
+      },
+    ];
+  }
+
+  has(name: string): boolean {
+    return this.enabled && name === 'home_automation';
+  }
+
+  async call(_name: string, a: Record<string, unknown>): Promise<string> {
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    try {
+      switch (str(a.action)) {
+        case 'draft': {
+          const r = await this.describe(str(a.description), str(a.name) || undefined);
+          if (!r.ok) return r.message;
+          return (
+            `Draft "${r.draft.name}" (draft_id ${r.draft.id}), not saved yet: ${r.draft.summary}` +
+            (r.draft.newSwitches.length ? ` It adds a new on/off switch: ${r.draft.newSwitches.join(', ')}.` : '') +
+            ' Read this back briefly and ask "Shall I save it?".'
+          );
+        }
+        case 'save':
+          if (a.confirmed !== true) return 'Not saved yet: read the summary back and ask the user to confirm, then call again with confirmed=true.';
+          return await this.save(str(a.draft_id));
+        case 'list': {
+          const { automations, switches } = await this.list();
+          if (!automations.length && !switches.length) return 'No automations yet. The user can describe one ("when … then …").';
+          return (
+            automations.map((x) => `${x.name} (${x.on ? 'on' : 'off'}${x.description ? `: ${x.description}` : ''})`).join('; ') +
+            (switches.length ? `. Switches: ${switches.map((s) => `${s.name} (${s.on ? 'on' : 'off'})`).join(', ')}` : '')
+          );
+        }
+        case 'on':
+        case 'off':
+        case 'run':
+        case 'delete': {
+          const { automations, switches } = await this.list();
+          const want = str(a.name).toLowerCase();
+          const pickFrom = <T extends { name: string }>(l: T[]) => l.find((x) => x.name.toLowerCase() === want) ?? l.find((x) => want && x.name.toLowerCase().includes(want));
+          const auto = pickFrom(automations);
+          const sw = a.action === 'run' ? undefined : pickFrom(switches);
+          if (!auto && !sw) return `No automation or switch called "${str(a.name)}". ${automations.length ? `Automations: ${automations.map((x) => x.name).join(', ')}.` : ''}`;
+          if (a.action === 'run') return await this.run(auto!.entityId);
+          if (a.action === 'delete') {
+            if (a.confirmed !== true) return 'Not deleted yet: ask the user to confirm, then call again with confirmed=true.';
+            if (auto) return auto.id ? await this.remove(auto.id) : "That one can only be deleted in Home Assistant's own screens.";
+            return await this.removeSwitch(sw!.entityId);
+          }
+          const target = auto && (!sw || auto.name.toLowerCase() === want) ? auto.entityId : sw!.entityId;
+          return await this.setOn(target, a.action === 'on');
+        }
+        default:
+          return 'Unknown action.';
+      }
+    } catch (err) {
+      return `Couldn't do that: ${(err as Error).message}`;
+    }
+  }
+}
+
+/** Home Assistant's id for a name: lower case, underscores. */
+export function slug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+/**
+ * Why an automation the AI wrote can't be saved (or nothing when it's fine): it needs a trigger and an action, may
+ * only use things that exist, and may never unlock, disarm or open anything, or run anything outside the house.
+ */
+export function check(auto: Record<string, unknown>, known: Set<string>): string | undefined {
+  const triggers = auto.triggers ?? auto.trigger;
+  const actions = auto.actions ?? auto.action;
+  if (!Array.isArray(triggers) || !triggers.length) return 'it has nothing that starts it.';
+  if (!Array.isArray(actions) || !actions.length) return 'it does nothing.';
+  for (const t of triggers as Record<string, unknown>[]) {
+    const kind = String(t?.trigger ?? t?.platform ?? '');
+    if (kind === 'webhook' || kind === 'mqtt' || kind === 'tag') return `it would be started from outside the house (${kind}).`;
+  }
+  const bad: string[] = [];
+  const walk = (v: unknown, key = ''): void => {
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, key));
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      const action = o.action ?? o.service;
+      if (typeof action === 'string' && action.includes('.')) {
+        const [domain] = action.split('.');
+        if (BLOCKED.test(action)) bad.push(`it would ${action.replace('.', ' ').replace(/_/g, ' ')}, which automations never do`);
+        else if (!ALLOWED_DOMAINS.test(domain)) bad.push(`it uses "${action}", which automations made here can't`);
+      }
+      for (const [k, x] of Object.entries(o)) walk(x, k);
+      return;
+    }
+    if (typeof v === 'string' && (key === 'entity_id' || key === 'entity_ids') && /^[a-z_]+\.[a-z0-9_]+$/.test(v) && !known.has(v) && v !== 'all') {
+      bad.push(`there's no "${v}" in the house`);
+    }
+  };
+  walk(auto);
+  return bad.length ? `${[...new Set(bad)].slice(0, 3).join('; ')}.` : undefined;
+}

@@ -1,3 +1,4 @@
+import { AutomationsService } from '../home/automations.service';
 import { Inject, Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { describeNow, parseLocal, spokenDuration, spokenWhen } from './clock';
@@ -43,9 +44,12 @@ export class BuiltinActionsService implements OnModuleInit {
     private readonly projects: ProjectsService,
     private readonly todos: TodoService,
     @Optional() private readonly about?: AboutService,
+    @Optional() automations?: AutomationsService,
   ) {
     // Project tasks falling due are announced like timer reminders.
     projects.on('reminder', (text: string) => timers.announce(text));
+    // An automation asking Max to say something ("Motion in the hallway while the alarm is on").
+    automations?.on('say', (text: string) => timers.announce(text));
     this.tools = [
       ...(about
         ? [
@@ -56,7 +60,7 @@ export class BuiltinActionsService implements OnModuleInit {
                 'work, schools and studies, likes, what you should avoid, health or food, or anything else about them. ' +
                 'Only what they said themselves in this conversation; for anything else use remember.',
               {
-                field: { type: 'string', enum: ABOUT_FIELDS.map((f) => f.key), description: 'Which part: name, callMe (what you call them), birthday, origin (where born and grew up), languages, home (who they live with), family, people (important people), work, education (schools and studies), likes, avoid, health, notes' },
+                field: { type: 'string', enum: ABOUT_FIELDS.map((f) => f.key), description: 'Which part: name, callMe (what you call them), pronouns (he/him, she/her, they/them), birthday, origin (where born and grew up), languages, home (who they live with), family, people (important people), work, education (schools and studies), likes, avoid, health, notes' },
                 value: { type: 'string', description: 'The full new text for that part (keep what was already there that still holds). Birthday as YYYY-MM-DD.' },
               },
               ['field', 'value'],

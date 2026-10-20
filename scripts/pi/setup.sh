@@ -278,7 +278,17 @@ recorder:
 
 logger:
   default: warning
+
+# The automations Max (or you, in Home Assistant) make.
+automation: !include automations.yaml
 YAML
+  fi
+  # Earlier boxes: their configuration.yaml has no automations yet. Add them once and restart Home Assistant.
+  [ -f "$HA_DIR/automations.yaml" ] || echo '[]' > "$HA_DIR/automations.yaml"
+  if ! grep -q '^automation' "$HA_DIR/configuration.yaml"; then
+    printf '\n# The automations Max (or you, in Home Assistant) make.\nautomation: !include automations.yaml\n' >> "$HA_DIR/configuration.yaml"
+    say "Home Assistant: automations turned on (it restarts once)"
+    docker compose -f docker-compose.yml -f docker-compose.pi.yml --profile home restart homeassistant >/dev/null 2>&1 || true
   fi
   set_env COMPOSE_PROFILES "${PROFILES:-max},home"
   set_env HA_LOCAL 1

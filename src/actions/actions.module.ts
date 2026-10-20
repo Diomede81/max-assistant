@@ -1,3 +1,4 @@
+import { HomeModule } from '../home/home.module';
 import { Module } from '@nestjs/common';
 import { HaMcpModule } from '../ha-mcp/ha-mcp.module';
 import { McpModule } from '../mcp/mcp.module';
@@ -10,7 +11,7 @@ import { ConversationControl } from './conversation-control';
 import { ScreenToolsService } from './screen-tools.service';
 
 @Module({
-  imports: [HaMcpModule, McpModule, ComposioModule, MemoryModule],
+  imports: [HaMcpModule, HomeModule, McpModule, ComposioModule, MemoryModule],
   providers: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService],
   exports: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService, MemoryModule],
 })

@@ -30,6 +30,7 @@ import { AirPlayService } from '../music/airplay.service';
 import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
+import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
 /**
@@ -42,6 +43,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(HomeService) private readonly home?: HomeService;
+  @Optional() @Inject(AutomationsService) private readonly automations?: AutomationsService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
@@ -290,6 +292,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (url.pathname.startsWith('/screen/') && this.ambient) return this.screenAction(req, res, url.pathname.slice('/screen/'.length));
     if (this.meetings && (url.pathname.startsWith('/meetings/'))) return this.meetingsRoute(req, res, url);
+    if (this.automations?.enabled && req.method === 'POST' && url.pathname.startsWith('/automations/')) return this.automationsRoute(req, res, url);
     if (req.method === 'POST' && url.pathname === '/about' && this.about) {
       const f = await readForm(req);
       const values: About = {};
@@ -747,6 +750,16 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       d.memory.project = url.searchParams.get('project') ?? undefined;
     }
     if (d.soul && SOUL_DOCS.includes(url.searchParams.get('doc') as SoulDoc)) d.soul.doc = url.searchParams.get('doc') as SoulDoc;
+    // Home automations (Devices tab): read from Home Assistant only for the page itself.
+    if (this.automations?.enabled && d.homeDevices?.enabled) {
+      const draftId = url.searchParams.get('automation');
+      const draft = draftId ? this.automations.draft(draftId) : undefined;
+      try {
+        d.automations = { ready: this.home?.state === 'ready', ...(this.home?.state === 'ready' ? await this.automations.list() : { automations: [], switches: [] }), draft };
+      } catch (err) {
+        d.automations = { ready: false, error: (err as Error).message, automations: [], switches: [], draft };
+      }
+    }
     const meetingId = url.searchParams.get('meeting');
     const meeting = meetingId ? this.meetings?.get(meetingId) : undefined;
     if (d.meetings && meeting) {
@@ -768,6 +781,39 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The Devices tab (Home Assistant on the box): its data and actions, all answered as JSON. */
+  /** Home automations (Devices tab): describe one, save the draft, turn on or off, run, delete; on/off switches. */
+  private async automationsRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const a = this.automations!;
+    const f = await readForm(req);
+    const back = (msg: string, ok = true, extra = '') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}${extra}#automations`);
+    try {
+      switch (url.pathname) {
+        case '/automations/draft': {
+          const r = await a.describe(f.get('text') ?? '', f.get('name') || undefined);
+          return r.ok ? back('Here is the draft: check it, then save it.', true, `&automation=${r.draft.id}`) : back(r.message, false);
+        }
+        case '/automations/save':
+          return back(await a.save(f.get('draft') ?? ''));
+        case '/automations/discard':
+          return back('Draft discarded.');
+        case '/automations/on':
+          return back(await a.setOn(f.get('entity') ?? '', f.get('on') === '1'));
+        case '/automations/run':
+          return back(await a.run(f.get('entity') ?? ''));
+        case '/automations/delete':
+          if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false);
+          return back(f.get('id') ? await a.remove(f.get('id')!) : await a.removeSwitch(f.get('entity') ?? ''));
+        case '/automations/switch':
+          await a.ensureSwitch(f.get('name') ?? '');
+          return back(`Switch "${(f.get('name') ?? '').trim()}" ready: automations can use it, and Max can turn it on and off.`);
+        default:
+          return back('Unknown action.', false);
+      }
+    } catch (err) {
+      return back(`Couldn't do that: ${(err as Error).message}`, false);
+    }
+  }
+
   /** Meetings page: send Max to a meeting, make him leave, rename, delete, download a transcript. */
   private async meetingsRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const meetings = this.meetings!;

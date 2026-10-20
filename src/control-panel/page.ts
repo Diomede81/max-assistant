@@ -9,6 +9,14 @@ import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
   homeDevices?: { enabled: boolean };
+  /** Home automations (Devices tab). */
+  automations?: {
+    ready: boolean;
+    error?: string;
+    automations: { id?: string; entityId: string; name: string; description?: string; on: boolean; lastRun?: string; byMax: boolean }[];
+    switches: { entityId: string; name: string; on: boolean }[];
+    draft?: { id: string; name: string; summary: string; newSwitches: string[]; config: Record<string, unknown> };
+  };
   music?: {
     state: string;
     account?: string;
@@ -259,6 +267,42 @@ function locationSection(l: NonNullable<PanelData['location']>): string {
 }
 
 const ON_NOW = ['joining', 'lobby', 'in-call', 'recording', 'ended'];
+
+function automationsSection(a: NonNullable<PanelData['automations']>): string {
+  if (!a.ready) return `<section id="automations"><h2>Automations</h2><p class="meta">${a.error ? `Couldn't read them: ${esc(a.error)}` : 'Home Assistant is still starting: automations show here once it is ready.'}</p></section>`;
+  const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
+  const d = a.draft;
+  const draft = d
+    ? `<div class="card"><h3>Draft: ${esc(d.name)}</h3><p>${esc(d.summary)}</p>${d.newSwitches.length ? `<p class="meta">Adds a new on/off switch: <b>${d.newSwitches.map(esc).join(', ')}</b>.</p>` : ''}
+<details><summary class="meta">The details (for Home Assistant)</summary><pre class="meta">${esc(JSON.stringify(d.config, null, 2))}</pre></details>
+<div class="acts">${post('/automations/save', { draft: d.id }, 'Save it', 'btn')}${post('/automations/discard', { draft: d.id }, 'Discard')}</div></div>`
+    : '';
+  const autos = a.automations.length
+    ? a.automations
+        .map(
+          (x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge ${x.on ? 'ok' : 'off'}">${x.on ? 'on' : 'off'}</span>${x.byMax ? ' <span class="badge">by Max</span>' : ''}</div>${x.description ? `<div class="meta">${esc(x.description)}</div>` : ''}<div class="meta">Last ran: ${esc(when(x.lastRun))}</div></div>
+<div class="acts">${post('/automations/on', { entity: x.entityId, on: x.on ? '0' : '1' }, x.on ? 'Turn off' : 'Turn on')}${post('/automations/run', { entity: x.entityId }, 'Run now')}${x.id ? `<form class="addfact danger" method="post" action="/automations/delete">${hidden('id', x.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form>` : ''}</div></li>`,
+        )
+        .join('')
+    : '<li class="empty">No automations yet: describe one below.</li>';
+  const switches = a.switches.length
+    ? `<h3>Switches</h3><p class="meta">On/off switches automations can check (say "Max, turn on the alarm").</p><ul>${a.switches
+        .map(
+          (s) => `<li class="row"><div class="name">${esc(s.name)} <span class="badge ${s.on ? 'ok' : 'off'}">${s.on ? 'on' : 'off'}</span></div><div class="acts">${post('/automations/on', { entity: s.entityId, on: s.on ? '0' : '1' }, s.on ? 'Turn off' : 'Turn on', s.on ? 'btn secondary' : 'btn')}<form class="addfact danger" method="post" action="/automations/delete">${hidden('entity', s.entityId)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form></div></li>`,
+        )
+        .join('')}</ul>`
+    : '';
+  return `<section id="automations"><h2>Automations</h2>
+<p class="meta">Things the house does by itself. Describe one in your own words (when…, only if…, then…), or ask Max ("Max, make an automation: …"). He writes it, shows it to you here (or reads it back), and saves it once you agree. Automations never unlock, disarm or open anything.</p>
+${draft}
+<form class="stack" method="post" action="/automations/draft">
+<textarea name="text" rows="3" maxlength="1500" required placeholder="e.g. When the alarm is on and I'm out, if the hallway motion sensor sees movement, turn on all the lights and say &quot;Motion in the hallway&quot;"></textarea>
+<div class="addfact"><input name="name" maxlength="80" placeholder="Name (optional)"><button class="btn" type="submit">Write it</button></div></form>
+<ul>${autos}</ul>
+${switches}
+<form class="addfact" method="post" action="/automations/switch"><input name="name" maxlength="40" required placeholder="New on/off switch, e.g. Alarm, Holiday, Guests"><button class="btn secondary" type="submit">Add switch</button></form>
+</section>`;
+}
 
 function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   if (!m.enabled) {
@@ -773,7 +817,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 
 <div class="pane" id="tab-memory">${d.about ? aboutSection(d.about) : ''}${d.memory ? memorySection(d.memory) : ''}</div>
 
-${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}</div>` : ''}
+${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}${d.automations ? automationsSection(d.automations) : ''}</div>` : ''}
 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 

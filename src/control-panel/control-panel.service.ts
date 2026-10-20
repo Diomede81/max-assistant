@@ -617,6 +617,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           minutes: m.startedAt ? Math.max(0, Math.round((Date.parse(m.endedAt ?? new Date().toISOString()) - Date.parse(m.startedAt)) / 60_000)) : undefined,
           turns: m.transcript?.length ?? 0,
           project: m.projectId ? this.projects.byId(m.projectId)?.name : undefined,
+          projectId: m.projectId,
+          filed: m.filed ? this.projects.byId(m.filed.projectId)?.name : undefined,
+          fileWhenReady: m.fileWhenReady ? this.projects.byId(m.fileWhenReady)?.name : undefined,
           answers: m.answers,
           liveOn: m.live,
           live: this.meetingsLive?.status(m.id),
@@ -706,6 +709,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
                 tasks: p.tasks.map((t) => ({ ...t, text: taskText(t) })),
                 facts: mem.facts.slice(0, 50).map((x) => ({ id: x.id, text: x.text, updatedAt: x.updatedAt })),
                 notes: mem.notes.slice(0, 10).map((x) => ({ id: x.id, summary: x.summary, at: x.at })),
+                meetings: (this.meetings?.list() ?? [])
+                  .filter((m) => m.filed?.projectId === p.id)
+                  .map((m) => ({ id: m.id, title: m.title, at: m.startedAt ?? m.at, notes: m.notes })),
               };
             }),
           }
@@ -743,7 +749,18 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (d.soul && SOUL_DOCS.includes(url.searchParams.get('doc') as SoulDoc)) d.soul.doc = url.searchParams.get('doc') as SoulDoc;
     const meetingId = url.searchParams.get('meeting');
     const meeting = meetingId ? this.meetings?.get(meetingId) : undefined;
-    if (d.meetings && meeting) d.meetings.selected = { id: meeting.id, title: meeting.title, platform: meeting.platform, at: meeting.at, status: meeting.status, lines: meeting.transcript ?? [] };
+    if (d.meetings && meeting) {
+      d.meetings.selected = {
+        id: meeting.id,
+        title: meeting.title,
+        platform: meeting.platform,
+        at: meeting.at,
+        status: meeting.status,
+        lines: meeting.transcript ?? [],
+        notes: meeting.notes,
+        filed: meeting.filed ? this.projects.byId(meeting.filed.projectId)?.name : undefined,
+      };
+    }
     // Which tab opens first (a #section in the address, e.g. after saving, takes precedence in the browser).
     const q = url.searchParams;
     d.tab = q.get('tab') ?? (q.has('doc') ? 'max' : q.has('project') ? 'projects' : q.has('vault') || q.has('q') ? 'memory' : q.has('connected') ? 'connections' : undefined);
@@ -780,6 +797,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case '/meetings/delete':
         if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, '#meetings', `&meeting=${encodeURIComponent(f.get('id') ?? '')}`);
         return back(meetings.remove(f.get('id') ?? '') ? 'Meeting deleted.' : 'Meeting not found.');
+      case '/meetings/file': {
+        const id = f.get('id') ?? '';
+        const r = await meetings.fileToProject(id, f.get('project') ?? '');
+        return back(r.message, r.ok, '#meetings', f.get('from') === 'detail' ? `&meeting=${encodeURIComponent(id)}` : '');
+      }
+      case '/meetings/unfile':
+        return back(meetings.cancelFiling(f.get('id') ?? '') ? "Won't be added to the project." : 'Nothing to cancel.');
+      case '/meetings/summarise': {
+        const id = f.get('id') ?? '';
+        return back(await meetings.resummarise(id), true, '#meetings', `&meeting=${encodeURIComponent(id)}`);
+      }
       case '/meetings/speak':
         return back(await meetings.setSpeaks(f.get('on') === '1'));
       case '/meetings/settings':

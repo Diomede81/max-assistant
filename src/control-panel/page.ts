@@ -56,8 +56,26 @@ export interface PanelData {
     projects: { id: string; name: string }[];
     settings: { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string };
     monthMinutes: number;
-    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number; project?: string; answers?: number; live?: string; liveOn?: boolean }[];
-    selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[] };
+    list: {
+      id: string;
+      title: string;
+      platform: string;
+      at: string;
+      state: string;
+      status: string;
+      minutes?: number;
+      turns: number;
+      project?: string;
+      projectId?: string;
+      /** The project its transcript was added to. */
+      filed?: string;
+      /** The project it goes to once the transcript is ready. */
+      fileWhenReady?: string;
+      answers?: number;
+      live?: string;
+      liveOn?: boolean;
+    }[];
+    selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[]; notes?: MeetingNotesView; filed?: string };
   };
   /** About you: the person Max supports. */
   about?: { fields: { key: string; label: string; hint: string; kind: string; max: number; modes: string[]; value: string }[] };
@@ -131,6 +149,20 @@ export interface PanelProject {
   tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string; criticality?: string }[];
   facts: { id: string; text: string; updatedAt: string }[];
   notes: { id: string; summary: string; at: string }[];
+  /** Meetings whose transcript was added to this project. */
+  meetings?: { id: string; title: string; at: string; notes?: MeetingNotesView }[];
+}
+
+export interface MeetingNotesView {
+  summary: string;
+  decisions: string[];
+  actions: string[];
+}
+
+/** A meeting's summary: what it was about, what was decided, what's to do. */
+function notesHtml(n: MeetingNotesView): string {
+  const list = (title: string, items: string[]) => (items.length ? `<p class="meta"><b>${title}</b></p><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+  return `<p>${esc(n.summary)}</p>${list('Decided', n.decisions)}${list("To do", n.actions)}`;
 }
 
 const SOUL_TABS: [string, string, string][] = [
@@ -240,13 +272,28 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   const row = (x: (typeof m.list)[number]) =>
     `<li class="row"><div><div class="name">${esc(x.title)} <span class="badge ${x.state === 'ready' ? 'ok' : x.state === 'failed' ? 'off' : ''}">${esc(x.status)}</span></div>
 <div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}${x.project ? ` · ${esc(x.project)}` : ''}${x.answers ? ` · answered you ${x.answers}×` : ''}</div>${ON_NOW.includes(x.state) && x.liveOn ? `<div class="meta">${esc(x.live ?? 'Live: no transcript lines received yet (they start once Max is taking notes)')}</div>` : ''}</div>
-<div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}</div></li>`;
+<div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}${fileForm(x)}</div></li>`;
+  // Adding the transcript to a project: now if it's ready, else as soon as it is.
+  const fileForm = (x: (typeof m.list)[number], from = '') => {
+    if (x.state === 'failed' || !m.projects.length) return '';
+    if (x.filed) return `<span class="badge ok">in ${esc(x.filed)}</span>`;
+    if (x.fileWhenReady) return `<span class="badge">goes to ${esc(x.fileWhenReady)} when ready</span>${post('/meetings/unfile', { id: x.id }, 'Cancel')}`;
+    if (x.state === 'ready' && !x.turns) return '';
+    const opts = m.projects.map((p) => `<option value="${esc(p.id)}" ${p.id === x.projectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    return `<form class="addfact" method="post" action="/meetings/file">${hidden('id', x.id)}${from ? hidden('from', from) : ''}<select name="project" aria-label="Project">${opts}</select><button class="btn secondary" type="submit">${x.state === 'ready' ? 'Add to project' : 'Add to project when ready'}</button></form>`;
+  };
   const sel = m.selected;
   const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
   const detail = sel
     ? `<section id="meeting-transcript"><h2>${esc(sel.title)}</h2>
 <p class="meta">${esc(sel.platform)} · ${esc(when(sel.at))} · ${esc(sel.status)} · <a href="/meetings/transcript.txt?id=${encodeURIComponent(sel.id)}">Download as text</a> · <a href="/#meetings">Back to meetings</a></p>
 <form class="addfact" method="post" action="/meetings/rename">${hidden('id', sel.id)}<input name="title" maxlength="120" required value="${esc(sel.title)}" aria-label="Meeting name"><button class="btn secondary" type="submit">Rename</button></form>
+${sel.notes ? `<h3>Summary</h3>${notesHtml(sel.notes)}` : sel.lines.length ? `<p class="meta">No summary yet.</p>` : ''}
+<div class="acts">${(() => {
+        const x = m.list.find((y) => y.id === sel.id);
+        return x ? fileForm(x, 'detail') : '';
+      })()}${sel.lines.length ? post('/meetings/summarise', { id: sel.id }, sel.notes ? 'Write the summary again' : 'Write a summary') : ''}</div>
+<h3>Transcript</h3>
 <div class="transcript">${sel.lines.map((l) => `<p><span class="meta">${stamp(l.at)}</span> <b>${esc(l.speaker)}</b> ${esc(l.text)}</p>`).join('') || '<p class="meta">Nobody spoke.</p>'}</div>
 <form class="addfact danger" method="post" action="/meetings/delete">${hidden('id', sel.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this meeting and its transcript</label><button class="btn secondary" type="submit">Delete</button></form></section>`
     : '';
@@ -329,6 +376,7 @@ function projectDetail(p: PanelProject): string {
 <div class="addfact"><input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)"><input name="assignee" list="people-${esc(p.id)}" placeholder="Who">${assignees}${levelSelects()}<button class="btn" type="submit">Add</button></div></form>
 <h3>People</h3><ul>${people}</ul>
 <form class="addfact" method="post" action="/projects/person-add">${hidden('id', p.id)}<input name="people" required placeholder="e.g. Marco (supplier, marco@acme.com)"><button class="btn secondary" type="submit">Add</button></form>
+${p.meetings?.length ? `<h3>Meetings</h3><ul>${p.meetings.map((x) => `<li class="row"><div><div class="name">${esc(x.title)} <span class="meta">· ${esc(day(x.at))}</span></div>${x.notes ? `<details><summary class="meta">Summary</summary>${notesHtml(x.notes)}</details>` : ''}</div><div class="acts"><a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a></div></li>`).join('')}</ul>` : ''}
 <h3>Project memory</h3><ul>${facts}</ul>${notes}
 <form class="addfact" method="post" action="/projects/note-add">${hidden('id', p.id)}<input name="fact" maxlength="300" required placeholder="Add a note to this project"><button class="btn secondary" type="submit">Remember</button></form>
 <form class="addfact danger" method="post" action="/projects/delete">${hidden('id', p.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this project with its tasks and memory</label><button class="btn secondary" type="submit">Delete</button></form>

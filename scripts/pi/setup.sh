@@ -291,6 +291,15 @@ else
   sed -i -E "s/^$OLD_HA_NOTE(HA_MCP_URL|HA_TOKEN)=/\1=/" .env
   docker compose -f docker-compose.yml -f docker-compose.pi.yml --profile home rm -sf homeassistant >/dev/null 2>&1 || true
 fi
+# The secure link for live meetings (Cloudflare Tunnel): on when its token is in .env.
+PROFILES="$( (sed -n 's/^COMPOSE_PROFILES=//p' .env | tr ',' '\n' | grep -vx 'tunnel' | grep -v '^$' | paste -sd, -) || true)"
+if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env; then
+  say "Live meetings: the secure link (Cloudflare Tunnel) is on"
+  set_env COMPOSE_PROFILES "${PROFILES:-max},tunnel"
+else
+  set_env COMPOSE_PROFILES "${PROFILES:-max}"
+  docker compose -f docker-compose.yml -f docker-compose.pi.yml --profile tunnel rm -sf cloudflared >/dev/null 2>&1 || true
+fi
 # Every "docker compose" command on the box includes the Pi settings (sound, control panel on the
 # home network), so a plain "docker compose up -d" can't lock the control panel to the box itself.
 set_env COMPOSE_FILE docker-compose.yml:docker-compose.pi.yml

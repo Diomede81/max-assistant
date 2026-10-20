@@ -11,6 +11,8 @@ services:
       MAX_RUN_DIR: /run/max
       # Home Assistant on the box (HA_LOCAL=1 in .env, set by setup): Max reaches it on the box itself.
       HA_LOCAL_URL: http://host.docker.internal:8123
+      # Live meetings: Recall.ai's transcript arrives here through the Cloudflare Tunnel (only that, on its own port).
+      MEETINGS_LIVE_HOST: 0.0.0.0
       CONTROL_PANEL_URL: ${CONTROL_PANEL_URL:-http://max.local:8099}
     volumes:
       - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
@@ -18,11 +20,26 @@ services:
     ports: !override
       - "8099:8099"
       - "127.0.0.1:8098:8098"
+      - "127.0.0.1:8097:8097"
   spotify:
     environment:
       PULSE_SERVER: unix:/run/user/${MAX_UID:-1000}/pulse/native
     volumes:
       - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
+  # The secure link for live meetings (docs/MEETINGS.md): an outgoing connection to Cloudflare that brings Recall.ai's
+  # live transcript to Max's port 8097, and nothing else (the control panel is never on it). Runs when
+  # CLOUDFLARE_TUNNEL_TOKEN is set in .env (setup adds the "tunnel" profile).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: always
+    network_mode: host
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
   # Home Assistant on the box (setup asks; COMPOSE_PROFILES then includes "home"). Max sets it up himself and
   # your devices are managed in Max's control panel (Devices); the full Home Assistant is at
   # http://max.local:8123. On the box's own network so it can find WiFi devices; its settings and history live

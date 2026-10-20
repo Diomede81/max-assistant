@@ -49,8 +49,11 @@ export interface PanelData {
   /** Meetings: Max joins online meetings as a notetaker (Recall.ai). */
   meetings?: {
     enabled: boolean;
+    /** Max can listen live and answer in meetings (the secure link is set up). */
+    live: boolean;
+    projects: { id: string; name: string }[];
     monthMinutes: number;
-    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number }[];
+    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number; project?: string; answers?: number }[];
     selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[] };
   };
   /** About you: the person Max supports. */
@@ -233,7 +236,7 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const row = (x: (typeof m.list)[number]) =>
     `<li class="row"><div><div class="name">${esc(x.title)} <span class="badge ${x.state === 'ready' ? 'ok' : x.state === 'failed' ? 'off' : ''}">${esc(x.status)}</span></div>
-<div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}</div></div>
+<div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}${x.project ? ` · ${esc(x.project)}` : ''}${x.answers ? ` · answered you ${x.answers}×` : ''}</div></div>
 <div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}</div></li>`;
   const sel = m.selected;
   const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
@@ -249,11 +252,12 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
 <p class="meta">Send Max to an online meeting: he joins as a notetaker, tells everyone in the meeting chat that he's transcribing, and brings back who said what.</p>
 <form class="stack" method="post" action="/meetings/join">
 <div class="addfact"><input name="link" type="url" required placeholder="Paste the meeting link (Teams, Zoom or Google Meet)" aria-label="Meeting link"></div>
-<div class="addfact"><input name="title" maxlength="120" placeholder="What it's about (optional), e.g. Acme weekly with Marco" aria-label="Meeting name"><button class="btn" type="submit">Send Max</button></div></form>
+<div class="addfact"><input name="title" maxlength="120" placeholder="What it's about (optional), e.g. Acme weekly with Marco" aria-label="Meeting name">${m.projects.length ? `<select name="project" aria-label="Project"><option value="">Project: from the name</option>${m.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}<button class="btn" type="submit">Send Max</button></div></form>
+<p class="meta">${m.live ? '<b>Max can answer you in meetings:</b> start with "Max, …" (only you, by your name in the meeting). He answers out loud from the meeting, general knowledge of its topic and its project, never anything personal.' : 'Max can also answer you out loud in meetings ("Max, what did we decide?"): this needs the secure link (Cloudflare Tunnel), see docs/MEETINGS.md.'}</p>
 <p class="meta">Teams: if the meeting has a lobby, someone in it has to let Max in. This month: ${len(m.monthMinutes) || '0 min'} of meetings, about $${cost.toFixed(2)} at Recall.ai.</p>
 ${now.length ? `<h3>On now</h3><ul>${now.map(row).join('')}</ul>` : ''}
 ${past.length ? `<h3>Earlier</h3><ul>${past.slice(0, 30).map(row).join('')}</ul>` : '<p class="meta">No meetings yet.</p>'}
-${post('/meetings/check', {}, 'Check the Recall.ai connection')}
+<div class="acts">${post('/meetings/check', {}, 'Check the Recall.ai connection')}${m.live ? post('/meetings/check-live', {}, 'Check the secure link') : ''}</div>
 ${now.length ? '<script>setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) location.reload(); }, 15000);</script>' : ''}
 </section>${detail}`;
 }

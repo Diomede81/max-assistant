@@ -10,6 +10,7 @@ import { MemoryService } from '../memory/memory.service';
 import { ProjectsService, taskText } from '../memory/projects.service';
 import { ModelsService } from '../models/models.service';
 import { TtsService } from '../tts/tts.service';
+import { LiveVoiceService, PCM24 } from '../realtime/live-voice.service';
 import { Meeting, MeetingsService } from './meetings.service';
 
 /** One line of the live transcript. */
@@ -55,6 +56,8 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly projects?: ProjectsService,
     @Optional() private readonly memory?: MemoryService,
     @Optional() private readonly about?: AboutService,
+    /** Max's real-time voice: meetings hear the same voice as at home, when that's the voice he uses. */
+    @Optional() private readonly liveVoice?: LiveVoiceService,
   ) {}
 
   /** Set up: a Recall.ai key and the box's public address (MEETINGS_PUBLIC_URL). */
@@ -235,8 +238,7 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
       });
       const text = reply.replace(/[*_#`>]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 600);
       if (!text) return;
-      const { format, pcm } = await this.tts.render(text);
-      const audio = await mp3(pcm, format.rate, format.channels);
+      const audio = await this.voice(text);
       await this.meetings.say(m.botId, audio.toString('base64'));
       this.meetings.noteAnswer(m);
       this.note(m, `Answered you: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`);
@@ -248,6 +250,14 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.busy.delete(m.id);
     }
+  }
+
+  /** The answer as MP3, in Max's own voice: his real-time voice when that's on, else his standard one. */
+  private async voice(text: string): Promise<Buffer> {
+    const live = this.liveVoice?.active ? await this.liveVoice.line(text, 15_000) : undefined;
+    if (live?.length) return mp3(live, PCM24.rate, PCM24.channels);
+    const { format, pcm } = await this.tts.render(text);
+    return mp3(pcm, format.rate, format.channels);
   }
 
   /** The meeting's project, briefly: what Max may draw on when answering in it. */

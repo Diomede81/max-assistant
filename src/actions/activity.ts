@@ -22,6 +22,7 @@ export function describeActivity(name: string): Activity | undefined {
   if (name === 'remember' || name === 'forget') return { icon: '🧠', label: 'Updating my memory' };
   if (name === 'about_you') return { icon: '🙂', label: 'Noting that about you' };
   if (name === 'meeting') return { icon: '🎧', label: 'Checking your meetings' };
+  if (name === 'camera') return { icon: '📷', label: 'Checking the cameras' };
   if (name === 'home_automation') return { icon: '⚙️', label: 'Working on your automations' };
   if (name === 'project') return { icon: '📁', label: 'Checking your projects' };
   if (name === 'todo' || name === 'task') return { icon: '✅', label: 'Updating your to-do list' };

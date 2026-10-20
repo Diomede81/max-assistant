@@ -146,7 +146,8 @@ export class CamerasService {
             'screen and say what it saw lately: use it whenever the user wants to see, check or look at a camera or the door ' +
             '("show me the front door", "check the camera", "who\'s at the door?"); with no camera named, the one that saw ' +
             'something most recently. list: only when they ask which cameras there are. You only show the still picture: you ' +
-            "can't describe what's in it. To show a camera every time something happens (motion, a ring), make a home automation.",
+            "can't describe what's in it. To show a camera AND say something every time something happens (motion, a ring), " +
+            'make a home automation (home_automation draft): it can do both at once.',
           parameters: {
             type: 'object',
             properties: {

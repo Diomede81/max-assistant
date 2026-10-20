@@ -41,19 +41,32 @@ export class RecallClient {
     return this.base!.replace(/^https:\/\/([^.]+)\..*$/, '$1');
   }
 
-  async createBot(meetingUrl: string, botName: string, chatMessage: string): Promise<RecallBot> {
-    const body = {
+  /**
+   * live: the transcript is also sent, line by line, to `live.url` while the meeting is on (so Max can answer), and
+   * the bot gets a voice (Recall.ai only plays audio for bots made with one: a moment of silence, `live.silence`).
+   */
+  async createBot(meetingUrl: string, botName: string, chatMessage: string, live?: { url: string; silence?: string }): Promise<RecallBot> {
+    const body: Record<string, unknown> = {
       meeting_url: meetingUrl,
       bot_name: botName,
-      recording_config: { transcript: { provider: { recallai_streaming: { mode: 'prioritize_accuracy', language_code: 'auto' } } } },
+      recording_config: {
+        transcript: { provider: { recallai_streaming: { mode: live ? 'prioritize_low_latency' : 'prioritize_accuracy', language_code: live ? 'en' : 'auto' } } },
+        ...(live ? { realtime_endpoints: [{ type: 'webhook', url: live.url, events: ['transcript.data'] }] } : {}),
+      },
       // Tells everyone in the meeting that it's being transcribed, as soon as Max is in.
       chat: { on_bot_join: { send_to: 'everyone', message: chatMessage } },
     };
+    if (live?.silence) body.automatic_audio_output = { in_call_recording: { data: { kind: 'mp3', b64_data: live.silence } } };
     return toBot(await this.request('POST', '/bot/', body));
   }
 
   async getBot(id: string): Promise<RecallBot> {
     return toBot(await this.request('GET', `/bot/${encodeURIComponent(id)}/`));
+  }
+
+  /** Plays an MP3 (as base64) into the meeting: Max speaking. */
+  async say(id: string, mp3Base64: string): Promise<void> {
+    await this.request('POST', `/bot/${encodeURIComponent(id)}/output_audio/`, { kind: 'mp3', b64_data: mp3Base64 });
   }
 
   async leave(id: string): Promise<void> {

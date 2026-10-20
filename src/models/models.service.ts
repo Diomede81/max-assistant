@@ -9,6 +9,7 @@ export const TASKS = {
   suggest: { label: 'Website suggestions', help: 'Suggests news websites for your interests.' },
   memory: { label: 'Filing conversations', help: 'After each conversation, decides what is worth remembering and where.' },
   digest: { label: 'Memory tidy-up', help: 'Rolls old conversation notes up into weekly and monthly digests.' },
+  meetings: { label: 'Meeting answers', help: 'Answers you out loud in online meetings: a fast model keeps the wait short.' },
 } as const;
 export type Task = keyof typeof TASKS;
 

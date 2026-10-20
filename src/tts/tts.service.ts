@@ -152,6 +152,15 @@ export class TtsService {
     return { format, audio };
   }
 
+  /** A whole phrase as audio, without playing it (e.g. to say it in an online meeting). */
+  async render(text: string): Promise<{ format: PcmFormat; pcm: Buffer }> {
+    const s = this.synthesize(text);
+    const format = await s.format;
+    const parts: Buffer[] = [];
+    for await (const chunk of s.audio) parts.push(chunk);
+    return { format, pcm: Buffer.concat(parts) };
+  }
+
   /** Short phrases (the greeting) synthesised once and kept, so they play without any delay. */
   private readonly ready = new Map<string, { format: PcmFormat; pcm: Buffer[] }>();
 

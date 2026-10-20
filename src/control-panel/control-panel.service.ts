@@ -4,6 +4,7 @@ import { WebService } from '../web/web.service';
 import { COUNTRIES, LocationService } from '../location/location.service';
 import { ABOUT_FIELDS, About, AboutService } from '../about/about.service';
 import { MeetingsService } from '../meetings/meetings.service';
+import { MeetingLiveService } from '../meetings/meeting-live.service';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { APP_CONFIG, AppConfig } from '../config';
 import { ComposioService, Side } from '../composio/composio.service';
@@ -47,6 +48,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(AboutService) private readonly about?: AboutService;
   @Optional() @Inject(MeetingsService) private readonly meetings?: MeetingsService;
+  @Optional() @Inject(MeetingLiveService) private readonly meetingsLive?: MeetingLiveService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
@@ -600,6 +602,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       whatsapp: await this.whatsapp?.status(),
       meetings: this.meetings && {
         enabled: this.meetings.enabled,
+        live: Boolean(this.meetingsLive?.enabled),
+        projects: this.projects.all().filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name })),
         monthMinutes: this.meetings.monthMinutes(),
         list: this.meetings.list().map((m) => ({
           id: m.id,
@@ -610,6 +614,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           status: m.status,
           minutes: m.startedAt ? Math.max(0, Math.round((Date.parse(m.endedAt ?? new Date().toISOString()) - Date.parse(m.startedAt)) / 60_000)) : undefined,
           turns: m.transcript?.length ?? 0,
+          project: m.projectId ? this.projects.byId(m.projectId)?.name : undefined,
+          answers: m.answers,
         })),
       },
       about: this.about && { fields: ABOUT_FIELDS.map((f) => ({ ...f, value: this.about!.about[f.key] ?? '' })) },
@@ -758,7 +764,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const f = await readForm(req);
     switch (url.pathname) {
       case '/meetings/join': {
-        const r = await meetings.join(f.get('link') ?? '', f.get('title') ?? '');
+        const r = await meetings.join(f.get('link') ?? '', f.get('title') ?? '', f.get('project') || undefined);
         return back(r.message, r.ok);
       }
       case '/meetings/leave':
@@ -770,6 +776,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case '/meetings/delete':
         if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, '#meetings', `&meeting=${encodeURIComponent(f.get('id') ?? '')}`);
         return back(meetings.remove(f.get('id') ?? '') ? 'Meeting deleted.' : 'Meeting not found.');
+      case '/meetings/check-live':
+        return back((await this.meetingsLive?.check()) ?? 'Not set up.');
       case '/meetings/check':
         try {
           return back(await meetings.check());

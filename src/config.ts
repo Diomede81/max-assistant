@@ -92,7 +92,19 @@ export interface AppConfig {
    */
   trains: { railDataKey: string; railDataUrl: string; googleMapsKey: string; homeStation: string };
   /** Meetings: Max joins online meetings (Teams, Zoom, Meet) through Recall.ai and brings back the transcript. */
-  meetings: { recallKey: string; recallRegion: string; recallBaseUrl: string; botName: string };
+  meetings: {
+    recallKey: string;
+    recallRegion: string;
+    recallBaseUrl: string;
+    botName: string;
+    /** The box's secure public address for live meetings (Cloudflare Tunnel), e.g. https://max-meetings.example.com. */
+    publicUrl: string;
+    /** Where Max listens for the live transcript (only this, behind the tunnel). */
+    liveHost: string;
+    livePort: number;
+    /** Your name as it shows in meetings, when it differs from About you. */
+    ownerName: string;
+  };
   /**
    * Extra AI providers for background jobs (news briefings, memory filing...): one key per
    * provider in .env; which model does which job is chosen on the control panel.
@@ -285,6 +297,10 @@ export function loadConfig(): AppConfig {
       // Only for testing against a stand-in for Recall.ai.
       recallBaseUrl: env.RECALL_BASE_URL ?? '',
       botName: env.MEETING_BOT_NAME ?? '',
+      publicUrl: (env.MEETINGS_PUBLIC_URL ?? '').replace(/\/+$/, ''),
+      liveHost: env.MEETINGS_LIVE_HOST || '127.0.0.1',
+      livePort: num(env.MEETINGS_LIVE_PORT, 8097),
+      ownerName: env.MEETING_OWNER_NAME ?? '',
     },
     trains: {
       railDataKey: env.RAIL_DATA_KEY ?? '',

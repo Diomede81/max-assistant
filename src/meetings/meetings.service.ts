@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { APP_CONFIG, AppConfig } from '../config';
 import { AboutService } from '../about/about.service';
 import { MemoryService } from '../memory/memory.service';
+import { ProjectsService } from '../memory/projects.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { RecallBot, RecallClient, TranscriptLine } from './recall.client';
 
@@ -24,6 +25,12 @@ export interface Meeting {
   startedAt?: string;
   endedAt?: string;
   transcript?: TranscriptLine[];
+  /** The project this meeting is about: what Max may use when answering in it. */
+  projectId?: string;
+  /** Max listens live and answers you when you say "Max, …". */
+  live?: boolean;
+  /** How many times he answered. */
+  answers?: number;
 }
 
 /** Recall.ai's bot statuses, as Max says them. */
@@ -77,12 +84,15 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
   private meetings: Meeting[] = [];
   private timer?: NodeJS.Timeout;
   private polling = false;
+  /** Set by the live part when the box is reachable (Cloudflare Tunnel): where Recall.ai sends the live transcript. */
+  liveTarget?: { url: string; silence?: string };
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     // Injected so the memory key exists before the meetings are opened.
     @Optional() private readonly memory?: MemoryService,
     @Optional() private readonly about?: AboutService,
+    @Optional() private readonly projects?: ProjectsService,
   ) {
     this.recall = new RecallClient(cfg.meetings.recallKey, cfg.meetings.recallRegion, cfg.meetings.recallBaseUrl);
   }
@@ -122,8 +132,40 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
     return `Connected to Recall.ai (${await this.recall.check()}).`;
   }
 
+  getByBot(botId: string): Meeting | undefined {
+    return this.meetings.find((m) => m.botId === botId);
+  }
+
+  /** Max speaking in a meeting (an MP3, as base64). */
+  async say(botId: string, mp3Base64: string): Promise<void> {
+    await this.recall.say(botId, mp3Base64);
+  }
+
+  noteAnswer(m: Meeting): void {
+    m.answers = (m.answers ?? 0) + 1;
+    this.persist();
+  }
+
+  /** The project a meeting is about: the one chosen, else one whose name is in the meeting's title. */
+  private projectFor(title: string, wanted?: string): string | undefined {
+    if (!this.projects) return undefined;
+    const all = this.projects.all().filter((p) => p.status !== 'done');
+    if (wanted) return (all.find((p) => p.id === wanted) ?? all.find((p) => p.name.toLowerCase() === wanted.trim().toLowerCase()))?.id;
+    const t = ` ${title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+    const hits = all.filter((p) => t.includes(` ${p.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `));
+    return hits.length === 1 ? hits[0].id : undefined;
+  }
+
+  setProject(id: string, projectId: string): boolean {
+    const m = this.get(id);
+    if (!m) return false;
+    m.projectId = projectId ? this.projectFor('', projectId) : undefined;
+    this.persist();
+    return true;
+  }
+
   /** Sends Max to a meeting. Returns what to tell the user. */
-  async join(link: string, title = ''): Promise<{ ok: boolean; message: string; meeting?: Meeting }> {
+  async join(link: string, title = '', project?: string): Promise<{ ok: boolean; message: string; meeting?: Meeting }> {
     if (!this.enabled) return { ok: false, message: 'Meetings need a Recall.ai key: set RECALL_API_KEY in .env.' };
     const platform = platformOf(link);
     if (!platform) return { ok: false, message: 'That isn\'t a Teams, Zoom or Google Meet meeting link.' };
@@ -135,7 +177,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
     const chat = `Hi, I'm Max, ${who ? `${who}'s` : 'an'} AI notetaker. I'm transcribing this meeting so ${who ?? 'my owner'} gets the notes.`;
     let bot: RecallBot;
     try {
-      bot = await this.recall.createBot(link.trim(), name, chat);
+      bot = await this.recall.createBot(link.trim(), name, chat, this.liveTarget);
     } catch (err) {
       return { ok: false, message: `Couldn't send Max: ${(err as Error).message}` };
     }
@@ -148,12 +190,21 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
       at: new Date().toISOString(),
       state: 'joining',
       status: 'Joining the meeting',
+      projectId: this.projectFor(title, project),
+      live: Boolean(this.liveTarget),
     };
     this.apply(m, bot);
     this.meetings.push(m);
     this.persist();
     this.log.log(`Joining a ${platform} meeting (${m.title})`);
-    return { ok: true, message: `Max is joining the ${platform} meeting. If there's a lobby, let him in.`, meeting: m };
+    const proj = m.projectId ? this.projects?.byId(m.projectId)?.name : undefined;
+    return {
+      ok: true,
+      message:
+        `Max is joining the ${platform} meeting${proj ? ` (project: ${proj})` : ''}. If there's a lobby, let him in.` +
+        (m.live ? ' Say "Max, …" in the meeting to ask him something.' : ''),
+      meeting: m,
+    };
   }
 
   async leave(id: string): Promise<string> {
@@ -221,6 +272,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
               action: { type: 'string', enum: ['join', 'status', 'leave', 'recent', 'transcript'] },
               link: { type: 'string', description: 'join: the meeting link (https://teams.microsoft.com/..., zoom.us, meet.google.com)' },
               title: { type: 'string', description: "join: what the meeting is, e.g. \"Acme weekly with Marco\"; leave / transcript: which meeting (optional: the current or latest one)" },
+              project: { type: 'string', description: 'join: the project the meeting is about, if the user says or it is obvious (optional)' },
               confirmed: { type: 'boolean' },
             },
             required: ['action'],
@@ -243,7 +295,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
         if (!link) return "No link: find the meeting's join link in the calendar, or ask the user to paste it on the control panel (Meetings).";
         if (!platformOf(link)) return "That isn't a Teams, Zoom or Google Meet link: look for the meeting's online join link instead.";
         if (a.confirmed !== true) return 'Not joined yet: say which meeting and ask the user to confirm, then call again with confirmed=true.';
-        const r = await this.join(link, title);
+        const r = await this.join(link, title, typeof a.project === 'string' ? a.project : undefined);
         return r.ok ? `${r.message} You'll post in the meeting chat that you're taking notes. Tell the user, briefly.` : r.message;
       }
       case 'leave': {

@@ -281,7 +281,7 @@ function automationsSection(a: NonNullable<PanelData['automations']>): string {
     ? a.automations
         .map(
           (x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge ${x.on ? 'ok' : 'off'}">${x.on ? 'on' : 'off'}</span>${x.byMax ? ' <span class="badge">by Max</span>' : ''}</div>${x.description ? `<div class="meta">${esc(x.description)}</div>` : ''}<div class="meta">Last ran: ${esc(when(x.lastRun))}</div></div>
-<div class="acts">${post('/automations/on', { entity: x.entityId, on: x.on ? '0' : '1' }, x.on ? 'Turn off' : 'Turn on')}${post('/automations/run', { entity: x.entityId }, 'Run now')}${x.id ? `<form class="addfact danger" method="post" action="/automations/delete">${hidden('id', x.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form>` : ''}</div></li>`,
+<div class="acts">${post('/automations/on', { entity: x.entityId, on: x.on ? '0' : '1' }, x.on ? 'Turn off' : 'Turn on')}${post('/automations/run', { entity: x.entityId }, 'Run now')}${x.id ? `<form class="addfact" method="post" action="/automations/rename">${hidden('id', x.id)}<input name="name" maxlength="80" required value="${esc(x.name)}" aria-label="New name"><button class="btn secondary" type="submit">Rename</button></form>` : ''}${x.id ? `<form class="addfact danger" method="post" action="/automations/delete">${hidden('id', x.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form>` : ''}</div></li>`,
         )
         .join('')
     : '<li class="empty">No automations yet: describe one below.</li>';

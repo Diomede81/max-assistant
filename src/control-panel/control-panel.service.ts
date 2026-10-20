@@ -798,6 +798,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           return back('Draft discarded.');
         case '/automations/on':
           return back(await a.setOn(f.get('entity') ?? '', f.get('on') === '1'));
+        case '/automations/rename':
+          return back(await a.rename(f.get('id') ?? '', f.get('name') ?? ''));
         case '/automations/run':
           return back(await a.run(f.get('entity') ?? ''));
         case '/automations/delete':

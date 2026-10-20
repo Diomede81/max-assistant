@@ -60,6 +60,8 @@ const BLOCKED = /^(lock\.(unlock|open)|alarm_control_panel\.alarm_disarm|cover\.
 export class AutomationsService extends EventEmitter implements OnModuleInit {
   private readonly log = new Logger('Automations');
   private readonly drafts = new Map<string, AutomationDraft>();
+  /** The automations' and switches' names, as last read: told to the AI so it uses the existing ones. */
+  private known: { automations: string[]; switches: string[] } = { automations: [], switches: [] };
 
   constructor(
     private readonly home: HomeService,
@@ -75,14 +77,15 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
   onModuleInit(): void {
     if (!this.enabled) return;
     // Automations that say something on the box ("Motion in the hallway while the alarm is on").
-    void this.home.ready().then(() =>
+    void this.home.ready().then(() => {
+      void this.list().catch(() => undefined); // the names, for the AI
       this.home.listen(SAY_EVENT, (data) => {
         const text = String(data.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
         if (!text) return;
         this.log.log(`An automation asked Max to say: ${text}`);
         this.emit('say', text);
-      }),
-    );
+      });
+    });
   }
 
   // ---------- Reading ----------
@@ -117,6 +120,7 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
       .filter((s) => s.entity_id.startsWith('input_boolean.'))
       .map((s) => ({ entityId: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), on: s.state === 'on' }))
       .sort((a, b) => a.name.localeCompare(b.name));
+    this.known = { automations: automations.map((x) => x.name), switches: switches.map((x) => x.name) };
     return { automations, switches };
   }
 
@@ -149,7 +153,7 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
       .complete('home', {
         system:
           'You write Home Assistant automations from what the user describes. Answer with JSON only:\n' +
-          '{"name": "short name", "summary": "what it does in plain words, one or two sentences: when…, only if…, then…", ' +
+          '{"name": "a short name, 2 to 4 words, e.g. \"Alarm: hallway motion\"", "summary": "what it does in plain words, one or two sentences: when…, only if…, then…", ' +
           '"new_switches": ["names of new on/off switches it needs, if any"], "automation": {"triggers": [...], "conditions": [...], "actions": [...], "mode": "single"}}\n' +
           'Use current Home Assistant syntax: triggers with "trigger": "state" (entity_id, to, from, for), "time", "sun", "numeric_state"; ' +
           'conditions with "condition": "state", "time", "sun", "numeric_state", "or"/"and"; actions with "action": "domain.service", ' +
@@ -251,6 +255,18 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
     return entityId;
   }
 
+  /** Renames an automation (its id stays, so nothing else changes). */
+  async rename(id: string, name: string): Promise<string> {
+    const clean = name.replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!clean) return 'Give it a name.';
+    if (!/^[\w-]+$/.test(id)) return 'Automation not found.';
+    const path = `/api/config/automation/config/${encodeURIComponent(id)}`;
+    const config = await this.home.rest<Record<string, unknown>>('GET', path);
+    await this.home.rest('POST', path, { ...config, id, alias: clean });
+    void this.list().catch(() => undefined);
+    return `Renamed to "${clean}".`;
+  }
+
   async setOn(entityId: string, on: boolean): Promise<string> {
     if (!/^(automation|input_boolean)\.[a-z0-9_]+$/.test(entityId)) return 'Not an automation or switch.';
     const domain = entityId.split('.')[0];
@@ -296,14 +312,20 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
             'Home automations (Home Assistant): things that happen by themselves. draft: write one from what the user describes ' +
             '(when, only if, then: e.g. "when I\'m out and the alarm is on, if the hallway sensor sees motion, turn on all the lights ' +
             'and tell me"); you get a plain summary and a draft_id. Read the summary back and ask "Shall I save it?"; on yes call save ' +
-            'with the draft_id. list: the automations and switches. on / off: turn an automation (or a switch like "Alarm") on or off. ' +
-            'run: run one now (to test it). delete: delete one. Automations never unlock, disarm or open anything.',
+            'with the draft_id. ONLY draft when the user describes a NEW automation. When they name one that exists ("turn off the ' +
+            'alarm automation", "switch the hallway one back on"), never draft: use on / off with its name (a few words of it are ' +
+            'enough). on / off: turn an automation, or a switch like "Alarm", on or off. run: run one now (to test it). rename: give ' +
+            'one a new name (name, new_name). delete: delete one. list: all of them. Automations never unlock, disarm or open ' +
+            'anything.' +
+            (this.known.automations.length ? ` Existing automations: ${this.known.automations.slice(0, 30).map((n) => `"${n}"`).join(', ')}.` : '') +
+            (this.known.switches.length ? ` Switches: ${this.known.switches.slice(0, 20).map((n) => `"${n}"`).join(', ')}.` : ''),
           parameters: {
             type: 'object',
             properties: {
-              action: { type: 'string', enum: ['draft', 'save', 'list', 'on', 'off', 'run', 'delete'] },
+              action: { type: 'string', enum: ['draft', 'save', 'list', 'on', 'off', 'run', 'rename', 'delete'] },
               description: { type: 'string', description: 'draft: what the automation should do, in the user\'s words (when, only if, then)' },
-              name: { type: 'string', description: 'draft: a short name (optional); on / off / run / delete: which automation or switch' },
+              name: { type: 'string', description: 'draft: a short name (optional); on / off / run / rename / delete: which automation or switch (a few words of its name)' },
+              new_name: { type: 'string', description: 'rename: the new name' },
               draft_id: { type: 'string', description: 'save: the draft_id from draft' },
               confirmed: { type: 'boolean' },
             },
@@ -323,6 +345,17 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
     try {
       switch (str(a.action)) {
         case 'draft': {
+          // "Turn off the alarm automation" sent as a new one: it's about an existing automation.
+          const d = str(a.description);
+          const toggle = /^\W*(please\s+)?(can you\s+)?((turn|switch|put)\b.*\b(on|off)|(enable|disable|activate|deactivate|pause|resume|stop|start)\b)/i.exec(d);
+          if (toggle && d.split(/\s+/).length <= 12) {
+            const { automations, switches } = await this.list();
+            const hit = best(d, [...automations, ...(/automation/i.test(d) ? [] : switches)]);
+            if (!('error' in hit)) {
+              const on = !/\b(off|disable|deactivate|pause|stop)\b/i.test(d);
+              return `${hit.item.name}: ${await this.setOn(hit.item.entityId, on)} (an existing one: nothing new was made)`;
+            }
+          }
           const r = await this.describe(str(a.description), str(a.name) || undefined);
           if (!r.ok) return r.message;
           return (
@@ -345,21 +378,30 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
         case 'on':
         case 'off':
         case 'run':
+        case 'rename':
         case 'delete': {
           const { automations, switches } = await this.list();
-          const want = str(a.name).toLowerCase();
-          const pickFrom = <T extends { name: string }>(l: T[]) => l.find((x) => x.name.toLowerCase() === want) ?? l.find((x) => want && x.name.toLowerCase().includes(want));
-          const auto = pickFrom(automations);
-          const sw = a.action === 'run' ? undefined : pickFrom(switches);
-          if (!auto && !sw) return `No automation or switch called "${str(a.name)}". ${automations.length ? `Automations: ${automations.map((x) => x.name).join(', ')}.` : ''}`;
+          const pool = [
+            ...automations.map((x) => ({ ...x, kind: 'automation' as const })),
+            // "the alarm automation": only automations; "the alarm": the switch wins when it matches as well.
+            ...(a.action === 'run' || a.action === 'rename' || /automation/i.test(str(a.name)) ? [] : switches.map((x) => ({ ...x, kind: 'switch' as const }))),
+          ];
+          const hit = best(str(a.name), pool, a.action === 'on' || a.action === 'off' ? a.action : undefined);
+          if ('error' in hit) return hit.error;
+          const auto = hit.item.kind === 'automation' ? automations.find((x) => x.entityId === hit.item.entityId) : undefined;
+          const sw = hit.item.kind === 'switch' ? switches.find((x) => x.entityId === hit.item.entityId) : undefined;
           if (a.action === 'run') return await this.run(auto!.entityId);
+          if (a.action === 'rename') {
+            if (!auto?.id) return "That one can only be renamed in Home Assistant's own screens.";
+            return `${auto.name}: ${await this.rename(auto.id, str(a.new_name))}`;
+          }
           if (a.action === 'delete') {
             if (a.confirmed !== true) return 'Not deleted yet: ask the user to confirm, then call again with confirmed=true.';
             if (auto) return auto.id ? await this.remove(auto.id) : "That one can only be deleted in Home Assistant's own screens.";
             return await this.removeSwitch(sw!.entityId);
           }
-          const target = auto && (!sw || auto.name.toLowerCase() === want) ? auto.entityId : sw!.entityId;
-          return await this.setOn(target, a.action === 'on');
+          const target = auto ?? sw!;
+          return `${target.name}: ${await this.setOn(target.entityId, a.action === 'on')}`;
         }
         default:
           return 'Unknown action.';
@@ -413,4 +455,35 @@ export function check(auto: Record<string, unknown>, known: Set<string>): string
   };
   walk(auto);
   return bad.length ? `${[...new Set(bad)].slice(0, 3).join('; ')}.` : undefined;
+}
+
+/** Words that say nothing about which automation is meant. */
+const FILLER = new Set(['the', 'a', 'an', 'my', 'our', 'automation', 'automations', 'switch', 'please', 'turn', 'switch', 'on', 'off', 'it', 'one', 'that', 'this', 'enable', 'disable', 'activate', 'deactivate', 'pause', 'resume', 'back', 'again', 'now', 'can', 'you', 'max', 'and', 'of', 'for', 'to', 'in', 'when', 'is', 'set', 'put']);
+
+/**
+ * The automation or switch the user means, from a few words of its name ("the hallway one", "alarm motion"): the one
+ * sharing the most words with what they said. Several equally good: which one is asked.
+ */
+export function best<T extends { name: string; on?: boolean }>(said: string, pool: T[], wantOn?: 'on' | 'off'): { item: T } | { error: string } {
+  const words = (s: string) => slug(s).split('_').filter((w) => w && !FILLER.has(w));
+  const asked = words(said);
+  const names = pool.map((x) => x.name);
+  if (!pool.length) return { error: 'There are no automations or switches yet.' };
+  const exact = pool.find((x) => slug(x.name) === slug(said));
+  if (exact) return { item: exact };
+  if (!asked.length) return { error: `Which one? ${names.map((n) => `"${n}"`).join(', ')}.` };
+  const score = (x: T) => {
+    const w = words(x.name);
+    const hits = asked.filter((a) => w.some((n) => n === a || (a.length > 3 && (n.startsWith(a) || a.startsWith(n))))).length;
+    return hits / asked.length + hits / Math.max(1, w.length) / 10;
+  };
+  const ranked = pool.map((x) => ({ x, s: score(x) })).filter((r) => r.s >= 0.5).sort((p, q) => q.s - p.s);
+  if (!ranked.length) return { error: `No automation or switch matches "${said}". There are: ${names.map((n) => `"${n}"`).join(', ')}.` };
+  let top = ranked.filter((r) => Math.abs(r.s - ranked[0].s) < 1e-9);
+  // Turning one on: prefer the one that's off (and the other way round).
+  if (top.length > 1 && wantOn) {
+    const fits = top.filter((r) => r.x.on === (wantOn === 'off'));
+    if (fits.length === 1) top = fits;
+  }
+  return top.length === 1 ? { item: top[0].x } : { error: `Several match: ${top.map((r) => `"${r.x.name}"`).join(', ')}. Ask which one.` };
 }

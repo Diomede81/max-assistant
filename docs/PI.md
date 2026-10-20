@@ -217,6 +217,8 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   listed under **Batteries and connections**, which says when one needs attention.
 - **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
   each one works, and **Remove**.
+- **Names and rooms by voice:** "Max, rename the hallway sensor to Front door motion", "move the lamp to the
+  bedroom" (the same as **Edit** on a card).
 - **Cameras and doorbells** (e.g. Ring): "Max, show me the front door" puts the camera's latest picture on his screen,
   and he says when it last saw motion or someone rang ("who was at the door?"); with no camera named, the one that saw
   something last. An automation can do it too: "every time the front camera sees motion, show it on the screen and
@@ -227,7 +229,8 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   "Max, make an automation: when the alarm is on and there's motion in the hallway, turn on all the lights and tell
   me"). Max writes it, shows it (or reads it back), and saves it once you agree. He can make on/off **switches** for
   them to check ("Alarm", "Holiday": "Max, turn on the alarm"), and say things out loud on the box when an
-  automation asks him to. Each one can be turned off, run now (to test it), renamed or deleted; by voice, a few words
+  automation asks him to. Phone notifications (optionally with the camera's picture in them) need the **Home Assistant
+  app** on your phone, signed in to the box's Home Assistant (<http://max.local:8123>, login under Devices → Advanced). Each one can be turned off, run now (to test it), renamed or deleted; by voice, a few words
   of its name are enough ("Max, turn off the hallway alarm", "rename the hallway one to Night alarm"). Automations never unlock,
   disarm or open anything, and only use devices you have. (Boxes set up before this: the next update turns
   automations on in Home Assistant, which restarts once.)

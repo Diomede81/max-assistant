@@ -181,7 +181,15 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
           `(and say a line), use {"event": "${CAMERA_EVENT}", "event_data": {"camera": "camera.…", "message": "what to say"}}: ` +
           'for "show me the camera / the picture when…", use this one, not max_say: it does both, the picture and the line. ' +
           'Never say in the summary that Max can\'t show pictures or combine them with an announcement: he can. ' +
-          (phones.length ? `To send a notification to a phone, use "action": "notify.<name>" with data.title/message; phones: ${phones.join(', ')}. ` : 'No phone notifications are set up (Home Assistant app): use Max saying it instead, and say so in the summary. ') +
+          (phones.length
+            ? `To send a notification to a phone, use "action": "notify.<name>" with data.title/message; phones: ${phones.join(', ')}. ` +
+              'A phone notification can carry a camera\'s picture: add "data": {"image": "/api/camera_proxy/camera.…", "entity_id": "camera.…"} ' +
+              'inside its data (e.g. {"action": "notify.mobile_app_x", "data": {"title": "Front door", "message": "Motion", "data": ' +
+              '{"image": "/api/camera_proxy/camera.front_door", "entity_id": "camera.front_door"}}}). Never say a notification ' +
+              'can\'t include the camera picture: it can. '
+            : 'No phone is set up for notifications (the Home Assistant app on the phone, signed in to this Home Assistant): use ' +
+              'Max saying it (and showing the camera on his screen) instead, and say in the summary that phone notifications, with or ' +
+              'without the camera picture, need the Home Assistant app on the phone first. ') +
           '"When I\'m out / away": a person entity\'s state "not_home" if one is listed and it is not "unknown"; otherwise, or for ' +
           '"when the alarm is on / active" with no alarm listed, use an on/off switch: put its name in new_switches (e.g. "Alarm") ' +
           'and use the entity id input_boolean.<name in lower case, spaces as underscores>. Motion: binary_sensor with ' +
@@ -336,7 +344,8 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
             '(when, only if, then: e.g. "when I\'m out and the alarm is on, if the hallway sensor sees motion, turn on all the lights ' +
             'and tell me"); you get a plain summary and a draft_id. Read the summary back and ask "Shall I save it?"; on yes call save ' +
             'with the draft_id. What an automation can do: control devices, make you SAY something out loud on the box, ' +
-            'send a phone notification, and put a camera\'s latest picture ON YOUR SCREEN while you say a line, all in the ' +
+            'send a phone notification (with the camera\'s picture in it, if wanted), and put a camera\'s latest picture ON YOUR ' +
+            'SCREEN while you say a line, all in the ' +
             'same automation (e.g. "every time the front camera sees motion, show the picture and say there\'s movement at ' +
             'the front"): never tell the user that can\'t be done, draft it. ONLY draft when the user describes a NEW automation. When they name one that exists ("turn off the ' +
             'alarm automation", "switch the hallway one back on"), never draft: use on / off with its name (a few words of it are ' +
@@ -476,6 +485,8 @@ export function check(auto: Record<string, unknown>, known: Set<string>): string
       return;
     }
     if (typeof v === 'string' && key === 'camera' && !known.has(v)) bad.push(`there's no camera "${v}" in the house`);
+    const pictured = typeof v === 'string' && key === 'image' ? /^\/api\/camera_proxy\/(camera\.[a-z0-9_]+)/.exec(v)?.[1] : undefined;
+    if (pictured && !known.has(pictured)) bad.push(`there's no camera "${pictured}" in the house`);
     if (typeof v === 'string' && (key === 'entity_id' || key === 'entity_ids') && /^[a-z_]+\.[a-z0-9_]+$/.test(v) && !known.has(v) && v !== 'all') {
       bad.push(`there's no "${v}" in the house`);
     }

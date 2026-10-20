@@ -332,7 +332,10 @@ const SCRIPT = String.raw`
     if (t.dataset.bright) act(t.dataset.bright, 'brightness', t.value);
   });
   pane.addEventListener('submit', function (ev) {
-    var f = ev.target; ev.preventDefault();
+    var f = ev.target;
+    // The Automations section's forms are ordinary ones (they post and reload): only the device forms are handled here.
+    if (f.closest('#automations')) return;
+    ev.preventDefault();
     if (f.id === 'hLogin') { $('hLoginMsg').textContent = 'Signing in…'; post('/home/login', { username: f.username.value, password: f.password.value }).then(function (r) { $('hLoginMsg').textContent = r.message; f.password.value = ''; if (/^Signed in/.test(r.message)) setTimeout(load, 3000); }); return; }
     if (f.dataset.edit) { post('/home/edit', { device: f.dataset.edit, name: f.name.value, room: f.room.value }).then(function () { editing = ''; load(); }); return; }
     if (f.id === 'hStepForm') {

@@ -60,8 +60,9 @@ Max can also answer you **out loud** in the meeting. Start with his name:
 - "Max?" … (pause) … "what's still open for Marco?"
 - "Thanks Max, you can go now" / "Max, please leave": he says goodbye and leaves the meeting.
 
-He answers in one to three sentences in his own voice, about 3 to 5 seconds later, and **everyone in the meeting
-hears it**. So:
+He answers in one to three sentences in his own voice (his real-time voice when that's on), a few seconds later,
+and **everyone in the meeting hears it**. The Meetings page shows how long each answer took and where (thinking,
+voice, sending); for quicker thinking, pick a fast model for **Meeting answers** in Settings → AI models. So:
 
 - **Only you can ask.** Max recognises you by your name in the meeting: from About you, or set it on the
   Meetings page under **Names in meetings → Max answers to**, exactly as Teams shows it (e.g. "Licata, Luca").

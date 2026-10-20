@@ -177,7 +177,8 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const question = this.question(meeting.id, text);
-    if (question) void this.answer(meeting, question);
+    if (question && !this.meetings.speaks()) this.note(meeting, `Heard your question: not answering (notes only is on)`);
+    else if (question) void this.answer(meeting, question);
     else if (said) this.note(meeting, `Heard you say "Max": waiting for the question`);
   }
 

@@ -39,6 +39,8 @@ interface MeetingSettings {
   ownerName?: string;
   /** The name Max joins with. */
   botName?: string;
+  /** Max only takes notes in meetings: he doesn't answer out loud (off: he answers you when you say "Max, …"). */
+  notesOnly?: boolean;
 }
 
 /** Recall.ai's bot statuses, as Max says them. */
@@ -148,6 +150,19 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** What the Meetings page shows: what's set there, and what applies when it's empty. */
+  /** Whether Max answers out loud in meetings (the user can switch it off, e.g. while testing). */
+  speaks(): boolean {
+    return !this.settings.notesOnly;
+  }
+
+  async setSpeaks(on: boolean): Promise<string> {
+    this.settings = { ...this.settings, notesOnly: on ? undefined : true };
+    await this.settingsStore?.save(this.settings);
+    return on
+      ? 'Max answers you out loud in meetings again ("Max, …"), from now on, also in a meeting he is already in.'
+      : 'Max only takes notes in meetings now: he won\'t answer out loud, also in a meeting he is already in.';
+  }
+
   settingsView(): { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string } {
     const saved = this.settings;
     this.settings = {};
@@ -158,7 +173,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
 
   async saveSettings(ownerName: string, botName: string): Promise<string> {
     const clean = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max) || undefined;
-    this.settings = { ownerName: clean(ownerName, 80), botName: clean(botName, 60) };
+    this.settings = { ...this.settings, ownerName: clean(ownerName, 80), botName: clean(botName, 60) };
     await this.settingsStore?.save(this.settings);
     return `Saved. Max answers ${this.ownerName() || 'nobody yet (add your name)'} and joins as "${this.botName()}".`;
   }

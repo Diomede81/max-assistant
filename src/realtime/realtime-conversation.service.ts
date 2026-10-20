@@ -61,9 +61,10 @@ export class RealtimeConversationService {
 
   /**
    * Runs until the conversation goes quiet. `setMicHandler` routes microphone chunks
-   * (16-bit mono at `micRate`) to this conversation.
+   * (16-bit mono at `micRate`) to this conversation. Resolves true when it ended because the mode was switched: the
+   * caller then starts the next one at once, in the new mode.
    */
-  async run(setMicHandler: (h: (chunk: Buffer) => void) => void, micRate: number, chimed: boolean): Promise<void> {
+  async run(setMicHandler: (h: (chunk: Buffer) => void) => void, micRate: number, chimed: boolean): Promise<boolean | void> {
     const rt = this.cfg.realtime;
     const providerName = rt.provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime';
     if (!rt.apiKey) {
@@ -354,7 +355,9 @@ export class RealtimeConversationService {
     player?.close();
     await playing;
     void this.learner.learn(transcript, startMode);
-    this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); waiting for the wake word`);
+    const switched = startMode !== undefined && this.modes?.mode !== startMode && reason.startsWith('switched to');
+    this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); ${switched ? 'carrying on in the new mode' : 'waiting for the wake word'}`);
+    return switched;
   }
 
   private async sayFallback(text: string): Promise<void> {

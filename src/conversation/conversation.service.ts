@@ -86,6 +86,10 @@ export class ConversationService implements OnApplicationBootstrap {
   private lastIgnoredWakeAt = 0;
   /** He greeted (rather than beeped) at the last wake-up. */
   private greeted = false;
+  /** A short beep instead of the greeting this time. */
+  private chimed = false;
+  /** When the last conversation ended: the greeting isn't repeated soon after. */
+  private lastTalkEnd = 0;
   /** end_conversation: the AI decided the conversation is over. */
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   @Optional() @Inject(ToolRouterService) private readonly toolRouter?: ToolRouterService;
@@ -230,9 +234,13 @@ export class ConversationService implements OnApplicationBootstrap {
     this.log.log(`Wake word "${name}" detected - answering`);
     // Turn any music down while we talk (in parallel with the greeting, so no added delay).
     const ducked = this.music?.duckStart();
-    // "Hello, how can I help?" (set on the control panel), or the short beep if there's no greeting.
-    const greeting = this.device?.greeting;
+    // "Hello, how can I help?" (set on the control panel), or the short beep if there's no greeting. Not again so soon
+    // after the last conversation (within the minutes set on the panel): then just the beep, so it doesn't get tiring.
+    const again = (this.device?.greetAgainMin ?? 0) * 60_000;
+    const recently = again > 0 && this.lastTalkEnd > 0 && heardAt - this.lastTalkEnd < again;
+    const greeting = recently ? undefined : this.device?.greeting;
     this.greeted = Boolean(greeting);
+    this.chimed = !greeting && (this.cfg.audio.wakeChime || recently);
     let answering: Promise<unknown> = Promise.resolve();
     let falseAlarm = false;
     if (greeting) {
@@ -245,7 +253,7 @@ export class ConversationService implements OnApplicationBootstrap {
         })().catch((err) => this.log.warn(`Greeting: ${(err as Error).message}`));
         void this.liveVoice?.ensure(greeting); // in the live voice from next time
       }
-    } else if (this.cfg.audio.wakeChime) void this.tts.chime().catch(() => undefined);
+    } else if (this.chimed) void this.tts.chime().catch(() => undefined);
     if (!(await verified)) {
       falseAlarm = true;
       this.tts.stopPlayback();
@@ -261,6 +269,7 @@ export class ConversationService implements OnApplicationBootstrap {
     try {
       await this.talk();
     } finally {
+      this.lastTalkEnd = Date.now();
       await ducked;
       await this.music?.duckEnd();
     }
@@ -270,10 +279,20 @@ export class ConversationService implements OnApplicationBootstrap {
   private async talk(): Promise<void> {
     if (this.cfg.voiceMode === 'realtime') {
       this.state = 'respond';
-      await this.realtime
-        .run((h) => (this.onChunk = h), this.mic.format.rate, this.cfg.audio.wakeChime && !this.greeted)
-        .catch((err) => this.log.error(`Realtime conversation failed: ${(err as Error).message}`));
-      this.onChunk = () => undefined;
+      let chimed = this.chimed;
+      // Switching mode starts a fresh conversation in the new mode (only its memories, nothing carried over) and
+      // carries straight on: no need to say "Hey Max" again. A short beep says he's listening.
+      for (let i = 0; i < 4; i++) {
+        const again = await this.realtime
+          .run((h) => (this.onChunk = h), this.mic.format.rate, chimed)
+          .catch((err) => this.log.error(`Realtime conversation failed: ${(err as Error).message}`));
+        this.onChunk = () => undefined;
+        if (again !== true) break;
+        this.log.log(`New mode: carrying on listening (${this.modes?.mode} mode)`);
+        chimed = true;
+        void this.tts.chime().catch(() => undefined);
+        this.face?.setState('listening');
+      }
     } else {
       await this.conversation();
     }

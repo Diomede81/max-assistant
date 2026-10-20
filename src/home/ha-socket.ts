@@ -8,6 +8,11 @@ export class HaSocket {
   private opening?: Promise<WebSocket>;
   private nextId = 1;
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  /** Events listened to (e.g. "max_say"): subscribed again after every reconnect. */
+  private readonly listeners = new Map<string, (data: Record<string, unknown>) => void>();
+  /** The subscription ids on the current connection, and which event each is for. */
+  private readonly subscribed = new Map<number, string>();
+  private retry?: NodeJS.Timeout;
 
   constructor(
     private readonly baseUrl: string,
@@ -28,7 +33,34 @@ export class HaSocket {
     });
   }
 
+  /**
+   * Listens for a Home Assistant event (e.g. one an automation fires), for as long as Max runs: the connection is
+   * opened again by itself when it drops.
+   */
+  listen(eventType: string, handler: (data: Record<string, unknown>) => void): void {
+    this.listeners.set(eventType, handler);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.subscribe(this.ws, eventType);
+    else void this.open().catch(() => this.reconnectLater());
+  }
+
+  private subscribe(ws: WebSocket, eventType: string): void {
+    const id = this.nextId++;
+    this.subscribed.set(id, eventType);
+    ws.send(JSON.stringify({ id, type: 'subscribe_events', event_type: eventType }));
+  }
+
+  private reconnectLater(): void {
+    if (!this.listeners.size || this.retry) return;
+    this.retry = setTimeout(() => {
+      this.retry = undefined;
+      void this.open().catch(() => this.reconnectLater());
+    }, 15_000);
+    this.retry.unref();
+  }
+
   close(): void {
+    this.listeners.clear();
+    clearTimeout(this.retry);
     this.ws?.close();
     this.ws = undefined;
   }
@@ -51,6 +83,8 @@ export class HaSocket {
       ws.onerror = () => fail("Can't reach Home Assistant");
       ws.onclose = () => {
         if (this.ws === ws) this.ws = undefined;
+        this.subscribed.clear();
+        this.reconnectLater();
         for (const [id, p] of this.pending) {
           clearTimeout(p.timer);
           p.reject(new Error('The connection to Home Assistant closed'));
@@ -72,8 +106,14 @@ export class HaSocket {
           clearTimeout(guard);
           this.ws = ws;
           this.opening = undefined;
+          for (const type of this.listeners.keys()) this.subscribe(ws, type);
           resolve(ws);
+        } else if (msg.type === 'event' && msg.id !== undefined) {
+          const type = this.subscribed.get(msg.id);
+          const data = (msg as { event?: { data?: Record<string, unknown> } }).event?.data ?? {};
+          if (type) this.listeners.get(type)?.(data);
         } else if (msg.type === 'result' && msg.id !== undefined) {
+          if (this.subscribed.has(msg.id)) return; // a subscription's own answer
           const p = this.pending.get(msg.id);
           if (!p) return;
           clearTimeout(p.timer);

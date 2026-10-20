@@ -367,6 +367,23 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
+  /** A command on Home Assistant's websocket (for the automations). */
+  async command<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T> {
+    return this.ws().call<T>(type, payload);
+  }
+
+  /** A call to Home Assistant's REST API, signed in (for the automations). */
+  async rest<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+    if (this.stateNow !== 'ready') throw new Error('Home Assistant is still starting: try again in a minute');
+    return this.json<T>(method, path, body, this.token());
+  }
+
+  /** Listens for an event Home Assistant fires (e.g. an automation asking Max to say something). */
+  listen(eventType: string, handler: (data: Record<string, unknown>) => void): void {
+    this.socket ??= new HaSocket(this.base, () => this.saved.token ?? '');
+    this.socket.listen(eventType, handler);
+  }
+
   private ws(): HaSocket {
     if (this.stateNow !== 'ready') throw new Error('Home Assistant is still starting: try again in a minute');
     this.socket ??= new HaSocket(this.base, () => this.saved.token ?? '');

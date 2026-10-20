@@ -21,6 +21,8 @@ export interface DeviceStatus {
   brightnessSupported?: boolean;
   /** What Max says when he hears "Hey Max" (empty: a short beep), and the start-up jingle. */
   greeting?: string;
+  /** Minutes after a conversation during which "Hey Max" gets just the short beep, not the greeting again (0: greet every time). */
+  greetAgainMin?: number;
   startSound?: boolean;
   /** How the speaker is tuned (see SPEAKER_TONES). */
   tone?: SpeakerTone;
@@ -43,12 +45,15 @@ export type SpeakerTone = keyof typeof SPEAKER_TONES;
  */
 export const DEFAULT_GREETING = 'Hello, how can I help?';
 
+/** By default the greeting isn't repeated within 10 minutes of the last conversation: just the short beep. */
+const GREET_AGAIN_MIN = 10;
+
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; startSound?: boolean; tone?: SpeakerTone }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: SpeakerTone }>;
   private level = 100;
-  private voice: { greeting: string; startSound: boolean } = { greeting: DEFAULT_GREETING, startSound: true };
+  private voice: { greeting: string; greetAgainMin: number; startSound: boolean } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
   private speakerTone: SpeakerTone = 'flat';
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
@@ -59,7 +64,7 @@ export class DeviceService implements OnModuleInit {
     try {
       const saved = this.store.load();
       this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
-      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, startSound: saved?.startSound ?? true };
+      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true };
       if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
     } catch {
       // keep full brightness
@@ -81,13 +86,19 @@ export class DeviceService implements OnModuleInit {
     return this.voice.greeting;
   }
 
+  /** Minutes after a conversation when "Hey Max" gets just the beep instead of the greeting (0: greet every time). */
+  get greetAgainMin(): number {
+    return this.voice.greetAgainMin;
+  }
+
   /** A short jingle when Max starts, so you know he's ready. */
   get startSound(): boolean {
     return this.voice.startSound;
   }
 
-  setVoice(changes: { greeting?: string; startSound?: boolean }): string {
+  setVoice(changes: { greeting?: string; greetAgainMin?: number; startSound?: boolean }): string {
     if (changes.greeting !== undefined) this.voice.greeting = changes.greeting.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (changes.greetAgainMin !== undefined && Number.isFinite(changes.greetAgainMin)) this.voice.greetAgainMin = Math.max(0, Math.min(240, Math.round(changes.greetAgainMin)));
     if (changes.startSound !== undefined) this.voice.startSound = changes.startSound;
     this.persist();
     return 'Saved.';

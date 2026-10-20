@@ -7,6 +7,7 @@ import { memorySecret, SealedStore } from '../memory/sealed-store';
 export type AboutKey =
   | 'name'
   | 'callMe'
+  | 'pronouns'
   | 'birthday'
   | 'origin'
   | 'languages'
@@ -41,6 +42,7 @@ const P: Mode[] = ['personal'];
 export const ABOUT_FIELDS: AboutField[] = [
   { key: 'name', ai: 'Name', label: 'Your name', hint: 'e.g. Luca Licata', kind: 'line', max: 80, modes: ALL },
   { key: 'callMe', label: 'What Max calls you', hint: 'e.g. Luca (empty: your first name)', kind: 'line', max: 40, modes: PW },
+  { key: 'pronouns', label: 'How Max refers to you', hint: 'e.g. he/him, she/her or they/them', kind: 'line', max: 40, modes: ALL },
   { key: 'birthday', ai: 'Birthday', label: 'Birthday', hint: '', kind: 'date', max: 10, modes: P },
   { key: 'origin', ai: 'Where they are from', label: 'Where you were born and grew up', hint: 'e.g. born in Palermo, grew up in Milan, in London since 2010', kind: 'text', max: 300, modes: PW },
   { key: 'languages', ai: 'Languages', label: 'Languages you speak', hint: 'e.g. Italian and English', kind: 'line', max: 120, modes: PW },
@@ -111,7 +113,7 @@ export class AboutService implements OnModuleInit {
     const s = this.saved;
     if (mode === 'guest') {
       return s.name
-        ? `The person you support is ${s.name}. Guest mode is on, so you may be talking with visitors: don't share anything personal about ${first(s.name)}.`
+        ? `The person you support is ${s.name}${s.pronouns ? ` (${s.pronouns})` : ''}. Guest mode is on, so you may be talking with visitors: don't share anything personal about ${first(s.name)}.`
         : '';
     }
     const lines: string[] = [];
@@ -128,7 +130,7 @@ export class AboutService implements OnModuleInit {
       `About the person you support, in their own words (use it naturally; don't recite it). ` +
       `It's theirs to share with you in this mode, so answer from it freely when they ask, work details and the people listed ` +
       `included: the rules about locked vaults and modes are about your stored memories, not this page. ` +
-      `${call ? `Call them ${call}. ` : ''}When they tell you something new about themselves that belongs here (their name, ` +
+      `${call ? `Call them ${call}. ` : ''}${s.pronouns ? `When you talk about them, use ${s.pronouns} (never guess from the name or the voice). ` : ''}When they tell you something new about themselves that belongs here (their name, ` +
       `birthday, where they're from, family, the important people in their life, work, studies, likes, what to avoid, ` +
       `health or food), save it with the about_you action.\n${lines.join('\n')}`
     );

@@ -107,6 +107,21 @@ through it. The control panel never is. You need a domain on Cloudflare (a free 
 From then on, every meeting Max joins has live answers. On a laptop it works the same with any public HTTPS
 address that reaches port 8097.
 
+## Adding a transcript to a project
+
+When the transcript is in, Max writes a short summary of it: what the meeting was about, what was decided and what
+people agreed to do. It's on the meeting's page (**Transcript**), with **Write the summary again** if you want a
+fresh one.
+
+To keep it with a project, pick the project next to the meeting on the Meetings page and press **Add to project**
+(the meeting's own project is already picked when its name is in the meeting's title). While the meeting is still on,
+the button reads **Add to project when ready**: Max adds it as soon as the transcript is in (**Cancel** stops that).
+By voice: "Max, add the Bella meeting to the Bella Group project", before or after it's ready (by voice, only
+projects open in the current mode).
+
+Adding it puts the summary in the project's memory (so Max can answer "what did we decide with Bella?"), and lists
+the meeting on the project's page with its summary and a link to the full transcript.
+
 ## Cost
 
 Recall.ai charges for the time Max spends in meetings: about $0.50 per hour, plus $0.15 per hour for the
@@ -114,7 +129,6 @@ transcript (check recall.ai/pricing). The Meetings page shows this month's meeti
 
 ## Coming next
 
-- Max reads the transcript and proposes a summary, decisions, tasks and notes, which you approve before they go
-  into your projects, to-do list and memory.
+- The agreed actions offered as project tasks and to-dos, which you approve before they're added.
 - Announcements on the box ("Max is in the lobby", "your notes are ready"), a monthly spending cap, and how long
   transcripts are kept.

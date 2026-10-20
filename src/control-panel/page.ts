@@ -9,6 +9,14 @@ import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
   homeDevices?: { enabled: boolean };
+  /** Home automations (Devices tab). */
+  automations?: {
+    ready: boolean;
+    error?: string;
+    automations: { id?: string; entityId: string; name: string; description?: string; on: boolean; lastRun?: string; byMax: boolean }[];
+    switches: { entityId: string; name: string; on: boolean }[];
+    draft?: { id: string; name: string; summary: string; newSwitches: string[]; config: Record<string, unknown> };
+  };
   music?: {
     state: string;
     account?: string;
@@ -21,7 +29,7 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean; tone?: string };
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: string };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -56,8 +64,26 @@ export interface PanelData {
     projects: { id: string; name: string }[];
     settings: { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string };
     monthMinutes: number;
-    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number; project?: string; answers?: number; live?: string; liveOn?: boolean }[];
-    selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[] };
+    list: {
+      id: string;
+      title: string;
+      platform: string;
+      at: string;
+      state: string;
+      status: string;
+      minutes?: number;
+      turns: number;
+      project?: string;
+      projectId?: string;
+      /** The project its transcript was added to. */
+      filed?: string;
+      /** The project it goes to once the transcript is ready. */
+      fileWhenReady?: string;
+      answers?: number;
+      live?: string;
+      liveOn?: boolean;
+    }[];
+    selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[]; notes?: MeetingNotesView; filed?: string };
   };
   /** About you: the person Max supports. */
   about?: { fields: { key: string; label: string; hint: string; kind: string; max: number; modes: string[]; value: string }[] };
@@ -131,6 +157,20 @@ export interface PanelProject {
   tasks: { id: string; title: string; text: string; due?: string; status: string; priority?: string; criticality?: string }[];
   facts: { id: string; text: string; updatedAt: string }[];
   notes: { id: string; summary: string; at: string }[];
+  /** Meetings whose transcript was added to this project. */
+  meetings?: { id: string; title: string; at: string; notes?: MeetingNotesView }[];
+}
+
+export interface MeetingNotesView {
+  summary: string;
+  decisions: string[];
+  actions: string[];
+}
+
+/** A meeting's summary: what it was about, what was decided, what's to do. */
+function notesHtml(n: MeetingNotesView): string {
+  const list = (title: string, items: string[]) => (items.length ? `<p class="meta"><b>${title}</b></p><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+  return `<p>${esc(n.summary)}</p>${list('Decided', n.decisions)}${list("To do", n.actions)}`;
 }
 
 const SOUL_TABS: [string, string, string][] = [
@@ -228,6 +268,42 @@ function locationSection(l: NonNullable<PanelData['location']>): string {
 
 const ON_NOW = ['joining', 'lobby', 'in-call', 'recording', 'ended'];
 
+function automationsSection(a: NonNullable<PanelData['automations']>): string {
+  if (!a.ready) return `<section id="automations"><h2>Automations</h2><p class="meta">${a.error ? `Couldn't read them: ${esc(a.error)}` : 'Home Assistant is still starting: automations show here once it is ready.'}</p></section>`;
+  const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
+  const d = a.draft;
+  const draft = d
+    ? `<div class="card"><h3>Draft: ${esc(d.name)}</h3><p>${esc(d.summary)}</p>${d.newSwitches.length ? `<p class="meta">Adds a new on/off switch: <b>${d.newSwitches.map(esc).join(', ')}</b>.</p>` : ''}
+<details><summary class="meta">The details (for Home Assistant)</summary><pre class="meta">${esc(JSON.stringify(d.config, null, 2))}</pre></details>
+<div class="acts">${post('/automations/save', { draft: d.id }, 'Save it', 'btn')}${post('/automations/discard', { draft: d.id }, 'Discard')}</div></div>`
+    : '';
+  const autos = a.automations.length
+    ? a.automations
+        .map(
+          (x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge ${x.on ? 'ok' : 'off'}">${x.on ? 'on' : 'off'}</span>${x.byMax ? ' <span class="badge">by Max</span>' : ''}</div>${x.description ? `<div class="meta">${esc(x.description)}</div>` : ''}<div class="meta">Last ran: ${esc(when(x.lastRun))}</div></div>
+<div class="acts">${post('/automations/on', { entity: x.entityId, on: x.on ? '0' : '1' }, x.on ? 'Turn off' : 'Turn on')}${post('/automations/run', { entity: x.entityId }, 'Run now')}${x.id ? `<form class="addfact danger" method="post" action="/automations/delete">${hidden('id', x.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form>` : ''}</div></li>`,
+        )
+        .join('')
+    : '<li class="empty">No automations yet: describe one below.</li>';
+  const switches = a.switches.length
+    ? `<h3>Switches</h3><p class="meta">On/off switches automations can check (say "Max, turn on the alarm").</p><ul>${a.switches
+        .map(
+          (s) => `<li class="row"><div class="name">${esc(s.name)} <span class="badge ${s.on ? 'ok' : 'off'}">${s.on ? 'on' : 'off'}</span></div><div class="acts">${post('/automations/on', { entity: s.entityId, on: s.on ? '0' : '1' }, s.on ? 'Turn off' : 'Turn on', s.on ? 'btn secondary' : 'btn')}<form class="addfact danger" method="post" action="/automations/delete">${hidden('entity', s.entityId)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form></div></li>`,
+        )
+        .join('')}</ul>`
+    : '';
+  return `<section id="automations"><h2>Automations</h2>
+<p class="meta">Things the house does by itself. Describe one in your own words (when…, only if…, then…), or ask Max ("Max, make an automation: …"). He writes it, shows it to you here (or reads it back), and saves it once you agree. Automations never unlock, disarm or open anything.</p>
+${draft}
+<form class="stack" method="post" action="/automations/draft">
+<textarea name="text" rows="3" maxlength="1500" required placeholder="e.g. When the alarm is on and I'm out, if the hallway motion sensor sees movement, turn on all the lights and say &quot;Motion in the hallway&quot;"></textarea>
+<div class="addfact"><input name="name" maxlength="80" placeholder="Name (optional)"><button class="btn" type="submit">Write it</button></div></form>
+<ul>${autos}</ul>
+${switches}
+<form class="addfact" method="post" action="/automations/switch"><input name="name" maxlength="40" required placeholder="New on/off switch, e.g. Alarm, Holiday, Guests"><button class="btn secondary" type="submit">Add switch</button></form>
+</section>`;
+}
+
 function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   if (!m.enabled) {
     return `<section id="meetings"><h2>Meetings</h2>
@@ -240,13 +316,28 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   const row = (x: (typeof m.list)[number]) =>
     `<li class="row"><div><div class="name">${esc(x.title)} <span class="badge ${x.state === 'ready' ? 'ok' : x.state === 'failed' ? 'off' : ''}">${esc(x.status)}</span></div>
 <div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}${x.project ? ` · ${esc(x.project)}` : ''}${x.answers ? ` · answered you ${x.answers}×` : ''}</div>${ON_NOW.includes(x.state) && x.liveOn ? `<div class="meta">${esc(x.live ?? 'Live: no transcript lines received yet (they start once Max is taking notes)')}</div>` : ''}</div>
-<div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}</div></li>`;
+<div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}${fileForm(x)}</div></li>`;
+  // Adding the transcript to a project: now if it's ready, else as soon as it is.
+  const fileForm = (x: (typeof m.list)[number], from = '') => {
+    if (x.state === 'failed' || !m.projects.length) return '';
+    if (x.filed) return `<span class="badge ok">in ${esc(x.filed)}</span>`;
+    if (x.fileWhenReady) return `<span class="badge">goes to ${esc(x.fileWhenReady)} when ready</span>${post('/meetings/unfile', { id: x.id }, 'Cancel')}`;
+    if (x.state === 'ready' && !x.turns) return '';
+    const opts = m.projects.map((p) => `<option value="${esc(p.id)}" ${p.id === x.projectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    return `<form class="addfact" method="post" action="/meetings/file">${hidden('id', x.id)}${from ? hidden('from', from) : ''}<select name="project" aria-label="Project">${opts}</select><button class="btn secondary" type="submit">${x.state === 'ready' ? 'Add to project' : 'Add to project when ready'}</button></form>`;
+  };
   const sel = m.selected;
   const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
   const detail = sel
     ? `<section id="meeting-transcript"><h2>${esc(sel.title)}</h2>
 <p class="meta">${esc(sel.platform)} · ${esc(when(sel.at))} · ${esc(sel.status)} · <a href="/meetings/transcript.txt?id=${encodeURIComponent(sel.id)}">Download as text</a> · <a href="/#meetings">Back to meetings</a></p>
 <form class="addfact" method="post" action="/meetings/rename">${hidden('id', sel.id)}<input name="title" maxlength="120" required value="${esc(sel.title)}" aria-label="Meeting name"><button class="btn secondary" type="submit">Rename</button></form>
+${sel.notes ? `<h3>Summary</h3>${notesHtml(sel.notes)}` : sel.lines.length ? `<p class="meta">No summary yet.</p>` : ''}
+<div class="acts">${(() => {
+        const x = m.list.find((y) => y.id === sel.id);
+        return x ? fileForm(x, 'detail') : '';
+      })()}${sel.lines.length ? post('/meetings/summarise', { id: sel.id }, sel.notes ? 'Write the summary again' : 'Write a summary') : ''}</div>
+<h3>Transcript</h3>
 <div class="transcript">${sel.lines.map((l) => `<p><span class="meta">${stamp(l.at)}</span> <b>${esc(l.speaker)}</b> ${esc(l.text)}</p>`).join('') || '<p class="meta">Nobody spoke.</p>'}</div>
 <form class="addfact danger" method="post" action="/meetings/delete">${hidden('id', sel.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this meeting and its transcript</label><button class="btn secondary" type="submit">Delete</button></form></section>`
     : '';
@@ -329,6 +420,7 @@ function projectDetail(p: PanelProject): string {
 <div class="addfact"><input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)"><input name="assignee" list="people-${esc(p.id)}" placeholder="Who">${assignees}${levelSelects()}<button class="btn" type="submit">Add</button></div></form>
 <h3>People</h3><ul>${people}</ul>
 <form class="addfact" method="post" action="/projects/person-add">${hidden('id', p.id)}<input name="people" required placeholder="e.g. Marco (supplier, marco@acme.com)"><button class="btn secondary" type="submit">Add</button></form>
+${p.meetings?.length ? `<h3>Meetings</h3><ul>${p.meetings.map((x) => `<li class="row"><div><div class="name">${esc(x.title)} <span class="meta">· ${esc(day(x.at))}</span></div>${x.notes ? `<details><summary class="meta">Summary</summary>${notesHtml(x.notes)}</details>` : ''}</div><div class="acts"><a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a></div></li>`).join('')}</ul>` : ''}
 <h3>Project memory</h3><ul>${facts}</ul>${notes}
 <form class="addfact" method="post" action="/projects/note-add">${hidden('id', p.id)}<input name="fact" maxlength="300" required placeholder="Add a note to this project"><button class="btn secondary" type="submit">Remember</button></form>
 <form class="addfact danger" method="post" action="/projects/delete">${hidden('id', p.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this project with its tasks and memory</label><button class="btn secondary" type="submit">Delete</button></form>
@@ -725,7 +817,7 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 
 <div class="pane" id="tab-memory">${d.about ? aboutSection(d.about) : ''}${d.memory ? memorySection(d.memory) : ''}</div>
 
-${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}</div>` : ''}
+${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}${d.automations ? automationsSection(d.automations) : ''}</div>` : ''}
 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
 
@@ -752,6 +844,15 @@ ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
 ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
+<div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[
+      [0, 'Every time'],
+      [5, '5 minutes'],
+      [10, '10 minutes'],
+      [30, '30 minutes'],
+      [60, '1 hour'],
+    ]
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.greetAgainMin ?? 10) ? 'selected' : ''}>${l}</option>`)
+      .join('')}</select><span class="meta">of quiet. Sooner than that, "Hey Max" gets just the short beep.</span></div>
 <div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
 <p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
 </form>` : ''}

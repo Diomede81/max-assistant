@@ -181,6 +181,58 @@ export class LiveVoiceService implements OnModuleInit {
   }
 
   /**
+   * `text` in the live voice from the provider's own speech service (same voices as the live one: Gemini's text-to-
+   * speech, or OpenAI's), which makes a whole line in a second or two instead of at speaking pace. 24 kHz PCM.
+   * Throws when the provider has no speech service for this voice; the caller then records the line live instead.
+   */
+  async speech(text: string, timeoutMs = 20_000): Promise<Buffer> {
+    if (!this.active) throw new Error('live voice is off');
+    const r = this.cfg.realtime;
+    const signal = AbortSignal.timeout(timeoutMs);
+    if (r.provider === 'gemini') {
+      const models = [process.env.MEETING_VOICE_MODEL, this.speechModel, 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'].filter(
+        (m, i, a): m is string => Boolean(m) && a.indexOf(m) === i,
+      );
+      let last = '';
+      for (const model of models) {
+        const res = await fetch(`${process.env.GEMINI_TTS_BASE_URL || 'https://generativelanguage.googleapis.com'}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': r.apiKey },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${this.style ? `${this.style}\n` : ''}Say: ${text}` }] }],
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.voice } } } },
+          }),
+          signal,
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[];
+          error?: { message?: string };
+        };
+        const data = body.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data;
+        if (res.ok && data) {
+          this.speechModel = model;
+          return Buffer.from(data, 'base64');
+        }
+        last = `${model}: ${body.error?.message ?? `answered ${res.status}`}`;
+        if (res.status !== 404 && res.status !== 400) break; // a model that doesn't exist: try the next one
+      }
+      throw new Error(last || 'no audio');
+    }
+    const base = r.url.replace(/^ws/, 'http').replace(/\/realtime.*$/, '');
+    const res = await fetch(`${base}/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r.apiKey}` },
+      body: JSON.stringify({ model: process.env.MEETING_VOICE_MODEL || 'gpt-4o-mini-tts', voice: this.voice, input: text, instructions: this.style, response_format: 'pcm' }),
+      signal,
+    });
+    if (!res.ok) throw new Error(`${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** The text-to-speech model that worked last (Gemini), tried first next time. */
+  private speechModel?: string;
+
+  /**
    * A recorder kept open for many lines (an online meeting): one connection, so each line skips the set-up.
    * Reconnects by itself if the connection drops; closes after `idleMs` unused.
    */

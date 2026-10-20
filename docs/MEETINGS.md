@@ -60,8 +60,11 @@ Max can also answer you **out loud** in the meeting. Start with his name:
 - "Max?" … (pause) … "what's still open for Marco?"
 - "Thanks Max, you can go now" / "Max, please leave": he says goodbye and leaves the meeting.
 
-He answers in one to three sentences in his own voice (his real-time voice when that's on), a few seconds later,
-and **everyone in the meeting hears it**. The Meetings page shows how long each answer took and where (thinking,
+He answers in one or two short sentences in his own voice, a few seconds later, and **everyone in the meeting hears
+it**. With the real-time voice on, meeting answers use the provider's own speech service with the same voice and style
+(Gemini text-to-speech, or OpenAI's), which makes a whole answer in a second or two; only if that isn't available does
+Max record the answer live (at speaking pace, up to 30 s), and last of all use the standard voice. He also draws on any
+**work** project you name in the meeting, not only the one linked to it (personal projects never). The Meetings page shows how long each answer took and where (thinking,
 voice, sending); for quicker thinking, pick a fast model for **Meeting answers** in Settings → AI models. So:
 
 - **Only you can ask.** Max recognises you by your name in the meeting: from About you, or set it on the

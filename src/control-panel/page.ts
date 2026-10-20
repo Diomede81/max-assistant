@@ -21,7 +21,7 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; startSound?: boolean; tone?: string };
+  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: string };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -800,6 +800,15 @@ ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
 ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
+<div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[
+      [0, 'Every time'],
+      [5, '5 minutes'],
+      [10, '10 minutes'],
+      [30, '30 minutes'],
+      [60, '1 hour'],
+    ]
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.greetAgainMin ?? 10) ? 'selected' : ''}>${l}</option>`)
+      .join('')}</select><span class="meta">of quiet. Sooner than that, "Hey Max" gets just the short beep.</span></div>
 <div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
 <p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
 </form>` : ''}

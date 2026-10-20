@@ -229,7 +229,8 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
   "Max, make an automation: when the alarm is on and there's motion in the hallway, turn on all the lights and tell
   me"). Max writes it, shows it (or reads it back), and saves it once you agree. He can make on/off **switches** for
   them to check ("Alarm", "Holiday": "Max, turn on the alarm"), and say things out loud on the box when an
-  automation asks him to. Each one can be turned off, run now (to test it), renamed or deleted; by voice, a few words
+  automation asks him to. Phone notifications (optionally with the camera's picture in them) need the **Home Assistant
+  app** on your phone, signed in to the box's Home Assistant (<http://max.local:8123>, login under Devices → Advanced). Each one can be turned off, run now (to test it), renamed or deleted; by voice, a few words
   of its name are enough ("Max, turn off the hallway alarm", "rename the hallway one to Night alarm"). Automations never unlock,
   disarm or open anything, and only use devices you have. (Boxes set up before this: the next update turns
   automations on in Home Assistant, which restarts once.)

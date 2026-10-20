@@ -52,8 +52,9 @@ export interface PanelData {
     /** Max can listen live and answer in meetings (the secure link is set up). */
     live: boolean;
     projects: { id: string; name: string }[];
+    settings: { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string };
     monthMinutes: number;
-    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number; project?: string; answers?: number }[];
+    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number; project?: string; answers?: number; live?: string; liveOn?: boolean }[];
     selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[] };
   };
   /** About you: the person Max supports. */
@@ -236,7 +237,7 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
   const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const row = (x: (typeof m.list)[number]) =>
     `<li class="row"><div><div class="name">${esc(x.title)} <span class="badge ${x.state === 'ready' ? 'ok' : x.state === 'failed' ? 'off' : ''}">${esc(x.status)}</span></div>
-<div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}${x.project ? ` · ${esc(x.project)}` : ''}${x.answers ? ` · answered you ${x.answers}×` : ''}</div></div>
+<div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}${x.project ? ` · ${esc(x.project)}` : ''}${x.answers ? ` · answered you ${x.answers}×` : ''}</div>${ON_NOW.includes(x.state) && x.liveOn ? `<div class="meta">${esc(x.live ?? 'Live: no transcript lines received yet (they start once Max is taking notes)')}</div>` : ''}</div>
 <div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}</div></li>`;
   const sel = m.selected;
   const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
@@ -257,6 +258,13 @@ function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
 <p class="meta">Teams: if the meeting has a lobby, someone in it has to let Max in. This month: ${len(m.monthMinutes) || '0 min'} of meetings, about $${cost.toFixed(2)} at Recall.ai.</p>
 ${now.length ? `<h3>On now</h3><ul>${now.map(row).join('')}</ul>` : ''}
 ${past.length ? `<h3>Earlier</h3><ul>${past.slice(0, 30).map(row).join('')}</ul>` : '<p class="meta">No meetings yet.</p>'}
+<h3>Names in meetings</h3>
+<form class="stack about" method="post" action="/meetings/settings">
+<div class="afield"><label for="m-owner">Max answers to</label><input id="m-owner" name="owner" maxlength="80" value="${esc(m.settings.ownerName)}" placeholder="${esc(m.settings.ownerDefault || 'Your name as it shows in Teams, e.g. Luca Licata')}">
+<div class="meta">${m.settings.ownerNow ? `Now: <b>${esc(m.settings.ownerNow)}</b>${m.settings.ownerName ? '' : ' (from About you)'}. ` : '<b>Not set:</b> Max won\'t answer anyone until you add your name. '}Your name exactly as the meeting shows it. Only this person can ask Max questions out loud.</div></div>
+<div class="afield"><label for="m-bot">Max's name in meetings</label><input id="m-bot" name="bot" maxlength="60" value="${esc(m.settings.botName)}" placeholder="${esc(m.settings.botDefault)}">
+<div class="meta">What everyone sees when he joins${m.settings.botName ? ` (now "${esc(m.settings.botNow)}")` : ''}. Empty: "${esc(m.settings.botDefault)}".</div></div>
+<button class="btn" type="submit">Save</button></form>
 <div class="acts">${post('/meetings/check', {}, 'Check the Recall.ai connection')}${m.live ? post('/meetings/check-live', {}, 'Check the secure link') : ''}</div>
 ${now.length ? '<script>setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) location.reload(); }, 15000);</script>' : ''}
 </section>${detail}`;

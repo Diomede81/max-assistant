@@ -604,6 +604,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         enabled: this.meetings.enabled,
         live: Boolean(this.meetingsLive?.enabled),
         projects: this.projects.all().filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name })),
+        settings: this.meetings.settingsView(),
         monthMinutes: this.meetings.monthMinutes(),
         list: this.meetings.list().map((m) => ({
           id: m.id,
@@ -616,6 +617,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           turns: m.transcript?.length ?? 0,
           project: m.projectId ? this.projects.byId(m.projectId)?.name : undefined,
           answers: m.answers,
+          liveOn: m.live,
+          live: this.meetingsLive?.status(m.id),
         })),
       },
       about: this.about && { fields: ABOUT_FIELDS.map((f) => ({ ...f, value: this.about!.about[f.key] ?? '' })) },
@@ -776,6 +779,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case '/meetings/delete':
         if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, '#meetings', `&meeting=${encodeURIComponent(f.get('id') ?? '')}`);
         return back(meetings.remove(f.get('id') ?? '') ? 'Meeting deleted.' : 'Meeting not found.');
+      case '/meetings/settings':
+        return back(await meetings.saveSettings(f.get('owner') ?? '', f.get('bot') ?? ''));
       case '/meetings/check-live':
         return back((await this.meetingsLive?.check()) ?? 'Not set up.');
       case '/meetings/check':

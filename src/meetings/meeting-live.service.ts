@@ -43,6 +43,9 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
   /** "Max?" heard on its own: the rest of the question comes in the next line. */
   private readonly waiting = new Map<string, number>();
   private readonly busy = new Set<string>();
+  /** What Max heard in each meeting, for the Meetings page (so it's clear why he did or didn't answer). */
+  private readonly heard = new Map<string, { lines: number; note?: string; at?: number }>();
+  private shapeLogged = false;
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -133,10 +136,18 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
 
   /** One Recall.ai real-time event: a finished line of the transcript. */
   onEvent(e: RecallEvent): void {
-    if (e?.event !== 'transcript.data') return;
+    if (e?.event !== 'transcript.data') {
+      if (!this.shapeLogged) this.log.log(`Recall.ai sent "${String(e?.event)}" (only transcript lines are used)`);
+      this.shapeLogged = true;
+      return;
+    }
     const botId = e.data?.bot?.id;
     const meeting = botId ? this.meetings.getByBot(botId) : undefined;
-    if (!meeting || !meeting.live) return;
+    if (!meeting) {
+      this.log.warn(`A live line for a meeting Max doesn't know (bot ${botId ?? 'missing'})`);
+      return;
+    }
+    if (!meeting.live) return;
     const words = e.data?.data?.words ?? [];
     const text = words.map((w) => w?.text ?? '').join(' ').replace(/\s+([,.!?;:])/g, '$1').replace(/\s+/g, ' ').trim();
     if (!text) return;
@@ -145,9 +156,33 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
     list.push({ speaker, text, at: Date.now() });
     if (list.length > KEEP_LINES) list.splice(0, list.length - KEEP_LINES);
     this.lines.set(meeting.id, list);
-    if (!this.isOwner(speaker)) return;
+    const h = this.heard.get(meeting.id) ?? { lines: 0 };
+    h.lines++;
+    if (h.lines === 1) this.log.log(`Live transcript arriving for "${meeting.title}"`);
+    this.heard.set(meeting.id, h);
+    const said = AT_START.test(text) || AT_END.test(text);
+    if (!this.isOwner(speaker)) {
+      if (said) this.note(meeting, `Heard "Max" from ${speaker}: not you (Max answers ${this.meetings.ownerName() || 'nobody yet: add your name'})`);
+      return;
+    }
     const question = this.question(meeting.id, text);
     if (question) void this.answer(meeting, question);
+    else if (said) this.note(meeting, `Heard you say "Max": waiting for the question`);
+  }
+
+  /** What the Meetings page shows about the live side of a meeting. */
+  status(meetingId: string): string | undefined {
+    const h = this.heard.get(meetingId);
+    if (!h) return undefined;
+    return `${h.lines} line${h.lines === 1 ? '' : 's'} heard live${h.note ? ` · ${h.note}` : ''}`;
+  }
+
+  private note(m: Meeting, text: string): void {
+    const h = this.heard.get(m.id) ?? { lines: 0 };
+    h.note = text;
+    h.at = Date.now();
+    this.heard.set(m.id, h);
+    this.log.log(`${m.title}: ${text}`);
   }
 
   /** The question the user asked Max in this line, if they did. */
@@ -167,10 +202,10 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
 
   /** The user, by the name the meeting shows (About you, or MEETING_OWNER_NAME). */
   private isOwner(speaker: string): boolean {
-    const owner = (this.cfg.meetings.ownerName || this.about?.about.name || '').trim();
+    const owner = this.meetings.ownerName();
     if (!owner) return false;
     const words = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\s]+/gu, ' ').split(/\s+/).filter(Boolean);
-    const o = words(owner);
+    const o = words(owner.replace(/\(.*?\)/g, ' '));
     const s = words(speaker.replace(/\(.*?\)/g, ' '));
     if (!o.length || !s.length) return false;
     // "Luca Licata", "Licata, Luca", or just "Luca" when that's all the meeting shows.
@@ -183,7 +218,7 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
     if (this.busy.has(m.id) || !this.models) return;
     this.busy.add(m.id);
     try {
-      const owner = (this.cfg.meetings.ownerName || this.about?.about.name || 'the user').split(/\s+/)[0];
+      const owner = (this.meetings.ownerName() || 'the user').split(/\s+/)[0];
       const transcript = (this.lines.get(m.id) ?? []).map((l) => `${l.speaker}: ${l.text}`).join('\n').slice(-9000);
       const reply = await this.models.complete('meetings', {
         system:
@@ -204,11 +239,12 @@ export class MeetingLiveService implements OnModuleInit, OnModuleDestroy {
       const audio = await mp3(pcm, format.rate, format.channels);
       await this.meetings.say(m.botId, audio.toString('base64'));
       this.meetings.noteAnswer(m);
+      this.note(m, `Answered you: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`);
       const list = this.lines.get(m.id);
       list?.push({ speaker: 'Max', text, at: Date.now() });
       this.log.log(`Answered in "${m.title}"`);
     } catch (err) {
-      this.log.warn(`Couldn't answer in "${m.title}": ${(err as Error).message}`);
+      this.note(m, `Couldn't answer: ${(err as Error).message}`);
     } finally {
       this.busy.delete(m.id);
     }

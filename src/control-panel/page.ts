@@ -46,6 +46,13 @@ export interface PanelData {
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
+  /** Meetings: Max joins online meetings as a notetaker (Recall.ai). */
+  meetings?: {
+    enabled: boolean;
+    monthMinutes: number;
+    list: { id: string; title: string; platform: string; at: string; state: string; status: string; minutes?: number; turns: number }[];
+    selected?: { id: string; title: string; platform: string; at: string; status: string; lines: { speaker: string; at: number; text: string }[] };
+  };
   /** About you: the person Max supports. */
   about?: { fields: { key: string; label: string; hint: string; kind: string; max: number; modes: string[]; value: string }[] };
   composio: {
@@ -211,6 +218,44 @@ function locationSection(l: NonNullable<PanelData['location']>): string {
 <div class="addfact"><input name="place" maxlength="100" required value="${esc(l.place)}" placeholder="Town, city or area, e.g. Clapham, London"></div>
 <div class="addfact"><input name="postcode" maxlength="10" value="${esc(l.postcode ?? '')}" placeholder="Postcode (optional, e.g. SW4 or SW4 7AB)"><select name="country" aria-label="Country">${opts}</select><button class="btn" type="submit">Save</button></div>
 </form><p class="meta">The postcode makes "near me" answers sharper; it's never mentioned while guest mode is on. Kept encrypted with Max's memory.</p></section>`;
+}
+
+const ON_NOW = ['joining', 'lobby', 'in-call', 'recording', 'ended'];
+
+function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
+  if (!m.enabled) {
+    return `<section id="meetings"><h2>Meetings</h2>
+<p class="meta">Max can join your Teams, Zoom and Google Meet meetings as a notetaker and bring back the transcript. It uses Recall.ai (about $0.65 per meeting hour): create an account at recall.ai (choose the EU region), then add its key to <code>.env</code> as <code>RECALL_API_KEY=…</code> and restart Max.</p></section>`;
+  }
+  const now = m.list.filter((x) => ON_NOW.includes(x.state));
+  const past = m.list.filter((x) => !ON_NOW.includes(x.state));
+  const len = (min?: number) => (min === undefined ? '' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`);
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const row = (x: (typeof m.list)[number]) =>
+    `<li class="row"><div><div class="name">${esc(x.title)} <span class="badge ${x.state === 'ready' ? 'ok' : x.state === 'failed' ? 'off' : ''}">${esc(x.status)}</span></div>
+<div class="meta">${esc(x.platform)} · ${esc(when(x.at))}${x.minutes !== undefined ? ` · ${len(x.minutes)}` : ''}${x.turns ? ` · ${x.turns} turns` : ''}</div></div>
+<div class="acts">${['joining', 'lobby', 'in-call', 'recording'].includes(x.state) ? post('/meetings/leave', { id: x.id }, 'Leave') : ''}${x.turns ? `<a class="btn secondary" href="/?meeting=${encodeURIComponent(x.id)}#meetings">Transcript</a>` : ''}</div></li>`;
+  const sel = m.selected;
+  const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  const detail = sel
+    ? `<section id="meeting-transcript"><h2>${esc(sel.title)}</h2>
+<p class="meta">${esc(sel.platform)} · ${esc(when(sel.at))} · ${esc(sel.status)} · <a href="/meetings/transcript.txt?id=${encodeURIComponent(sel.id)}">Download as text</a> · <a href="/#meetings">Back to meetings</a></p>
+<form class="addfact" method="post" action="/meetings/rename">${hidden('id', sel.id)}<input name="title" maxlength="120" required value="${esc(sel.title)}" aria-label="Meeting name"><button class="btn secondary" type="submit">Rename</button></form>
+<div class="transcript">${sel.lines.map((l) => `<p><span class="meta">${stamp(l.at)}</span> <b>${esc(l.speaker)}</b> ${esc(l.text)}</p>`).join('') || '<p class="meta">Nobody spoke.</p>'}</div>
+<form class="addfact danger" method="post" action="/meetings/delete">${hidden('id', sel.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this meeting and its transcript</label><button class="btn secondary" type="submit">Delete</button></form></section>`
+    : '';
+  const cost = (m.monthMinutes / 60) * 0.65;
+  return `<section id="meetings"><h2>Meetings</h2>
+<p class="meta">Send Max to an online meeting: he joins as a notetaker, tells everyone in the meeting chat that he's transcribing, and brings back who said what.</p>
+<form class="stack" method="post" action="/meetings/join">
+<div class="addfact"><input name="link" type="url" required placeholder="Paste the meeting link (Teams, Zoom or Google Meet)" aria-label="Meeting link"></div>
+<div class="addfact"><input name="title" maxlength="120" placeholder="What it's about (optional), e.g. Acme weekly with Marco" aria-label="Meeting name"><button class="btn" type="submit">Send Max</button></div></form>
+<p class="meta">Teams: if the meeting has a lobby, someone in it has to let Max in. This month: ${len(m.monthMinutes) || '0 min'} of meetings, about $${cost.toFixed(2)} at Recall.ai.</p>
+${now.length ? `<h3>On now</h3><ul>${now.map(row).join('')}</ul>` : ''}
+${past.length ? `<h3>Earlier</h3><ul>${past.slice(0, 30).map(row).join('')}</ul>` : '<p class="meta">No meetings yet.</p>'}
+${post('/meetings/check', {}, 'Check the Recall.ai connection')}
+${now.length ? '<script>setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) location.reload(); }, 15000);</script>' : ''}
+</section>${detail}`;
 }
 
 const STATUS: Record<string, string> = { active: 'Active', on_hold: 'On hold', done: 'Finished' };
@@ -429,7 +474,7 @@ const QUICK = ['overview', 'devices', 'myday', 'projects'];
 
 /** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
 const DRAWER: [string, [string, string, string][]][] = [
-  ['Max', [['#about-you', 'About you', 'memory'], ['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
+  ['Max', [['#tab-meetings', 'Meetings', 'meetings'], ['#about-you', 'About you', 'memory'], ['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
   ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
   ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
 ];
@@ -442,6 +487,7 @@ const TABS: [string, string][] = [
   ['max', 'Max'],
   ['memory', 'Memory'],
   ['projects', 'Projects'],
+  ['meetings', 'Meetings'],
   ['connections', 'Connections'],
   ['settings', 'Settings'],
 ];
@@ -584,7 +630,7 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
-  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), connections: true, settings: true };
+  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), meetings: Boolean(d.meetings), connections: true, settings: true };
   const attention: Record<string, boolean> = {
     connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
     settings: Boolean(d.location && !d.location.place),
@@ -613,6 +659,7 @@ ${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 .about .afield{margin:0 0 14px}.about label{display:block;font-weight:600;margin:0 0 4px}.about input{display:block;width:100%;max-width:420px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}.about textarea{box-sizing:border-box}.about .meta{margin-top:3px;font-size:13px}
+.transcript{max-height:70vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:10px 0;background:var(--bg)}.transcript p{margin:6px 0;line-height:1.45}.addfact input[type=url]{flex:1 1 auto;min-width:0}
 textarea{width:100%;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;font-variant-ligatures:none}
 input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-style:disc;padding-left:18px;color:var(--muted);font-size:13px}
 .hint{border-top:1px solid var(--line);padding:12px 0;color:var(--err)}.group{padding:14px 0 2px}.group h3{margin:0}.group+.row{border-top:0}.add{margin:12px 0 0}
@@ -666,6 +713,8 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 ${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}</div>` : ''}
 
 <div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
+
+<div class="pane" id="tab-meetings">${d.meetings ? meetingsSection(d.meetings) : ''}</div>
 
 <div class="pane" id="tab-connections">
 <section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>

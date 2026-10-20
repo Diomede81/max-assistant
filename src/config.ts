@@ -91,6 +91,8 @@ export interface AppConfig {
    * (the control panel's setting wins).
    */
   trains: { railDataKey: string; railDataUrl: string; googleMapsKey: string; homeStation: string };
+  /** Meetings: Max joins online meetings (Teams, Zoom, Meet) through Recall.ai and brings back the transcript. */
+  meetings: { recallKey: string; recallRegion: string; recallBaseUrl: string; botName: string };
   /**
    * Extra AI providers for background jobs (news briefings, memory filing...): one key per
    * provider in .env; which model does which job is chosen on the control panel.
@@ -274,6 +276,15 @@ export function loadConfig(): AppConfig {
       apiUrl: env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev',
       selfHosted: Boolean(env.FIRECRAWL_API_URL && !env.FIRECRAWL_API_KEY),
       country: env.FIRECRAWL_COUNTRY ?? 'GB',
+    },
+    meetings: {
+      recallKey: env.RECALL_API_KEY ?? '',
+      // eu-central-1, us-east-1, us-west-2 or ap-northeast-1: the region the Recall.ai account was made in.
+      // Empty: Max finds it himself.
+      recallRegion: env.RECALL_REGION ?? '',
+      // Only for testing against a stand-in for Recall.ai.
+      recallBaseUrl: env.RECALL_BASE_URL ?? '',
+      botName: env.MEETING_BOT_NAME ?? '',
     },
     trains: {
       railDataKey: env.RAIL_DATA_KEY ?? '',

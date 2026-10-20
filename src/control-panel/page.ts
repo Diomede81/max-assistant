@@ -280,7 +280,7 @@ function automationsSection(a: NonNullable<PanelData['automations']>): string {
   const autos = a.automations.length
     ? a.automations
         .map(
-          (x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge ${x.on ? 'ok' : 'off'}">${x.on ? 'on' : 'off'}</span>${x.byMax ? ' <span class="badge">by Max</span>' : ''}</div>${x.description ? `<div class="meta">${esc(x.description)}</div>` : ''}<div class="meta">Last ran: ${esc(when(x.lastRun))}</div></div>
+          (x) => `<li class="row auto"><div><div class="name">${esc(x.name)} <span class="badge ${x.on ? 'ok' : 'off'}">${x.on ? 'on' : 'off'}</span>${x.byMax ? ' <span class="badge">by Max</span>' : ''}</div>${x.description ? `<div class="meta">${esc(x.description)}</div>` : ''}<div class="meta">Last ran: ${esc(when(x.lastRun))}</div></div>
 <div class="acts">${post('/automations/on', { entity: x.entityId, on: x.on ? '0' : '1' }, x.on ? 'Turn off' : 'Turn on')}${post('/automations/run', { entity: x.entityId }, 'Run now')}${x.id ? `<form class="addfact" method="post" action="/automations/rename">${hidden('id', x.id)}<input name="name" maxlength="80" required value="${esc(x.name)}" aria-label="New name"><button class="btn secondary" type="submit">Rename</button></form>` : ''}${x.id ? `<form class="addfact danger" method="post" action="/automations/delete">${hidden('id', x.id)}<label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete</label><button class="btn secondary" type="submit">Delete</button></form>` : ''}</div></li>`,
         )
         .join('')
@@ -757,7 +757,7 @@ main{max-width:760px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;marg
 section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-.row:first-child{border-top:0;padding-top:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
+.row:first-child{border-top:0;padding-top:0}.row.auto{flex-direction:column;align-items:stretch}.row.auto .acts{flex-wrap:wrap;align-items:center}.row.auto .addfact{margin:0;flex:1 1 260px}.row.auto .addfact input{min-width:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
 .addfact,.search{display:flex;gap:8px;margin:12px 0 8px}.addfact input,.search input,select{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}

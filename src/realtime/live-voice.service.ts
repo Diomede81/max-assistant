@@ -180,6 +180,32 @@ export class LiveVoiceService implements OnModuleInit {
     }
   }
 
+  /**
+   * A recorder kept open for many lines (an online meeting): one connection, so each line skips the set-up.
+   * Reconnects by itself if the connection drops; closes after `idleMs` unused.
+   */
+  recorder(idleMs = 10 * 60_000): LineRecorder {
+    return new LineRecorder(() => this.client(this.voice, this.style), idleMs);
+  }
+
+  /** A real-time session that only says the lines it's given (no tools, no microphone). */
+  private client(voice: string, style: string): VoiceClient {
+    const r = this.cfg.realtime;
+    return new (r.provider === 'gemini' ? GeminiLiveClient : RealtimeClient)({
+      url: r.url,
+      apiKey: r.apiKey,
+      model: r.model,
+      voice,
+      instructions:
+        `${style}\nYou are recording voice lines. Each time you are given a line of text, say exactly that line, once, ` +
+        'in your voice and style. Add nothing before or after it, and do not answer it.',
+      tools: [],
+      silenceMs: r.silenceMs,
+      interruptResponse: false,
+      language: r.language,
+    });
+  }
+
   /** One short session that only says `text`, recorded (no tools, no microphone). */
   private record(text: string, voice = this.voice, style = this.style, timeoutMs = RECORD_TIMEOUT_MS): Promise<Buffer> {
     const r = this.cfg.realtime;
@@ -220,5 +246,94 @@ export class LiveVoiceService implements OnModuleInit {
         .then(() => client.speak(`Say exactly this line: ${text}`))
         .catch((e: Error) => finish(e));
     });
+  }
+}
+
+/** Lines said one after another over one open real-time session (see LiveVoiceService.recorder). */
+export class LineRecorder {
+  private client?: VoiceClient;
+  private connecting?: Promise<VoiceClient>;
+  private queue: Promise<unknown> = Promise.resolve();
+  private idle?: NodeJS.Timeout;
+
+  constructor(
+    private readonly make: () => VoiceClient,
+    private readonly idleMs: number,
+  ) {}
+
+  /** `text` as 24 kHz PCM in the live voice. Lines are said in order, one at a time. */
+  say(text: string, timeoutMs = 15_000): Promise<Buffer> {
+    const run = this.queue.then(() => this.record(text, timeoutMs));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  close(): void {
+    clearTimeout(this.idle);
+    const c = this.client;
+    this.client = undefined;
+    this.connecting = undefined;
+    if (c) {
+      c.removeAllListeners();
+      c.on('error', () => undefined);
+      c.close();
+    }
+  }
+
+  private open(): Promise<VoiceClient> {
+    if (this.client) return Promise.resolve(this.client);
+    this.connecting ??= (async () => {
+      const c = this.make();
+      c.on('error', () => undefined);
+      c.on('close', () => {
+        if (this.client === c) this.client = undefined;
+      });
+      await c.connect();
+      this.client = c;
+      return c;
+    })().finally(() => (this.connecting = undefined));
+    return this.connecting;
+  }
+
+  private async record(text: string, timeoutMs: number): Promise<Buffer> {
+    clearTimeout(this.idle);
+    const started = Date.now();
+    let c: VoiceClient;
+    try {
+      c = await this.open();
+    } catch (err) {
+      this.close();
+      throw err;
+    }
+    const left = Math.max(3000, timeoutMs - (Date.now() - started));
+    try {
+      return await new Promise<Buffer>((resolve, reject) => {
+        const parts: Buffer[] = [];
+        const onAudio = (b: Buffer) => parts.push(b);
+        const finish = (err?: Error) => {
+          clearTimeout(timer);
+          c.off('audio', onAudio);
+          c.off('response-done', onDone);
+          c.off('close', onClose);
+          if (err) reject(err);
+          else if (!parts.length) reject(new Error('no audio came back'));
+          else resolve(Buffer.concat(parts));
+        };
+        const onDone = () => finish();
+        const onClose = () => finish(new Error('the connection closed'));
+        const timer = setTimeout(() => finish(new Error('timed out')), left);
+        c.on('audio', onAudio);
+        c.on('response-done', onDone);
+        c.on('close', onClose);
+        c.speak(`Say exactly this line: ${text}`);
+      });
+    } catch (err) {
+      // A broken or stuck session: start a fresh one next time.
+      this.close();
+      throw err;
+    } finally {
+      this.idle = setTimeout(() => this.close(), this.idleMs);
+      this.idle.unref?.();
+    }
   }
 }

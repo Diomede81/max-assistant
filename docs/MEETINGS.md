@@ -62,8 +62,12 @@ Max can also answer you **out loud** in the meeting. Start with his name:
 He answers in one to three sentences in his own voice, about 3 to 5 seconds later, and **everyone in the meeting
 hears it**. So:
 
-- **Only you can ask.** Max recognises you by your name in the meeting (from About you; set
-  `MEETING_OWNER_NAME` if the meeting shows it differently). Anyone else saying "Max" is ignored.
+- **Only you can ask.** Max recognises you by your name in the meeting: from About you, or set it on the
+  Meetings page under **Names in meetings → Max answers to**, exactly as Teams shows it (e.g. "Licata, Luca").
+  Anyone else saying "Max" is ignored. The same section sets the name Max joins with.
+- **While a meeting is on**, the Meetings page shows what Max hears live: how many lines arrived, and the last
+  time someone said "Max" (answered, or why not, e.g. "heard from Luca L.: not you"). Nothing there means
+  the live transcript isn't reaching the box: press **Check the secure link**.
 - **He only uses** what's been said in the meeting, general knowledge about its topic, and the **project the
   meeting is about**. Nothing personal: no email, calendar, family, memories or other projects, even if asked.
 - **The project:** pick it when you send Max (Meetings page), say it ("join my 10 o'clock for the Milan

@@ -33,6 +33,14 @@ export interface Meeting {
   answers?: number;
 }
 
+/** Set on the Meetings page. */
+interface MeetingSettings {
+  /** Your name as meetings show it (Max answers only you). */
+  ownerName?: string;
+  /** The name Max joins with. */
+  botName?: string;
+}
+
 /** Recall.ai's bot statuses, as Max says them. */
 const STATUS: Record<string, [MeetingState, string]> = {
   ready: ['joining', 'Getting ready to join'],
@@ -81,6 +89,8 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Meetings');
   private readonly recall: RecallClient;
   private store?: SealedStore<Meeting[]>;
+  private settingsStore?: SealedStore<MeetingSettings>;
+  private settings: MeetingSettings = {};
   private meetings: Meeting[] = [];
   private timer?: NodeJS.Timeout;
   private polling = false;
@@ -108,6 +118,12 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.log.error(`Could not read the meetings (${(err as Error).message})`);
     }
+    this.settingsStore = new SealedStore(this.cfg.memory.dir, 'meetings-settings', memorySecret(this.cfg));
+    try {
+      this.settings = this.settingsStore.load() ?? {};
+    } catch (err) {
+      this.log.warn(`Could not read the meeting settings (${(err as Error).message})`);
+    }
     if (!this.enabled) return;
     this.timer = setInterval(() => void this.poll(), POLL_MS);
     this.timer.unref();
@@ -116,6 +132,35 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     clearInterval(this.timer);
+  }
+
+  // ---------- Settings (Meetings page) ----------
+
+  /** Who Max answers in meetings: the name set on the Meetings page, else MEETING_OWNER_NAME, else About you. */
+  ownerName(): string {
+    return (this.settings.ownerName || this.cfg.meetings.ownerName || this.about?.about.name || '').trim();
+  }
+
+  /** The name Max joins meetings with. */
+  botName(): string {
+    const who = this.ownerName().split(/\s+/)[0];
+    return (this.settings.botName || this.cfg.meetings.botName || (who ? `Max (${who}'s notetaker)` : 'Max (notetaker)')).trim();
+  }
+
+  /** What the Meetings page shows: what's set there, and what applies when it's empty. */
+  settingsView(): { ownerName: string; botName: string; ownerDefault: string; botDefault: string; ownerNow: string; botNow: string } {
+    const saved = this.settings;
+    this.settings = {};
+    const defaults = { ownerDefault: this.ownerName(), botDefault: this.botName() };
+    this.settings = saved;
+    return { ownerName: saved.ownerName ?? '', botName: saved.botName ?? '', ...defaults, ownerNow: this.ownerName(), botNow: this.botName() };
+  }
+
+  async saveSettings(ownerName: string, botName: string): Promise<string> {
+    const clean = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max) || undefined;
+    this.settings = { ownerName: clean(ownerName, 80), botName: clean(botName, 60) };
+    await this.settingsStore?.save(this.settings);
+    return `Saved. Max answers ${this.ownerName() || 'nobody yet (add your name)'} and joins as "${this.botName()}".`;
   }
 
   /** Newest first. */
@@ -133,7 +178,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   getByBot(botId: string): Meeting | undefined {
-    return this.meetings.find((m) => m.botId === botId);
+    return this.list().find((m) => m.botId === botId);
   }
 
   /** Max speaking in a meeting (an MP3, as base64). */
@@ -172,8 +217,8 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
     if (this.meetings.some((m) => m.url === link.trim() && ACTIVE.includes(m.state) && m.state !== 'ended')) {
       return { ok: false, message: 'Max is already in that meeting.' };
     }
-    const who = this.about?.about.name?.trim().split(/\s+/)[0];
-    const name = this.cfg.meetings.botName || (who ? `Max (${who}'s notetaker)` : 'Max (notetaker)');
+    const who = this.ownerName().split(/\s+/)[0] || undefined;
+    const name = this.botName();
     const chat = `Hi, I'm Max, ${who ? `${who}'s` : 'an'} AI notetaker. I'm transcribing this meeting so ${who ?? 'my owner'} gets the notes.`;
     let bot: RecallBot;
     try {

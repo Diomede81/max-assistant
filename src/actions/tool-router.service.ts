@@ -201,7 +201,7 @@ export class ToolRouterService {
    */
   private async confirmation(name: string, args: Record<string, unknown>): Promise<{ args: Record<string, unknown> } | { say: string }> {
     const { [CONFIRM_PARAM]: confirmed, ...rest } = args;
-    const key = `${name}:${stableJson(rest)}`;
+    const key = confirmKey(name, rest);
     if (confirmed !== true || !this.gate.isAsked(key)) {
       this.gate.ask(key);
       this.log.log(`${name} needs a spoken confirmation first`);
@@ -224,7 +224,7 @@ export class ToolRouterService {
       this.log.log(`${name}: the user said no`);
       return { say: 'NOT DONE: the user said no. Drop it and say so briefly.' };
     }
-    this.log.warn(`${name}: confirmed=true without a yes from the user (${verdict}); not done`);
+    this.log.warn(`${name}: confirmed=true without a yes from the user (${verdict}; last heard: "${this.gate.lastWords.slice(0, 80)}"); not done`);
     return {
       say:
         verdict === 'unclear'
@@ -380,6 +380,24 @@ function withConfirmParam(t: ChatCompletionTool, when?: string): ChatCompletionT
 }
 
 /** JSON with sorted keys, so the same request always produces the same key. */
+/**
+ * What the user's yes is to: the action and its exact details, so a yes never covers anything else (another
+ * recipient, another message). Joining a meeting is the one exception: the yes is to the meeting link, so the AI
+ * tidying the meeting's name or adding its project between the question and the yes doesn't need a second yes.
+ */
+function confirmKey(name: string, args: Record<string, unknown>): string {
+  if (name === 'meeting' && args.action === 'join') {
+    let link = String(args.link ?? '').trim();
+    try {
+      link = decodeURIComponent(link);
+    } catch {
+      /* not encoded */
+    }
+    return `meeting:join:${link.toLowerCase().replace(/[\s.,;!?)>\]]+$/, '')}`;
+  }
+  return `${name}:${stableJson(args)}`;
+}
+
 function stableJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
   if (v && typeof v === 'object') {

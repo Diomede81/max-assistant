@@ -218,7 +218,9 @@ Max can run his own Home Assistant, so you don't need a separate one. Setup asks
 - **Connected.** Under "Add devices and services", the brands and services you added (Tado, Shelly…), whether
   each one works, and **Remove**.
 - **Cameras and doorbells** (e.g. Ring): "Max, show me the front door" puts the camera's latest picture on his screen,
-  and he says when it last saw motion or someone rang ("who was at the door?"). Only for devices ticked **Max can
+  and he says when it last saw motion or someone rang ("who was at the door?"); with no camera named, the one that saw
+  something last. An automation can do it too: "every time the front camera sees motion, show it on the screen and
+  tell me". Only for devices ticked **Max can
   use**; never in guest mode. Anything you add from the Devices tab is ready for Max straight away (untick any you'd
   rather he didn't use).
 - **Automations.** Things the house does by itself. Describe one in your own words under **Automations** (or say

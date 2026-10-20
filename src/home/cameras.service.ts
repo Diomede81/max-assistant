@@ -10,6 +10,8 @@ export interface HomeCamera {
   area?: string;
   /** "Motion: 5 min ago · Ding: yesterday 18:40". */
   recent: string[];
+  /** When it last saw something (motion, a ring), ms: the one meant when no camera is named. */
+  lastSeen: number;
 }
 
 /**
@@ -57,14 +59,19 @@ export class CamerasService {
       // Only cameras on a device Max may use (the "Max can use" tick on the Devices page).
       if (!siblings.some(allowed)) continue;
       const recent: string[] = [];
+      let lastSeen = 0;
       for (const e of siblings) {
         const s = stateOf.get(e.entity_id);
         if (!s) continue;
         const label = (e.name || e.original_name || String(s.attributes.friendly_name ?? '')).replace(d?.name_by_user || d?.name || '', '').trim() || e.entity_id.split('.')[1].replace(/_/g, ' ');
         // A ring or motion event: its state is when it last happened.
-        if (e.entity_id.startsWith('event.') && !isNaN(Date.parse(s.state))) recent.push(`${label}: ${ago(s.state)}`);
-        else if (e.entity_id.startsWith('binary_sensor.') && /motion|occupancy|ding|ring|doorbell|person/i.test(`${String(s.attributes.device_class ?? '')} ${label}`)) {
+        if (e.entity_id.startsWith('event.') && !isNaN(Date.parse(s.state))) {
+          recent.push(`${label}: ${ago(s.state)}`);
+          lastSeen = Math.max(lastSeen, Date.parse(s.state));
+        } else if (e.entity_id.startsWith('binary_sensor.') && /motion|occupancy|ding|ring|doorbell|person/i.test(`${String(s.attributes.device_class ?? '')} ${label}`)) {
           recent.push(`${label}: ${s.state === 'on' ? 'now' : s.last_changed ? `last ${ago(s.last_changed)}` : 'no'}`);
+          if (s.state === 'on') lastSeen = Date.now();
+          else if (s.last_changed) lastSeen = Math.max(lastSeen, Date.parse(s.last_changed) || 0);
         }
       }
       const st = stateOf.get(cam.entity_id);
@@ -73,14 +80,43 @@ export class CamerasService {
         name: d?.name_by_user || d?.name || String(st?.attributes.friendly_name ?? cam.entity_id),
         area: d?.area_id ? areaName.get(d.area_id) : undefined,
         recent,
+        lastSeen,
       });
     }
     return out;
   }
 
+  /** The camera's latest picture: asked again a couple of times, as some (Ring) are slow to hand one over. */
+  private async picture(entityId: string): Promise<Buffer> {
+    let last: Error | undefined;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const jpeg = await this.home.snapshot(entityId);
+        if (jpeg.length > 500) return jpeg;
+        last = new Error('the picture came back empty');
+      } catch (err) {
+        last = err as Error;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw last ?? new Error('no picture');
+  }
+
+  /** An automation asked for a camera on the screen ("motion at the front door"): any camera it names. */
+  async showFor(entityId: string): Promise<boolean> {
+    const cam = (await this.list().catch(() => [])).find((c) => c.entityId === entityId) ?? { entityId, name: entityId.replace(/^camera\./, '').replace(/_/g, ' '), recent: [], lastSeen: 0 };
+    try {
+      await this.show(cam);
+      return true;
+    } catch (err) {
+      this.log.warn(`An automation asked for ${entityId} on the screen: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
   /** Shows the camera's latest picture on Max's screen. */
   async show(cam: HomeCamera): Promise<string> {
-    const jpeg = await this.home.snapshot(cam.entityId);
+    const jpeg = await this.picture(cam.entityId);
     showCard({
       id: 'camera',
       kind: 'notice',
@@ -106,9 +142,11 @@ export class CamerasService {
         function: {
           name: 'camera',
           description:
-            'The home\'s cameras and doorbells (Ring and others in Home Assistant). list: the cameras and what they saw lately ' +
-            '(motion, someone ringing). show: put a camera\'s latest picture on your screen ("show me the front door") and say ' +
-            'what it saw lately. You can only see a still picture, not describe it.',
+            'The home\'s cameras and doorbells (Ring and others in Home Assistant). show: put a camera\'s latest picture on your ' +
+            'screen and say what it saw lately: use it whenever the user wants to see, check or look at a camera or the door ' +
+            '("show me the front door", "check the camera", "who\'s at the door?"); with no camera named, the one that saw ' +
+            'something most recently. list: only when they ask which cameras there are. You only show the still picture: you ' +
+            "can't describe what's in it. To show a camera every time something happens (motion, a ring), make a home automation.",
           parameters: {
             type: 'object',
             properties: {
@@ -132,17 +170,22 @@ export class CamerasService {
       if (!cams.length) {
         return 'No cameras Max may use. On the Devices page, tick "Max can use" on the camera (or doorbell), then ask again.';
       }
-      if (a.action !== 'show') {
+      if (a.action === 'list') {
         return cams.map((c) => `${c.name}${c.area ? ` (${c.area})` : ''}${c.recent.length ? `: ${c.recent.join(', ')}` : ''}`).join('; ');
       }
       const want = String(a.name ?? '').toLowerCase();
       const words = want.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !['the', 'camera', 'show', 'doorbell'].includes(w));
       const score = (c: HomeCamera) => words.filter((w) => `${c.name} ${c.area ?? ''}`.toLowerCase().includes(w)).length;
       const ranked = [...cams].sort((x, y) => score(y) - score(x));
-      // The one camera there is, or the one whose name or room matches best (a tie: ask which).
-      const cam = cams.length === 1 ? cams[0] : score(ranked[0]) > 0 && score(ranked[0]) > score(ranked[1]) ? ranked[0] : undefined;
+      // The one camera there is; the one whose name or room matches best; with no name, the one that saw something last.
+      const latest = [...cams].sort((x, y) => y.lastSeen - x.lastSeen)[0];
+      const cam = cams.length === 1 ? cams[0] : !words.length ? latest : score(ranked[0]) > 0 && score(ranked[0]) > score(ranked[1]) ? ranked[0] : undefined;
       if (!cam) return `Which camera? ${cams.map((c) => c.name).join(', ')}.`;
-      return await this.show(cam);
+      try {
+        return await this.show(cam);
+      } catch (err) {
+        return `${cam.name} didn't send a picture (${(err as Error).message}). ${cam.recent.length ? `Lately: ${cam.recent.join('; ')}.` : ''} Ask again in a moment.`;
+      }
     } catch (err) {
       return `Couldn't reach the cameras: ${(err as Error).message}`;
     }

@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { ModelsService } from '../models/models.service';
+import { ModesService } from '../memory/modes.service';
+import { CamerasService } from './cameras.service';
 import { HomeService } from './home.service';
 
 /** One automation, as the Devices page and Max see it. */
@@ -40,6 +42,8 @@ export interface AutomationDraft {
 
 /** The event an automation fires to make Max say something on the box. */
 export const SAY_EVENT = 'max_say';
+/** The event an automation fires to put a camera's latest picture on Max's screen (and say a line). */
+export const CAMERA_EVENT = 'max_show_camera';
 /** What marks the automations Max made (in their description). */
 const MADE_BY_MAX = '(Made by Max)';
 /** How long a draft waits to be saved. */
@@ -66,6 +70,8 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
   constructor(
     private readonly home: HomeService,
     @Optional() private readonly models?: ModelsService,
+    @Optional() private readonly cameras?: CamerasService,
+    @Optional() private readonly modes?: ModesService,
   ) {
     super();
   }
@@ -84,6 +90,17 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
         if (!text) return;
         this.log.log(`An automation asked Max to say: ${text}`);
         this.emit('say', text);
+      });
+      // "Every time the front camera sees motion, show it and tell me": the picture on the screen, and the line said.
+      this.home.listen(CAMERA_EVENT, (data) => {
+        const camera = String(data.camera ?? '');
+        const text = String(data.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        if (text) this.emit('say', text);
+        if (!/^camera\.[a-z0-9_]+$/.test(camera)) return;
+        // Not with visitors around: guest mode only hears the line.
+        if (this.modes?.mode === 'guest') return;
+        this.log.log(`An automation asked for ${camera} on the screen`);
+        void this.cameras?.showFor(camera);
       });
     });
   }
@@ -160,7 +177,9 @@ export class AutomationsService extends EventEmitter implements OnModuleInit {
           '"target": {"entity_id": [...]}, "data": {...}, plus "delay", "repeat" when needed.\n' +
           'Only use the entity ids listed. If the user means something that is not listed, say so in the summary and leave it out; ' +
           'never invent one. To make Max (the voice assistant in the room) say something out loud, use the action ' +
-          `{"event": "${SAY_EVENT}", "event_data": {"message": "what to say"}}. ` +
+          `{"event": "${SAY_EVENT}", "event_data": {"message": "what to say"}}. To put a camera's latest picture on Max's screen ` +
+          `(and say a line), use {"event": "${CAMERA_EVENT}", "event_data": {"camera": "camera.…", "message": "what to say"}}: ` +
+          'for "show me the camera / the picture when…", use this one, not max_say. ' +
           (phones.length ? `To send a notification to a phone, use "action": "notify.<name>" with data.title/message; phones: ${phones.join(', ')}. ` : 'No phone notifications are set up (Home Assistant app): use Max saying it instead, and say so in the summary. ') +
           '"When I\'m out / away": a person entity\'s state "not_home" if one is listed and it is not "unknown"; otherwise, or for ' +
           '"when the alarm is on / active" with no alarm listed, use an on/off switch: put its name in new_switches (e.g. "Alarm") ' +
@@ -452,6 +471,7 @@ export function check(auto: Record<string, unknown>, known: Set<string>): string
       for (const [k, x] of Object.entries(o)) walk(x, k);
       return;
     }
+    if (typeof v === 'string' && key === 'camera' && !known.has(v)) bad.push(`there's no camera "${v}" in the house`);
     if (typeof v === 'string' && (key === 'entity_id' || key === 'entity_ids') && /^[a-z_]+\.[a-z0-9_]+$/.test(v) && !known.has(v) && v !== 'all') {
       bad.push(`there's no "${v}" in the house`);
     }

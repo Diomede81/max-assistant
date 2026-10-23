@@ -15,10 +15,10 @@ Runs as root under systemd (max-mute-button.service). Uses gpiozero (python3-gpi
 Settings (environment): MAX_RUN_DIR (/run/max), MAX_MUTE_GPIO (17), MAX_MUTE_LED_GPIO (27, "off" for none).
 """
 import os
-import signal
 import stat
 import sys
 import tempfile
+import time
 
 from gpiozero import LED, Button
 
@@ -26,6 +26,8 @@ RUN_DIR = os.environ.get('MAX_RUN_DIR', '/run/max')
 PIN = int(os.environ.get('MAX_MUTE_GPIO', '17'))
 LED_PIN = os.environ.get('MAX_MUTE_LED_GPIO', '27')
 NOTE = os.path.join(RUN_DIR, 'muted')
+# The control panel's Mute / Unmute: Max writes "on" or "off" here, this service does the rest (as for the button).
+REQUEST = os.path.join(RUN_DIR, 'mute-request')
 SAVED = '/var/lib/max/muted'
 light = None
 # The note goes into the folder Max shares with the box (/run/max), where Max's container can create
@@ -86,6 +88,32 @@ def toggle():
     log('Microphone off' if muted else 'Microphone on')
 
 
+def take_request():
+    """The control panel asked to mute or unmute: a real file only (a planted link is removed, never followed)."""
+    try:
+        st = os.lstat(REQUEST)
+    except FileNotFoundError:
+        return
+    except OSError as err:
+        log(f'Could not read {REQUEST}: {err}')
+        return
+    want = None
+    if stat.S_ISREG(st.st_mode) and st.st_size <= 16:
+        try:
+            fd = os.open(REQUEST, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd) as f:
+                want = f.read(16).strip().lower()
+        except OSError as err:
+            log(f'Could not read {REQUEST}: {err}')
+    try:
+        os.remove(REQUEST)
+    except OSError:
+        pass
+    if want in ('on', 'off'):
+        set_muted(want == 'on')
+        log('Microphone off (control panel)' if want == 'on' else 'Microphone on (control panel)')
+
+
 def main():
     global light
     if LED_PIN != 'off':
@@ -94,7 +122,9 @@ def main():
     button = Button(PIN, pull_up=True, bounce_time=0.05)
     button.when_pressed = toggle
     log(f'Mute button ready on GPIO {PIN} (microphone {"off" if os.path.exists(NOTE) else "on"})')
-    signal.pause()
+    while True:  # the button works by itself (gpiozero); this loop answers the control panel
+        take_request()
+        time.sleep(0.3)
 
 
 if __name__ == '__main__':

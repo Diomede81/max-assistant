@@ -29,7 +29,17 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
-  device?: { volume?: number; brightness: number; brightnessSupported?: boolean; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: string };
+  device?: {
+    volume?: number;
+    brightness: number;
+    brightnessSupported?: boolean;
+    greeting?: string;
+    greetAgainMin?: number;
+    startSound?: boolean;
+    tone?: string;
+    /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
+    mic?: { muted: boolean };
+  };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -302,6 +312,20 @@ ${draft}
 ${switches}
 <form class="addfact" method="post" action="/automations/switch"><input name="name" maxlength="40" required placeholder="New on/off switch, e.g. Alarm, Holiday, Guests"><button class="btn secondary" type="submit">Add switch</button></form>
 </section>`;
+}
+
+/** Microphone on/off (the same as the button on top of the box). */
+function micSwitch(mic: { muted: boolean }, from: string): string {
+  return `<div class="addfact"><div><b>Microphone ${mic.muted ? 'off' : 'on'}</b> <span class="badge ${mic.muted ? 'warn' : 'ok'}">${mic.muted ? "Max can't hear" : 'listening for "Hey Max"'}</span>
+<div class="meta">${mic.muted ? 'Nothing reaches Max until you turn it on (here, or the button on top of the box).' : 'Turn it off when you want privacy: Max hears nothing, the same as the button on top of the box.'}</div></div>
+${post('/device/mute', { on: mic.muted ? '0' : '1', from }, mic.muted ? 'Turn the microphone on' : 'Turn the microphone off', mic.muted ? 'btn' : 'btn secondary')}</div>`;
+}
+
+/** On the Home tab while the microphone is off, so it's never a surprise that Max doesn't answer. */
+function micBanner(d: PanelData): string {
+  const mic = d.device?.mic;
+  if (!mic) return '';
+  return mic.muted ? `<section id="mic" class="mic-off">${micSwitch(mic, 'home')}</section>` : `<div class="acts mic-on">${post('/device/mute', { on: '1', from: 'home' }, '🎙️ Mute the microphone')}</div>`;
 }
 
 function meetingsSection(m: NonNullable<PanelData['meetings']>): string {
@@ -757,7 +781,7 @@ main{max-width:760px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;marg
 section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-.row:first-child{border-top:0;padding-top:0}.row.auto{flex-direction:column;align-items:stretch}.row.auto .acts{flex-wrap:wrap;align-items:center}.row.auto .addfact{margin:0;flex:1 1 260px}.row.auto .addfact input{min-width:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
+.row:first-child{border-top:0;padding-top:0}.mic-off{border:1px solid var(--err);background:var(--errbg)}.mic-on{justify-content:flex-end;margin:0 0 12px}.row.auto{flex-direction:column;align-items:stretch}.row.auto .acts{flex-wrap:wrap;align-items:center}.row.auto .addfact{margin:0;flex:1 1 260px}.row.auto .addfact input{min-width:0}.app{display:flex;gap:12px;align-items:flex-start}.app img,.ph{width:32px;height:32px;border-radius:8px;flex:none;background:var(--offbg)}
 .addfact,.search{display:flex;gap:8px;margin:12px 0 8px}.addfact input,.search input,select{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
@@ -807,7 +831,7 @@ ${DRAWER.map(([group, items]) => `<div class="dgroup"><div class="dtitle">${grou
 </aside>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
 
-<div class="pane" id="tab-overview">${overview(d)}</div>
+<div class="pane" id="tab-overview">${micBanner(d)}${overview(d)}</div>
 
 <div class="pane" id="tab-myday">${d.memory ? myDaySection(d.memory) : ''}</div>
 
@@ -842,6 +866,7 @@ ${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul>
 ${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
+${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
 ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
 <div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[

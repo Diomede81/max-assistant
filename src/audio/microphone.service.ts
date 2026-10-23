@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ChildProcess, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -31,11 +31,37 @@ export class MicrophoneService extends EventEmitter implements OnModuleDestroy {
     return this._muted;
   }
 
+  /** Muting from the control panel works on the box: its mute service (the one behind the button) does it. */
+  get canMute(): boolean {
+    return this.cfg.face.onBox;
+  }
+
+  /**
+   * The control panel's Mute / Unmute: asks the box's mute service, so the button, its light, the face and the panel
+   * always agree (and pressing the button still toggles it). Waits for the microphone to follow.
+   */
+  async setMuted(on: boolean): Promise<string> {
+    if (!this.canMute) return 'Muting from here only works on the Max box.';
+    this.checkMute();
+    if (this._muted === on) return on ? 'The microphone is already off.' : 'The microphone is already on.';
+    try {
+      writeFileSync(join(this.cfg.face.runDir, 'mute-request'), on ? 'on\n' : 'off\n');
+    } catch (err) {
+      return `Couldn't ask the box: ${(err as Error).message}`;
+    }
+    for (let i = 0; i < 20 && this._muted !== on; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      this.checkMute();
+    }
+    if (this._muted !== on) return "The box's mute service didn't answer: run the setup again (it installs it), or use the button on top.";
+    return on ? 'Microphone off: Max can\'t hear anything until you turn it on again (here or with the button on top).' : 'Microphone on: Max can hear you again.';
+  }
+
   private checkMute(): void {
     const muted = existsSync(join(this.cfg.face.runDir, 'muted'));
     if (muted === this._muted) return;
     this._muted = muted;
-    this.log.log(muted ? 'Microphone muted (mute button)' : 'Microphone on again (mute button)');
+    this.log.log(muted ? 'Microphone muted' : 'Microphone on again');
   }
 
   get format() {

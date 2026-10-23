@@ -143,6 +143,10 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   really helpful, thank you"); a request after it still goes through ("thanks, can you also set a timer").
   When the box starts or Max restarts (an update), a short **jingle** tells you he's ready. The greeting
   (empty = a short beep) and the jingle are set in **Settings → Device** on the control panel.
+- **Microphone off (privacy):** press the button on top of the box, or use **Mute the microphone** on the control
+  panel's Home tab (also in **Settings → Device**). Max then hears nothing; his face and the panel show
+  "Microphone off", and the button's light is on. Turn it back on the same way, from either. It stays as you left it
+  after a restart.
 - **Volume and brightness:** hold a finger on the screen for 2 seconds: the menu has **Volume** and
   **Brightness** with − and + buttons. Or say "Max, louder", "volume to 30%", "dim the screen", or use
   **Settings → Device** on the control panel. Brightness is remembered when Max restarts.

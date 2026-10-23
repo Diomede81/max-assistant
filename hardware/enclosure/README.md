@@ -48,6 +48,10 @@ print the front panel in a contrasting colour if you like a two-tone look.
   clear), and **3 mm thick** for the speaker chamber gasket
 - 4 × 10 mm rubber feet
 - About 30 cm of speaker wire, a short right-angle USB-A to USB-C cable (mic board to Pi)
+- For the screen's power: a 4-pin cable from the screen board's white 4-pin socket (SCL, SDA, GND, 5V) to
+  female jumper ends, about 25-30 cm (the screen usually comes with a short one: extend it with
+  female-to-male jumper wires). Mounted in the box, the screen's spring pins don't touch the Pi, so this
+  cable is what powers it
 - For the buttons: 8 female-to-female jumper wires (15-20 cm; cut one end off each and solder it to a
   button tab, with heat-shrink), and a 2-pin header (2.54 mm) soldered to the Pi's power button
   pads (J2)
@@ -104,7 +108,10 @@ front panel take a few minutes each to compute because of the grille holes.
    bosses and the four chamber bosses.
 2. **Screen:** lay the screen face down into its recess in the front panel and fix the screen ring over
    it (4 × M3). Connect the 200 mm display cable to the screen first (wide end into the screen,
-   narrow end for the Pi).
+   narrow end for the Pi), and plug the 4-pin power cable into the screen board's white socket (SCL,
+   SDA, GND, 5V). **The screen needs this cable in the box:** its gold spring pins only power it when the
+   Pi sits directly on the back of the screen. Without it the Pi still finds the screen, but the
+   backlight blinks once a second and no picture appears.
 3. **Speaker:** screw the speaker onto its flat square seat on the back of the front panel (the
    whole frame sits flat on it, so no air leaks round the speaker) and connect the wire. Stick the 3 mm foam gasket around the chamber's open edge, pass the wire out through the
    small hole in the chamber's back, and press the chamber over the speaker. Fix it from behind with
@@ -117,8 +124,11 @@ front panel take a few minutes each to compute because of the grille holes.
    through the hole in the back, and tighten their nuts from inside.
    Each button has 4 tabs: two for the switch (often marked C and NO) and two for the light (+ and -).
 
-   | Button | Tab | Goes to |
+   | Part | Wire | Goes to |
    | --- | --- | --- |
+   | Screen | 5V | pin 2 (5 V) |
+   | Screen | GND | pin 6 (ground) |
+   | Screen | SDA, SCL | pins 3 and 5 (optional: on the Pi 5 the screen also talks over the ribbon) |
    | Power | switch (both) | the Pi 5's **J2** pads, either way round, through a 2-pin **locking header** pushed into the holes (no solder). It works exactly like the Pi's own power button, including turning the box **on** |
    | Power | light + | pin 1 (3.3 V) |
    | Power | light - | pin 20 (ground) |
@@ -131,14 +141,20 @@ front panel take a few minutes each to compute because of the grille holes.
      countdown you can cancel). Holding it for 5 seconds turns the box off straight away, in case Max
      isn't responding. J2 is next to the small white battery socket (J5), near the USB-C socket.
      Its light is on while the box is on.
+   - **If pressing a button crashes the box** (the screen turns to noise) only while its light is wired:
+     that button joins its light and switch inside. With a multimeter (button disconnected, not
+     pressed), find the switch tab that beeps against the light's - tab, and put that switch tab in the
+     J2 hole that beeps against ground (pin 6); if a switch tab beeps against the light's + tab instead,
+     leave that light unconnected.
    - **Mute:** each press turns the microphone off or back on. While it is off, the button's light
      is on and the face shows "Microphone off".
 6. **Mic board:** stick the foam ring to the top of the board, then screw the board to the three posts
    under the top grille (the hole at the point of the triangle, by the USB socket, faces the right-hand side seen from the front, where there is room for the plug). Connect it to the Pi with the right-angle USB cable, and connect the speaker
    wire to the board's speaker socket.
 7. **Close:** plug the screen ribbon's narrow end into the Pi's `CAM/DISP 1` connector
-   (or `0`: the setup script asks which), slide the front panel in, and fix
-   it with the four side screws. Route the USB-C power cable through the notch at the back.
+   (or `0`: the setup script asks which) and the screen's 4-pin power cable onto pins 2 and 6 (and 3
+   and 5), slide the front panel in without pinching the ribbon or wires, and fix it with the four
+   side screws. Route the USB-C power cable through the notch at the back.
 
 ## Design notes
 

@@ -30,6 +30,7 @@ import { AirPlayService } from '../music/airplay.service';
 import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
+import { MicrophoneService } from '../audio/microphone.service';
 import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -43,6 +44,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   private server?: Server;
   @Optional() @Inject(MusicService) private readonly music?: MusicService;
   @Optional() @Inject(HomeService) private readonly home?: HomeService;
+  @Optional() @Inject(MicrophoneService) private readonly mic?: MicrophoneService;
   @Optional() @Inject(AutomationsService) private readonly automations?: AutomationsService;
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
@@ -218,6 +220,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const out = f.has('volume') ? await this.device.setVolume(Number(f.get('volume'))) : this.device.setBrightness(Number(f.get('brightness')));
       const what = f.has('volume') ? 'Volume' : 'Brightness';
       return this.redirect(res, `/?${typeof out === 'number' ? `ok=${encodeURIComponent(`${what} ${out}%.`)}` : `error=${encodeURIComponent(out)}`}#device`);
+    }
+    if (req.method === 'POST' && url.pathname === '/device/mute' && this.mic) {
+      const f = await readForm(req);
+      const msg = await this.mic.setMuted(f.get('on') === '1');
+      const back = f.get('from') === 'home' ? '' : '#device';
+      return this.redirect(res, `/?${/^Microphone (off|on)|already/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}${back}`);
     }
     if (req.method === 'POST' && url.pathname === '/device/sound' && this.device) {
       const f = await readForm(req);
@@ -644,7 +652,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         : undefined,
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
-      device: await this.device?.status(),
+      device: this.device && { ...(await this.device.status()), mic: this.mic?.canMute ? { muted: this.mic.muted } : undefined },
       liveVoice: this.liveVoice
         ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
         : undefined,

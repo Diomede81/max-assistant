@@ -60,6 +60,10 @@ export class ComposioService implements OnModuleInit {
     return this.connectedCount[side] > 0;
   }
 
+  /** Starting again after a failed start (e.g. no internet yet): the wait so far, and the timer. */
+  private readonly retryMs: Partial<Record<Side, number>> = {};
+  private readonly retryTimer: Partial<Record<Side, NodeJS.Timeout>> = {};
+
   async onModuleInit(): Promise<void> {
     if (!this.enabled) return;
     this.composio = new Composio({ apiKey: this.cfg.composio.apiKey });
@@ -80,10 +84,20 @@ export class ComposioService implements OnModuleInit {
             mcp: true,
           } as never);
           this.errors[side] = undefined;
+          this.retryMs[side] = undefined;
+          clearTimeout(this.retryTimer[side]);
           await this.registerTools(side);
         } catch (err) {
-          this.errors[side] = (err as Error).message;
-          this.log.error(`Could not start the ${side} Composio session: ${this.errors[side]}. Check COMPOSIO_API_KEY`);
+          const msg = (err as Error).message;
+          const offline = /connection|network|fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|timed? ?out/i.test(msg);
+          // Usually the box has no internet yet (just started, or the WiFi is being set up): try again by itself,
+          // so the apps come back once it's online without a restart.
+          const wait = Math.min(RETRY_MAX_MS, (this.retryMs[side] = this.retryMs[side] ? this.retryMs[side]! * 2 : RETRY_FIRST_MS));
+          this.errors[side] = offline ? `Can't reach Composio (is the box online?): trying again in ${Math.round(wait / 1000)} s` : msg;
+          this.log.error(`Could not start the ${side} Composio session: ${msg.replace(/\.$/, '')}. ${offline ? 'Trying again shortly' : 'Check COMPOSIO_API_KEY'}`);
+          clearTimeout(this.retryTimer[side]);
+          this.retryTimer[side] = setTimeout(() => void this.start(side), wait);
+          this.retryTimer[side]!.unref();
         }
       }),
     );
@@ -198,5 +212,9 @@ export class ComposioService implements OnModuleInit {
     );
   }
 }
+
+/** A failed start is tried again after 15 s, then twice as long each time, up to every 5 minutes. */
+const RETRY_FIRST_MS = 15_000;
+const RETRY_MAX_MS = 5 * 60_000;
 
 const label = (s: Side) => (s === 'work' ? 'Work' : 'Personal');

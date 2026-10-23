@@ -673,7 +673,8 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   private announceWifi(next: WifiStatus, prev?: WifiStatus): void {
-    const say = (t: string) => this.timerService?.announce(t);
+    // Not private, and the internet may be down: said even while locked, in the box's own voice.
+    const say = (t: string) => this.timerService?.announce(t, true);
     if (next.state === 'setup' && prev?.state !== 'setup') {
       say(next.error ? `That didn't work: ${next.error}. Scan the code on my screen to try again.` : "I can't reach the WiFi. Scan the code on my screen to set me up.");
     } else if (next.state === 'connected' && prev && prev.state !== 'connected') {

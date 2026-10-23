@@ -98,7 +98,7 @@ export class ConversationService implements OnApplicationBootstrap {
   /** The box's screen: idle / listening / thinking (speaking follows the audio). */
   @Optional() @Inject(FaceService) private readonly face?: FaceService;
 
-  private readonly pendingAnnouncements: { text: string; timer: boolean }[] = [];
+  private readonly pendingAnnouncements: { text: string; timer: boolean; system?: boolean }[] = [];
   private announcing = false;
 
   onApplicationBootstrap(): void {
@@ -119,7 +119,7 @@ export class ConversationService implements OnApplicationBootstrap {
     // Timers/reminders are announced straight away when Max is idle, otherwise as soon as
     // the current conversation ends (never in the middle of an answer).
     this.timers.on('fired', (t) => {
-      this.pendingAnnouncements.push({ text: announcement(t), timer: !t.say });
+      this.pendingAnnouncements.push({ text: announcement(t), timer: !t.say, system: t.system });
       if (this.state === 'wake') void this.flushAnnouncements();
     });
     // Reminders that came due while he was locked are said once he's unlocked.
@@ -130,12 +130,21 @@ export class ConversationService implements OnApplicationBootstrap {
   }
 
   private async flushAnnouncements(): Promise<void> {
-    if (this.announcing || this.lock?.locked) return; // reminders can be personal: not until unlocked
+    // Reminders can be personal: not until unlocked. Messages about the box itself (no WiFi) are said anyway.
+    const next = () => (this.lock?.locked ? this.pendingAnnouncements.findIndex((a) => a.system) : this.pendingAnnouncements.length ? 0 : -1);
+    if (this.announcing || next() < 0) return;
     this.announcing = true;
     await this.music?.duckStart();
     try {
-      while (this.pendingAnnouncements.length) {
-        const { text, timer } = this.pendingAnnouncements.shift()!;
+      for (let i = next(); i >= 0; i = next()) {
+        const { text, timer, system } = this.pendingAnnouncements.splice(i, 1)[0];
+        if (system) {
+          // The connection may be what's wrong: the box's own voice, no waiting for the online one.
+          this.log.log(`Announcing: ${said(text)}`);
+          await this.tts.chime().catch(() => undefined);
+          await this.tts.sayLocal(text).catch((err) => this.log.warn(`Announcement: ${(err as Error).message}`));
+          continue;
+        }
         if (timer) this.face?.setEmotion('surprised', 5000);
         else this.face?.said(text);
         this.log.log(`Announcing: ${said(text)}`);

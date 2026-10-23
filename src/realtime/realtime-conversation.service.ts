@@ -156,7 +156,11 @@ export class RealtimeConversationService {
     } catch (err) {
       setMicHandler(() => undefined);
       this.log.error(`Could not start the ${providerName} session: ${(err as Error).message}`);
-      return this.sayFallback("Sorry, I can't reach my real-time voice right now.");
+      return this.sayFallback(
+        /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ETIMEDOUT|network|timed? ?out|socket/i.test((err as Error).message)
+          ? "Sorry, I can't reach the internet right now, so I can't answer. If the WiFi has changed, hold my screen for two seconds and choose WiFi setup."
+          : "Sorry, I can't reach my real-time voice right now.",
+      );
     }
     connected = true;
     for (const pcm of early.splice(0)) client.sendAudio(pcm);
@@ -360,9 +364,8 @@ export class RealtimeConversationService {
     return switched;
   }
 
+  /** When the live voice can't be used (often: no internet), in the voice that runs on the box itself. */
   private async sayFallback(text: string): Promise<void> {
-    const s = this.tts.session();
-    s.say(text);
-    await s.done().catch(() => undefined);
+    await this.tts.sayLocal(text).catch(() => undefined);
   }
 }

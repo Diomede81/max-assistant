@@ -34,6 +34,26 @@ export class TtsService {
     this.speaker.stop();
   }
 
+  /**
+   * Says something in the voice that runs on the box itself (Piper), so it works without internet (no WiFi,
+   * router down); the usual voice if Piper isn't there. For messages about the connection itself.
+   */
+  async sayLocal(text: string): Promise<void> {
+    if (!text.trim()) return;
+    if (this.cfg.tts.provider === 'openai') {
+      try {
+        const s = this.synthesizePiper(text);
+        await this.speaker.play(await s.format, s.audio);
+        return;
+      } catch (err) {
+        this.log.warn(`The box's own voice (Piper) didn't answer (${(err as Error).message}); using the usual one`);
+      }
+    }
+    const s = this.session();
+    s.say(text);
+    await s.done();
+  }
+
   session() {
     const order = new AsyncQueue<Synthesis>();
     let stopped = false;

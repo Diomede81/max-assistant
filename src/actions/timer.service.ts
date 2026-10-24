@@ -16,6 +16,8 @@ export interface Timer {
   endsAt: number;
   /** Set for plain announcements (not a timer): said exactly as written. */
   say?: string;
+  /** About the box itself (e.g. no WiFi): said even while Max is locked, in the voice that works offline. */
+  system?: boolean;
 }
 
 /** Reminders can be set up to a year ahead ("remind me on 3 March to renew the insurance"). */
@@ -106,8 +108,8 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
   }
 
   /** Says something out loud like a reminder (e.g. a project task falling due). */
-  announce(text: string): void {
-    this.emit('fired', { id: 0, say: text, durationSeconds: 0, endsAt: Date.now() } as Timer);
+  announce(text: string, system = false): void {
+    this.emit('fired', { id: 0, say: text, durationSeconds: 0, endsAt: Date.now(), system } as Timer);
   }
 
   private tick(): void {

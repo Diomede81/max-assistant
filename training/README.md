@@ -76,9 +76,12 @@ Three layers stop false wake-ups (noise, music, TV), from cheapest to strongest:
 1. **The double-check (on by default).** When the wake word engine fires, Max runs the last 2.5 seconds
    through his own on-device speech recogniser. If nothing in it sounds like the wake word, he stays
    asleep: no chime, no face change. It's lenient with mishearings ("Marx", "Mats", "Mex" all count),
-   and **saying it again within 10 seconds always wakes him**. The log shows
+   and **saying it again within 15 seconds always wakes him**. The log shows
    `Ignored a possible false wake-up: heard "…"`. It adds a fraction of a second before the chime.
    `WAKEWORD_VERIFY=off` disables it.
+   While Max's own radio, Spotify or AirPlay plays, the check is stricter: only the wake word itself (or a known
+   mishearing of it) counts, saying it again isn't enough on its own, and a check that didn't finish keeps him
+   asleep. A song or a presenter saying "man" or "may" no longer wakes him.
 2. **`WAKEWORD_TRIGGER_LEVEL=2`** in `.env`: the engine must hear the wake word for two moments in a row.
    Noise blips are ignored; a real "hey max" easily passes.
 3. **A higher `WAKEWORD_THRESHOLD`** (e.g. 0.6–0.7).
@@ -99,8 +102,13 @@ settings make the model stronger overall. Same Colab notebook, same ~90 minutes 
 with the larger settings).
 
 1. **Record yourself:** run `./scripts/wake-coach.sh` 3 or 4 times, in different rooms and at
-   different distances (and once per person in the house, if others will use Max). That gives
-   30–40 recordings in the `wake-coach` folder.
+   different distances (and once per person in the house, if others will use Max). Each run also
+   asks for a few attempts **with the TV or radio on** (`positive_noisy_*.wav`) and records your
+   room's usual background noise (`negative_background.wav`): those are what teach the model to hear
+   you through your home's noise, so do them with the noise you really have. If Max listens to one
+   microphone channel (`AUDIO_INPUT_CHANNEL` in `.env`), the coach records that channel, so the
+   recordings sound exactly like what reaches him. That gives 50–60 recordings in the `wake-coach`
+   folder.
 2. **In the configuration cell** (the one with `TARGET_PHRASE`), use:
    ```python
    TARGET_PHRASE = ['hey max', 'hey maks', 'hey macks']   # spellings that sound like "max" in different accents
@@ -130,11 +138,28 @@ with the larger settings).
        loud = np.where(np.abs(a.astype(float)) > max(300, np.abs(a).max() * 0.1))[0]
        return (a[max(0, loud[0] - sr // 5): loud[-1] + sr // 5] if len(loud) else a), sr
 
-   # Each recording is reused many times; the next step mixes in different noise and rooms.
+   # Your home's own noise (the coach's background recordings), to mix into your voice below.
+   noise = []
+   for f in glob.glob('/content/my_voice/negative_background*.wav') + glob.glob('/content/my_voice/room*.wav'):
+       a, sr = sf.read(f, dtype='int16')
+       if len(a) > sr: noise.append(a.astype(np.float32))
+
+   def with_noise(a, rng):  # your voice with a random slice of your room's noise, at a random level
+       if not noise: return a
+       n = noise[rng.integers(len(noise))]
+       start = rng.integers(0, max(1, len(n) - len(a)))
+       slice_ = n[start:start + len(a)]
+       if len(slice_) < len(a): slice_ = np.pad(slice_, (0, len(a) - len(slice_)))
+       gain = 10 ** (rng.uniform(-25, -5) / 20) * (np.abs(a).max() / max(1, np.abs(slice_).max()))
+       return np.clip(a.astype(np.float32) + slice_ * gain, -32768, 32767).astype(np.int16)
+
+   # Each recording is reused many times: half as recorded, half mixed with your own noise (the next
+   # step adds the trainer's generic noise and rooms on top).
+   rng = np.random.default_rng(0)
    for i, f in enumerate(mine_pos):
        a, sr = trimmed(f)
        for k in range(40):
-           sf.write(f"{cfg['positive_clips_train_dir']}/my_voice_{i:03d}_{k:02d}.wav", a, sr)
+           sf.write(f"{cfg['positive_clips_train_dir']}/my_voice_{i:03d}_{k:02d}.wav", a if k % 2 else with_noise(a, rng), sr)
    for i, f in enumerate(mine_neg):
        for k in range(10):
            shutil.copy(f, f"{cfg['negative_clips_train_dir']}/my_voice_{i:03d}_{k:02d}.wav")

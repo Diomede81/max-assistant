@@ -38,14 +38,22 @@ export function heardWakeWord(transcript: string, names: string[], strict = fals
     .split(/[^a-z']+/)
     .map((t) => t.replace(/'s$|'/g, ''))
     .filter(Boolean);
+  if (strict) {
+    // The whole phrase, "hey" (or another lead-in) right before the name, and the name itself or something that
+    // plainly is it with an accent ("mex", "macks"): a song or a presenter saying "man", "may" or "marks" doesn't
+    // pass, and neither does the name on its own.
+    return keyWords(names).some((kw) =>
+      tokens.some((t, i) => i > 0 && FILLER.has(tokens[i - 1]) && (t === kw || (SOUND_ALIKES[kw] ?? []).includes(t) || (kw === 'max' && /^m[aeiu][xkc]{1,2}s?$/.test(t)))),
+    );
+  }
   return keyWords(names).some((kw) =>
     tokens.some(
       (t) =>
         t === kw ||
         (SOUND_ALIKES[kw] ?? []).includes(t) ||
-        (strict ? false : (t.startsWith(kw) && t.length <= kw.length + 2)) ||
-        (strict ? false : editDistance(t, kw) <= 1) ||
-        (!strict && t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
+        (t.startsWith(kw) && t.length <= kw.length + 2) ||
+        editDistance(t, kw) <= 1 ||
+        (t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
     ),
   );
 }

@@ -177,27 +177,36 @@ export class ConversationService implements OnApplicationBootstrap {
   private async confirmWake(audio: Buffer, fmt: { rate: number; width: number; channels: number }): Promise<boolean> {
     const started = Date.now();
     let session: Awaited<ReturnType<SttService['open']>> | undefined;
+    // His own radio or music can sound like "Hey Max": while it plays, only the word itself counts, saying it
+    // again isn't enough on its own, and a check that didn't finish doesn't wake him.
+    const ownAudio = this.music ? await this.music.playingNow() : false;
+    const tag = ownAudio ? ' [music playing]' : '';
     try {
       session = await withTimeout(this.stt.open(fmt), VERIFY_TIMEOUT_MS, 'took too long');
       session.write(audio);
       const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
-      if (heardWakeWord(text, this.cfg.wakeWord.names)) {
-        this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)`);
-        recordWake('woke', text, Date.now() - started);
+      if (heardWakeWord(text, this.cfg.wakeWord.names, ownAudio)) {
+        this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)${tag}`);
+        recordWake('woke', text + tag, Date.now() - started);
         return true;
       }
-      // Said it again straight after being ignored: that's a person calling, not noise.
-      if (Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
+      // Said it again straight after being ignored: that's a person calling, not noise (unless the radio is on).
+      if (!ownAudio && Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
         this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? said(text) : 'no words'})`);
         recordWake('repeat', text, Date.now() - started);
         return true;
       }
       this.lastIgnoredWakeAt = Date.now();
-      this.log.log(`Ignored a possible false wake-up: heard ${text ? said(text) : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
-      recordWake('ignored', text, Date.now() - started);
+      this.log.log(`Ignored a possible false wake-up: heard ${text ? said(text) : 'no words'}${tag} (WAKEWORD_VERIFY=off disables this check)`);
+      recordWake('ignored', (text || '') + tag, Date.now() - started);
       return false;
     } catch (err) {
       session?.abort();
+      if (ownAudio) {
+        this.log.warn(`Could not double-check the wake word (${(err as Error).message}) while music plays; staying asleep`);
+        recordWake('ignored', `check didn't finish${tag}`, Date.now() - started);
+        return false;
+      }
       this.log.warn(`Could not double-check the wake word (${(err as Error).message}); waking up anyway`);
       recordWake('unchecked', undefined, Date.now() - started);
       return true;

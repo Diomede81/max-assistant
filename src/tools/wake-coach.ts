@@ -19,6 +19,8 @@ try {
 
 const RATE = 16000;
 const ATTEMPTS = 10;
+/** With the TV or radio on: the recordings that teach the model to hear you through your home's noise. */
+const NOISY_ATTEMPTS = 6;
 const SENTENCES = [
   "I'm going to the shop to buy some milk and bread.",
   'Max, can you pass me that box over there?',
@@ -27,16 +29,29 @@ const SENTENCES = [
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Records `ms` of 16 kHz mono audio from the configured microphone. */
-function record(device: string, ms: number): Promise<Buffer> {
+/**
+ * Records `ms` of 16 kHz mono audio from the configured microphone: the same channel Max listens to
+ * (AUDIO_INPUT_CHANNEL), so the recordings sound exactly like what reaches the wake word.
+ */
+function record(device: string, ms: number, pick?: number, channels = 1): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('arecord', ['-q', '-D', device, '-f', 'S16_LE', '-c', '1', '-r', String(RATE), '-t', 'raw'], {
+    const proc = spawn('arecord', ['-q', '-D', device, '-f', 'S16_LE', '-c', String(channels), '-r', String(RATE), '-t', 'raw'], {
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     const parts: Buffer[] = [];
     const max = Math.round((RATE * 2 * ms) / 1000);
     let got = 0;
-    proc.stdout.on('data', (b: Buffer) => {
+    const frame = channels * 2;
+    let rest: Buffer = Buffer.alloc(0);
+    proc.stdout.on('data', (raw: Buffer) => {
+      let b = raw;
+      if (pick !== undefined) {
+        const all = rest.length ? Buffer.concat([rest, raw]) : raw;
+        const frames = Math.floor(all.length / frame);
+        rest = all.subarray(frames * frame);
+        b = Buffer.alloc(frames * 2);
+        for (let i = 0; i < frames; i++) b.writeInt16LE(all.readInt16LE(i * frame + pick * 2), i * 2);
+      }
       if (got < max) parts.push(b.subarray(0, max - got));
       got += b.length;
     });
@@ -92,6 +107,9 @@ async function main(): Promise<void> {
   mkdirSync(out, { recursive: true });
   const phrase = (cfg.wakeWord.names[0] ?? 'hey_max').replace(/_/g, ' ');
   const device = cfg.audio.inputDevice;
+  const pick = cfg.audio.inputChannel;
+  const channels = pick === undefined ? 1 : cfg.audio.inputChannels;
+  const rec = (ms: number) => record(device, ms, pick, channels);
   const save = (name: string, pcm: Buffer) => {
     writeFileSync(join(out, `${name}.wav`), wav(pcm));
     const db = peakDb(pcm);
@@ -100,25 +118,37 @@ async function main(): Promise<void> {
 
   console.log(`\nWAKE WORD COACH\n`);
   console.log(`Sit or stand where you normally talk to Max, and speak as you normally would.`);
-  console.log(`I'll ask you to say "${phrase}" ${ATTEMPTS} times, read ${SENTENCES.length} short sentences, then record your room's usual background sounds.`);
+  console.log(`I'll ask you to say "${phrase}" ${ATTEMPTS} times, read ${SENTENCES.length} short sentences, say it ${NOISY_ATTEMPTS} more times with some noise on, then record your room's usual background sounds.`);
+  if (pick !== undefined) console.log(`(Recording channel ${pick} of the microphone, the one Max listens to.)`);
   await sleep(2500);
 
   await countdown('First, stay quiet for 3 seconds so I can hear the room...');
   process.stdout.write('  (quiet please)\n');
-  save('room', await record(device, 3000));
+  save('room', await rec(3000));
 
   for (let i = 1; i <= ATTEMPTS; i++) {
     const tip = i === 4 ? ' (a bit quieter this time)' : i === 7 ? ' (a bit faster)' : i === 9 ? ' (from a little further away)' : '';
     await countdown(`Attempt ${i} of ${ATTEMPTS}: get ready to say "${phrase}"${tip}`);
     process.stdout.write(`  >>> SAY "${phrase.toUpperCase()}" NOW <<<\n`);
-    save(`positive_${String(i).padStart(2, '0')}`, await record(device, 2500));
+    save(`positive_${String(i).padStart(2, '0')}`, await rec(2500));
+    await sleep(600);
+  }
+
+  // The same, through the house's usual noise: these teach the model to pick your voice out of it.
+  console.log(`\nNow put on the TV, the radio or some music at the volume you usually have it, then say "${phrase}" again a few times (don't shout: speak as you normally would).`);
+  await sleep(6000);
+  for (let i = 1; i <= NOISY_ATTEMPTS; i++) {
+    const tip = i === 3 ? ' (from across the room)' : i === 5 ? ' (while the noise is loudest)' : '';
+    await countdown(`Noisy attempt ${i} of ${NOISY_ATTEMPTS}: get ready to say "${phrase}"${tip}`);
+    process.stdout.write(`  >>> SAY "${phrase.toUpperCase()}" NOW <<<\n`);
+    save(`positive_noisy_${String(i).padStart(2, '0')}`, await rec(2500));
     await sleep(600);
   }
 
   for (let i = 0; i < SENTENCES.length; i++) {
     await countdown(`Sentence ${i + 1} of ${SENTENCES.length}: get ready to read this out loud:\n   "${SENTENCES[i]}"\n`);
     process.stdout.write('  >>> READ IT NOW <<<\n');
-    save(`negative_${String(i + 1).padStart(2, '0')}`, await record(device, 4500));
+    save(`negative_${String(i + 1).padStart(2, '0')}`, await rec(4500));
     await sleep(600);
   }
 
@@ -130,7 +160,7 @@ async function main(): Promise<void> {
         `the radio, people chatting, the kitchen) and DON'T say "${phrase}". Starting in`,
     );
     process.stdout.write('  (recording the background...)\n');
-    save('negative_background', await record(device, bgSeconds * 1000));
+    save('negative_background', await rec(bgSeconds * 1000));
   }
 
   console.log(`\nDone: recordings saved in ${out}`);

@@ -3,7 +3,7 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { AirPlayService } from './airplay.service';
 import { RadioService } from './radio.service';
-import { MUSIC_STREAM, setSinkInputVolume, sinkInputs } from './sink-inputs';
+import { MUSIC_STREAM, setSinkInputVolume, sinkInputs, type SinkInput } from './sink-inputs';
 
 /** off = not configured; unreachable = speaker not running; pairing = waiting for Spotify sign-in; ready = signed in */
 export type MusicState = 'off' | 'unreachable' | 'pairing' | 'ready';
@@ -244,6 +244,24 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---- Ducking: music down while Max talks ----
+
+  /**
+   * Whether Max's own speaker is playing something right now (radio, Spotify, AirPlay): his wake-up double-check
+   * is stricter then, as a song or a radio presenter can sound like "Hey Max". Quick (about 1 s at most) and
+   * never throws.
+   */
+  async playingNow(): Promise<boolean> {
+    if (this.radio?.playing) return true;
+    const quick = <T>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
+    try {
+      if ((await quick(sinkInputs(), 1200, [] as SinkInput[])).some((s) => MUSIC_STREAM.test(s.names) || /librespot|spotify/.test(s.names))) return true;
+      if (this.state !== 'ready') return false;
+      const s = await quick(this.status(), 1200, undefined);
+      return Boolean(s && !s.stopped && !s.paused);
+    } catch {
+      return false;
+    }
+  }
 
   /** Turns playing music down for a conversation. Quick and never throws. */
   async duckStart(): Promise<void> {

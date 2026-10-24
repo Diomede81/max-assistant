@@ -26,8 +26,12 @@ export function keyWords(names: string[]): string[] {
   return [...new Set(names.flatMap((n) => n.toLowerCase().split(/[_\s-]+/).filter((w) => w && !FILLER.has(w))))];
 }
 
-/** Does this transcript contain the wake word (allowing for small mishearings)? */
-export function heardWakeWord(transcript: string, names: string[]): boolean {
+/**
+ * Does this transcript contain the wake word (allowing for small mishearings)? `strict`: only the word itself or
+ * a known sound-alike counts, no near misses: used while Max's own speaker plays (a presenter saying "man",
+ * "map" or "may" would otherwise pass as "max").
+ */
+export function heardWakeWord(transcript: string, names: string[], strict = false): boolean {
   const tokens = transcript
     .toLowerCase()
     .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ') // "[music]", "(background noise)"
@@ -39,9 +43,9 @@ export function heardWakeWord(transcript: string, names: string[]): boolean {
       (t) =>
         t === kw ||
         (SOUND_ALIKES[kw] ?? []).includes(t) ||
-        (t.startsWith(kw) && t.length <= kw.length + 2) ||
-        editDistance(t, kw) <= 1 ||
-        (t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
+        (strict ? false : (t.startsWith(kw) && t.length <= kw.length + 2)) ||
+        (strict ? false : editDistance(t, kw) <= 1) ||
+        (!strict && t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
     ),
   );
 }

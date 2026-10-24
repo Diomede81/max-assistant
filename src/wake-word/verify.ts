@@ -46,14 +46,18 @@ export function heardWakeWord(transcript: string, names: string[], strict = fals
       tokens.some((t, i) => i > 0 && FILLER.has(tokens[i - 1]) && (t === kw || (SOUND_ALIKES[kw] ?? []).includes(t) || (kw === 'max' && /^m[aeiu][xkc]{1,2}s?$/.test(t)))),
     );
   }
+  // A near miss ("mats", "mex", "marx") only counts right after a lead-in ("hey", "okay"...): on its own, a short
+  // word one letter away from the name is far too common in ordinary talk ("may", "man", "map"), and the engine
+  // firing on those is exactly the false wake-up to catch.
+  const near = (t: string, kw: string) => editDistance(t, kw) <= 1 || (t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2));
   return keyWords(names).some((kw) =>
     tokens.some(
-      (t) =>
+      (t, i) =>
         t === kw ||
         (SOUND_ALIKES[kw] ?? []).includes(t) ||
         (t.startsWith(kw) && t.length <= kw.length + 2) ||
-        editDistance(t, kw) <= 1 ||
-        (t[0] === kw[0] && t.length >= 2 && editDistance(t, kw) <= (kw.length >= 6 ? 3 : 2)),
+        (kw.length >= 5 && near(t, kw)) ||
+        (i > 0 && FILLER.has(tokens[i - 1]) && near(t, kw)),
     ),
   );
 }

@@ -12,6 +12,8 @@ export interface WakeEvent {
   heard?: string;
   /** How long the double-check took (ms). */
   ms?: number;
+  /** How long after the wake word Max was listening (ms). */
+  readyMs?: number;
 }
 
 const KEEP = 20;
@@ -20,6 +22,12 @@ const events: WakeEvent[] = [];
 export function recordWake(outcome: WakeOutcome, heard?: string, ms?: number): void {
   events.push({ at: Date.now(), outcome, heard: heard?.trim() || undefined, ms });
   if (events.length > KEEP) events.splice(0, events.length - KEEP);
+}
+
+/** Max started listening this long after the latest wake-up. */
+export function markReady(readyMs: number): void {
+  const last = events[events.length - 1];
+  if (last && last.readyMs === undefined) last.readyMs = readyMs;
 }
 
 /** Newest first. */

@@ -40,6 +40,8 @@ export interface PanelData {
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
+  /** The last "Hey Max" wake-ups and what happened to each. */
+  wakeUps?: { list: { at: number; outcome: string; heard?: string; ms?: number }[]; verify: boolean; channel?: number };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -312,6 +314,27 @@ ${draft}
 ${switches}
 <form class="addfact" method="post" action="/automations/switch"><input name="name" maxlength="40" required placeholder="New on/off switch, e.g. Alarm, Holiday, Guests"><button class="btn secondary" type="submit">Add switch</button></form>
 </section>`;
+}
+
+/** "Hey Max": the last wake-ups and what happened to each, for tuning. */
+function wakeUpsSection(w: NonNullable<PanelData['wakeUps']>): string {
+  const when = (t: number) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const label: Record<string, [string, string]> = {
+    woke: ['Woke up', 'ok'],
+    repeat: ['Woke up (said twice)', 'ok'],
+    unchecked: ['Woke up (not double-checked)', ''],
+    ignored: ['Ignored: sounded like noise', 'warn'],
+  };
+  const rows = w.list.length
+    ? w.list.map((e) => {
+        const [text, cls] = label[e.outcome] ?? [e.outcome, ''];
+        return `<li class="row"><div><div>${esc(when(e.at))} <span class="badge ${cls}">${esc(text)}</span></div>${e.heard !== undefined || e.ms !== undefined ? `<div class="meta">${e.heard !== undefined ? `Heard: "${esc(e.heard)}"` : 'Heard nothing'}${e.ms !== undefined ? ` · check took ${(e.ms / 1000).toFixed(1)} s` : ''}</div>` : ''}</div></li>`;
+      }).join('')
+    : '<li class="empty">No wake-ups since Max started.</li>';
+  const ignored = w.list.filter((e) => e.outcome === 'ignored').length;
+  return `<details class="wakeups"><summary><b>Wake-ups</b> <span class="meta">(last ${w.list.length}${ignored ? `, ${ignored} ignored` : ''})</span></summary>
+<p class="meta">Every time the box heard something like "Hey Max"${w.verify ? ', and what the double-check made of it. "Ignored" means it heard the wake word but the words didn\'t sound like it: in a noisy room, say it again within 15 seconds and he wakes anyway.' : '. The double-check is off (WAKEWORD_VERIFY=off).'}${w.channel !== undefined ? ` Listening to microphone channel ${w.channel}.` : ''} Times he didn\'t hear you at all aren\'t listed: see docs/PI.md for tuning.</p>
+<ul>${rows}</ul></details>`;
 }
 
 /** Microphone on/off (the same as the button on top of the box). */
@@ -867,6 +890,7 @@ ${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
 ${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
+${d.wakeUps ? wakeUpsSection(d.wakeUps) : ''}
 ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
 <div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[

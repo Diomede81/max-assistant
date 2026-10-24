@@ -70,8 +70,25 @@ export class MicrophoneService extends EventEmitter implements OnModuleDestroy {
 
   start(): void {
     if (this.proc) return;
-    const args = ['-q', '-D', this.cfg.audio.inputDevice, '-f', 'S16_LE', '-c', '1',
+    // One channel of a multi-channel microphone (AUDIO_INPUT_CHANNEL): the ReSpeaker XVF3800 gives two, each
+    // processed differently; asked for mono, the sound system averages them, which blurs the one that suits
+    // wake words. Recorded with every channel and the chosen one picked out here.
+    const pick = this.cfg.audio.inputChannel;
+    const channels = pick === undefined ? 1 : this.cfg.audio.inputChannels;
+    const args = ['-q', '-D', this.cfg.audio.inputDevice, '-f', 'S16_LE', '-c', String(channels),
       '-r', String(this.cfg.audio.sampleRate), '-t', 'raw', '--buffer-time=20000'];
+    const frame = channels * 2;
+    let rest: Buffer = Buffer.alloc(0);
+    const mono = (chunk: Buffer): Buffer => {
+      if (pick === undefined) return chunk;
+      const all = rest.length ? Buffer.concat([rest, chunk]) : chunk;
+      const frames = Math.floor(all.length / frame);
+      rest = all.subarray(frames * frame);
+      const out = Buffer.alloc(frames * 2);
+      for (let i = 0; i < frames; i++) out.writeInt16LE(all.readInt16LE(i * frame + pick * 2), i * 2);
+      return out;
+    };
+    if (pick !== undefined) this.log.log(`Listening to channel ${pick} of ${channels} on "${this.cfg.audio.inputDevice}"`);
     if (this.cfg.face.onBox && !this.muteTimer) {
       this.checkMute();
       this.muteTimer = setInterval(() => this.checkMute(), MUTE_CHECK_MS);
@@ -79,7 +96,10 @@ export class MicrophoneService extends EventEmitter implements OnModuleDestroy {
     this.proc = spawn('arecord', args, { stdio: ['ignore', 'pipe', 'inherit'] });
     this.proc.on('error', (err) =>
       this.log.error(`Cannot start microphone (${err.message}). Install it with: sudo apt install alsa-utils`));
-    this.proc.stdout!.on('data', (chunk: Buffer) => this.emit('chunk', this._muted ? Buffer.alloc(chunk.length) : chunk));
+    this.proc.stdout!.on('data', (chunk: Buffer) => {
+      const pcm = mono(chunk);
+      if (pcm.length) this.emit('chunk', this._muted ? Buffer.alloc(pcm.length) : pcm);
+    });
     this.proc.on('exit', (code) => {
       this.log.warn(`arecord exited (${code})`);
       this.proc = undefined;

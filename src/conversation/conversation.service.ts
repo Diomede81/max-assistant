@@ -15,6 +15,7 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
+import { recordWake } from '../wake-word/wake-log';
 import { LockService } from '../lock/lock.service';
 import { DeviceService } from '../device/device.service';
 import { LiveVoiceService } from '../realtime/live-voice.service';
@@ -36,13 +37,14 @@ const AFTER_GREETING_MS = 250;
 const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
-const VERIFY_TIMEOUT_MS = 2500;
+/** Generous: in a noisy room the recogniser takes longer, and it runs while Max already greets you. */
+const VERIFY_TIMEOUT_MS = 4000;
 /** After being interrupted, start listening again this soon (his voice has been cut). */
 const INTERRUPT_REOPEN_MS = 300;
 /** Say what he's doing when an action is still running after this long and he hasn't spoken yet. */
 const SPOKEN_CUE_MS = 1000;
 /** A second wake word this soon after an ignored one always wakes Max up. */
-const REPEAT_WAKE_MS = 10_000;
+const REPEAT_WAKE_MS = 15_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -181,19 +183,23 @@ export class ConversationService implements OnApplicationBootstrap {
       const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
       if (heardWakeWord(text, this.cfg.wakeWord.names)) {
         this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)`);
+        recordWake('woke', text, Date.now() - started);
         return true;
       }
       // Said it again straight after being ignored: that's a person calling, not noise.
       if (Date.now() - this.lastIgnoredWakeAt < REPEAT_WAKE_MS) {
         this.log.log(`Wake word heard twice in a row: waking up (heard ${text ? said(text) : 'no words'})`);
+        recordWake('repeat', text, Date.now() - started);
         return true;
       }
       this.lastIgnoredWakeAt = Date.now();
       this.log.log(`Ignored a possible false wake-up: heard ${text ? said(text) : 'no words'} (WAKEWORD_VERIFY=off disables this check)`);
+      recordWake('ignored', text, Date.now() - started);
       return false;
     } catch (err) {
       session?.abort();
       this.log.warn(`Could not double-check the wake word (${(err as Error).message}); waking up anyway`);
+      recordWake('unchecked', undefined, Date.now() - started);
       return true;
     }
   }
@@ -230,6 +236,7 @@ export class ConversationService implements OnApplicationBootstrap {
     // The double-check runs while Max already answers, so it adds no delay; a false wake-up cuts
     // the greeting short and he goes back to sleep.
     const heardAt = Date.now();
+    if (!this.cfg.wakeWord.verify) recordWake('unchecked');
     const verified = this.cfg.wakeWord.verify ? this.confirmWake(Buffer.concat(recent), fmt) : Promise.resolve(true);
     if (this.lock?.locked) {
       if (!(await verified)) return this.waitForWakeWord();

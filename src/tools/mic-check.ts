@@ -19,6 +19,11 @@ try {
 async function main(): Promise<void> {
   const cfg = loadConfig();
   const fmt = { rate: cfg.audio.sampleRate, width: 2, channels: 1 };
+  // Several channels (AUDIO_INPUT_CHANNEL set, or MIC_CHECK_CHANNELS=2): the level of each is shown, and the
+  // chosen one (default 0) feeds the wake word, as Max would.
+  const channels = cfg.audio.inputChannel !== undefined ? cfg.audio.inputChannels : Math.max(1, Number(process.env.MIC_CHECK_CHANNELS) || 1);
+  const pick = Math.min(cfg.audio.inputChannel ?? 0, channels - 1);
+  if (channels > 1) console.log(`Recording ${channels} channels; the wake word hears channel ${pick} (AUDIO_INPUT_CHANNEL)`);
   const ww = new WyomingClient(cfg.wakeWord.host, cfg.wakeWord.port);
   await ww.connect();
   const available = wakeWordNames(await ww.describe());
@@ -41,7 +46,7 @@ async function main(): Promise<void> {
   ww.send('detect', { names: cfg.wakeWord.names });
   ww.send('audio-start', { ...fmt, timestamp: 0 });
 
-  const mic = spawn('arecord', ['-q', '-D', cfg.audio.inputDevice, '-f', 'S16_LE', '-c', '1',
+  const mic = spawn('arecord', ['-q', '-D', cfg.audio.inputDevice, '-f', 'S16_LE', '-c', String(channels),
     '-r', String(fmt.rate), '-t', 'raw'], { stdio: ['ignore', 'pipe', 'inherit'] });
 
   mic.on('error', (err) => {
@@ -49,23 +54,34 @@ async function main(): Promise<void> {
     process.exit(1);
   });
 
-  let sum = 0;
+  const sum = new Array<number>(channels).fill(0);
   let samples = 0;
   let peak = 0;
+  const frame = channels * 2;
+  let rest: Buffer = Buffer.alloc(0);
   mic.stdout.on('data', (chunk: Buffer) => {
-    ww.send('audio-chunk', fmt, chunk);
-    for (let i = 0; i + 1 < chunk.length; i += 2) {
-      const s = chunk.readInt16LE(i);
-      sum += s * s;
-      samples++;
+    const all = rest.length ? Buffer.concat([rest, chunk]) : chunk;
+    const frames = Math.floor(all.length / frame);
+    rest = all.subarray(frames * frame);
+    const mono = Buffer.alloc(frames * 2);
+    for (let i = 0; i < frames; i++) {
+      for (let c = 0; c < channels; c++) {
+        const s = all.readInt16LE(i * frame + c * 2);
+        sum[c] += s * s;
+      }
+      mono.writeInt16LE(all.readInt16LE(i * frame + pick * 2), i * 2);
     }
+    samples += frames;
+    ww.send('audio-chunk', fmt, mono);
     if (samples >= fmt.rate / 4) {
-      const rms = Math.round(Math.sqrt(sum / samples));
+      const levels = sum.map((x) => Math.round(Math.sqrt(x / samples)));
+      const rms = levels[pick];
       peak = Math.max(peak, rms);
       const bar = '#'.repeat(Math.min(50, Math.round(rms / 100)));
       const mark = rms >= cfg.vad.rmsThreshold ? 'speech' : 'quiet ';
-      process.stdout.write(`\rlevel ${String(rms).padStart(5)} ${mark} peak ${String(peak).padStart(5)} |${bar.padEnd(50)}|`);
-      sum = 0;
+      const others = channels > 1 ? ` [${levels.map((l, c) => `ch${c} ${String(l).padStart(5)}`).join(' ')}]` : '';
+      process.stdout.write(`\rlevel ${String(rms).padStart(5)} ${mark} peak ${String(peak).padStart(5)} |${bar.padEnd(50)}|${others}`);
+      sum.fill(0);
       samples = 0;
     }
   });

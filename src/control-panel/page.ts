@@ -41,7 +41,7 @@ export interface PanelData {
     mic?: { muted: boolean };
   };
   /** The last "Hey Max" wake-ups and what happened to each. */
-  wakeUps?: { list: { at: number; outcome: string; heard?: string; ms?: number }[]; verify: boolean; channel?: number };
+  wakeUps?: { list: { at: number; outcome: string; heard?: string; ms?: number; readyMs?: number }[]; verify: boolean; channel?: number };
   /** Real-time mode: Max's voice and speaking style. */
   liveVoice?: { active: boolean; provider: string; voice: string; style: string; voices: { id: string; label: string }[] };
   updates?: {
@@ -328,7 +328,7 @@ function wakeUpsSection(w: NonNullable<PanelData['wakeUps']>): string {
   const rows = w.list.length
     ? w.list.map((e) => {
         const [text, cls] = label[e.outcome] ?? [e.outcome, ''];
-        return `<li class="row"><div><div>${esc(when(e.at))} <span class="badge ${cls}">${esc(text)}</span></div>${e.heard !== undefined || e.ms !== undefined ? `<div class="meta">${e.heard !== undefined ? `Heard: "${esc(e.heard)}"` : 'Heard nothing'}${e.ms !== undefined ? ` · check took ${(e.ms / 1000).toFixed(1)} s` : ''}</div>` : ''}</div></li>`;
+        return `<li class="row"><div><div>${esc(when(e.at))} <span class="badge ${cls}">${esc(text)}</span></div>${e.heard !== undefined || e.ms !== undefined ? `<div class="meta">${e.heard !== undefined ? `Heard: "${esc(e.heard)}"` : 'Heard nothing'}${e.ms !== undefined ? ` · check took ${(e.ms / 1000).toFixed(1)} s` : ''}${e.readyMs !== undefined ? ` · listening after ${(e.readyMs / 1000).toFixed(1)} s` : ''}</div>` : ''}</div></li>`;
       }).join('')
     : '<li class="empty">No wake-ups since Max started.</li>';
   const ignored = w.list.filter((e) => e.outcome === 'ignored').length;

@@ -208,6 +208,7 @@ export class RealtimeConversationService {
     };
 
     client.on('speech-started', () => {
+      this.lastUserSpeechAt = Date.now();
       this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
       userSpeaking = true;
@@ -247,6 +248,7 @@ export class RealtimeConversationService {
     let endAfterReply = false;
     const hush = (why: string) => {
       stopReason ??= why;
+      this.hushNow = undefined;
       this.face?.conversationEnded(); // the card shown for this conversation goes; his face comes back
       generation++;
       this.speaker.stop();
@@ -258,6 +260,7 @@ export class RealtimeConversationService {
       }
       busy = false;
     };
+    this.hushNow = hush;
 
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
       responseActive = true;
@@ -351,6 +354,7 @@ export class RealtimeConversationService {
     });
 
     ended = true;
+    this.hushNow = undefined;
     this.face?.setState('idle');
     this.wake.disarm();
     setMicHandler(() => undefined);
@@ -362,6 +366,19 @@ export class RealtimeConversationService {
     const switched = startMode !== undefined && this.modes?.mode !== startMode && reason.startsWith('switched to');
     this.log.log(`Conversation ended (${reason}, ${turns} answer${turns === 1 ? '' : 's'}, ${Math.round((Date.now() - started) / 1000)}s); ${switched ? 'carrying on in the new mode' : 'waiting for the wake word'}`);
     return switched;
+  }
+
+  /** The conversation running now, if any: stops it (a late false-wake-up verdict). */
+  private hushNow?: (why: string) => void;
+  /** When the user last started speaking in a live conversation. */
+  private lastUserSpeechAt = 0;
+
+  stop(why: string): void {
+    this.hushNow?.(why);
+  }
+
+  get userSpokeAt(): number {
+    return this.lastUserSpeechAt;
   }
 
   /** When the live voice can't be used (often: no internet), in the voice that runs on the box itself. */

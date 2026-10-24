@@ -3,7 +3,7 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { AirPlayService } from './airplay.service';
 import { RadioService } from './radio.service';
-import { MUSIC_STREAM, setSinkInputVolume, sinkInputs, type SinkInput } from './sink-inputs';
+import { MUSIC_STREAM, setSinkInputVolume, sinkInputs } from './sink-inputs';
 
 /** off = not configured; unreachable = speaker not running; pairing = waiting for Spotify sign-in; ready = signed in */
 export type MusicState = 'off' | 'unreachable' | 'pairing' | 'ready';
@@ -252,16 +252,23 @@ export class MusicService implements OnModuleInit, OnModuleDestroy {
    */
   async playingNow(): Promise<boolean> {
     if (this.radio?.playing) return true;
+    // Answered within 300 ms (a wake-up mustn't wait on this): the last known answer if the checks take longer,
+    // which then update it for next time.
     const quick = <T>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
-    try {
-      if ((await quick(sinkInputs(), 1200, [] as SinkInput[])).some((s) => MUSIC_STREAM.test(s.names) || /librespot|spotify/.test(s.names))) return true;
-      if (this.state !== 'ready') return false;
-      const s = await quick(this.status(), 1200, undefined);
-      return Boolean(s && !s.stopped && !s.paused);
-    } catch {
-      return false;
-    }
+    const check = (async () => {
+      try {
+        if ((await sinkInputs()).some((s) => MUSIC_STREAM.test(s.names) || /librespot|spotify/.test(s.names))) return true;
+        if (this.state !== 'ready') return false;
+        const s = await this.status();
+        return Boolean(s && !s.stopped && !s.paused);
+      } catch {
+        return false;
+      }
+    })().then((v) => (this.playingLast = v));
+    return quick(check, 300, this.playingLast);
   }
+
+  private playingLast = false;
 
   /** Turns playing music down for a conversation. Quick and never throws. */
   async duckStart(): Promise<void> {

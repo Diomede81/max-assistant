@@ -15,7 +15,7 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
-import { recordWake } from '../wake-word/wake-log';
+import { markReady, recordWake } from '../wake-word/wake-log';
 import { LockService } from '../lock/lock.service';
 import { DeviceService } from '../device/device.service';
 import { LiveVoiceService } from '../realtime/live-voice.service';
@@ -39,6 +39,11 @@ const STT_TIMEOUT_MS = 20_000;
 const VERIFY_SECONDS = 2.5;
 /** Generous: in a noisy room the recogniser takes longer, and it runs while Max already greets you. */
 const VERIFY_TIMEOUT_MS = 4000;
+/**
+ * How long after the wake word Max waits for the double-check before listening anyway: it carries on in the
+ * background, and a late "false alarm" ends the conversation quietly if nobody has started talking.
+ */
+const VERIFY_WAIT_MS = 1200;
 /** After being interrupted, start listening again this soon (his voice has been cut). */
 const INTERRUPT_REOPEN_MS = 300;
 /** Say what he's doing when an action is still running after this long and he hasn't spoken yet. */
@@ -92,6 +97,10 @@ export class ConversationService implements OnApplicationBootstrap {
   private chimed = false;
   /** When the last conversation ended: the greeting isn't repeated soon after. */
   private lastTalkEnd = 0;
+  /** When the user last spoke in a pipeline-mode conversation. */
+  private lastUserSpeechAt = 0;
+  /** A late false-wake-up verdict: the conversation that started meanwhile ends at its first chance. */
+  private cancelled = false;
   /** end_conversation: the AI decided the conversation is over. */
   @Optional() @Inject(ConversationControl) private readonly control?: ConversationControl;
   @Optional() @Inject(ToolRouterService) private readonly toolRouter?: ToolRouterService;
@@ -279,7 +288,11 @@ export class ConversationService implements OnApplicationBootstrap {
         void this.liveVoice?.ensure(greeting); // in the live voice from next time
       }
     } else if (this.chimed) void this.tts.chime().catch(() => undefined);
-    if (!(await verified)) {
+    // The double-check gets the greeting plus a moment; after that Max listens anyway and it finishes in the
+    // background (waiting for it was what made him slow to listen). A false alarm meanwhile cuts the greeting short.
+    const budget = answering.then(() => new Promise<undefined>((r) => setTimeout(r, Math.max(0, heardAt + VERIFY_WAIT_MS - Date.now()))));
+    const verdict = await Promise.race([verified, budget]);
+    if (verdict === false) {
       falseAlarm = true;
       this.tts.stopPlayback();
       await answering;
@@ -288,8 +301,22 @@ export class ConversationService implements OnApplicationBootstrap {
       return this.waitForWakeWord();
     }
     await answering;
+    this.cancelled = false;
+    if (verdict === undefined) {
+      void verified.then((ok) => {
+        if (ok || this.state === 'wake') return;
+        if (this.realtime.userSpokeAt > heardAt || this.lastUserSpeechAt > heardAt) {
+          this.log.log('The double-check came back late as a false alarm, but you were already talking: carrying on');
+          return;
+        }
+        this.log.log('The double-check came back late as a false alarm: going quiet');
+        this.cancelled = true;
+        this.realtime.stop('a false wake-up (double-check)');
+      });
+    }
     if (greeting) await new Promise((r) => setTimeout(r, AFTER_GREETING_MS));
     this.log.log(`Ready for your request ${Date.now() - heardAt} ms after the wake word`);
+    markReady(Date.now() - heardAt);
     this.face?.setState('listening');
     try {
       await this.talk();
@@ -340,7 +367,7 @@ export class ConversationService implements OnApplicationBootstrap {
     for (;;) {
       try {
         const text = await this.listen(noSpeechMs, noSpeechMs === FOLLOW_UP_WINDOW_MS);
-        if (!text) return;
+        if (!text || this.cancelled) return;
         // "Stop", "that's all", "not talking to you": go quiet straight away, no AI involved.
         if (isStopRequest(text.value)) {
           this.log.log(`Stopping: you said ${said(text.value)}`);
@@ -408,6 +435,7 @@ export class ConversationService implements OnApplicationBootstrap {
       };
     });
 
+    if (outcome === 'end') this.lastUserSpeechAt = Date.now();
     if (outcome === 'timeout') {
       session.abort();
       if (isFollowUp) {

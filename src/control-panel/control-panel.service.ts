@@ -31,6 +31,7 @@ import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
 import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
 import { MicrophoneService } from '../audio/microphone.service';
+import { wakeLog } from '../wake-word/wake-log';
 import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -653,6 +654,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: this.device && { ...(await this.device.status()), mic: this.mic?.canMute ? { muted: this.mic.muted } : undefined },
+      wakeUps: { list: wakeLog(), verify: this.cfg.wakeWord.verify, channel: this.cfg.audio.inputChannel },
       liveVoice: this.liveVoice
         ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
         : undefined,

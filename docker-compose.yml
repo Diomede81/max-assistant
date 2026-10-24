@@ -65,10 +65,11 @@ services:
     image: rhasspy/wyoming-openwakeword:latest
     restart: unless-stopped
     # Custom models (e.g. hey_max.tflite) go in ./wakewords - see training/README.md.
-    # Tuning (in .env): WAKEWORD_THRESHOLD (0-1, default 0.5): raise it if Max wakes up by
-    # mistake, lower it if he misses you; ./scripts/wake-coach.sh suggests a value.
-    # WAKEWORD_TRIGGER_LEVEL=2 needs two hits in a row: fewer false wakes, slightly slower.
-    command: --custom-model-dir /custom --threshold ${WAKEWORD_THRESHOLD:-0.5} --trigger-level ${WAKEWORD_TRIGGER_LEVEL:-1}
+    # Tuning (in .env): WAKEWORD_THRESHOLD (0-1, default 0.4: the double-check in Max catches false alarms, so
+    # this can be fairly keen): raise it if Max wakes up by mistake, lower it if he misses you;
+    # ./scripts/wake-coach.sh suggests a value. WAKEWORD_TRIGGER_LEVEL=2 needs two hits in a row: fewer false
+    # wakes, slightly slower.
+    command: --custom-model-dir /custom --threshold ${WAKEWORD_THRESHOLD:-0.4} --trigger-level ${WAKEWORD_TRIGGER_LEVEL:-1}
     volumes: ["./wakewords:/custom"]
     ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:10400:10400"]
 
@@ -76,8 +77,10 @@ services:
     logging: *logging
     image: rhasspy/wyoming-whisper:latest
     restart: unless-stopped
-    # base-int8 is a good CPU default; use small-int8 for accuracy, tiny-int8 for speed.
-    command: --model base-int8 --language en
+    # WHISPER_MODEL (in .env): base-int8 is a good CPU default; small-int8 hears better through background noise
+    # (a Pi 5 copes, about 1 s more per check); tiny-int8 for speed. WHISPER_INITIAL_PROMPT nudges it towards the
+    # wake word's spelling ("Hey Max", not "hay mats") when it double-checks a wake-up.
+    command: --model ${WHISPER_MODEL:-base-int8} --language en --initial-prompt "${WHISPER_INITIAL_PROMPT:-Hey Max.}"
     volumes: ["./data/whisper:/data"]
     ports: ["${VOICE_SERVICES_BIND:-127.0.0.1}:10300:10300"]
 

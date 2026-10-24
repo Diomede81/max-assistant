@@ -5,6 +5,10 @@ export interface AppConfig {
   audio: {
     sampleRate: number;
     inputDevice: string;
+    /** Which of the microphone's channels Max listens to (0-based); undefined: the device's own mono mix. */
+    inputChannel?: number;
+    /** How many channels to ask the microphone for when one is picked (the XVF3800 gives 2). */
+    inputChannels: number;
     outputDevice: string;
     wakeChime: boolean;
     /** Keep the mic muted this long after Max's voice should have finished (speaker/bridge latency). */
@@ -191,6 +195,8 @@ export function loadConfig(): AppConfig {
     audio: {
       sampleRate: num(env.AUDIO_SAMPLE_RATE, 16000),
       inputDevice: env.AUDIO_INPUT_DEVICE ?? 'default',
+      inputChannel: /^\d+$/.test(env.AUDIO_INPUT_CHANNEL ?? '') ? Number(env.AUDIO_INPUT_CHANNEL) : undefined,
+      inputChannels: Math.max(num(env.AUDIO_INPUT_CHANNELS, 2), (/^\d+$/.test(env.AUDIO_INPUT_CHANNEL ?? '') ? Number(env.AUDIO_INPUT_CHANNEL) : 0) + 1),
       outputDevice: env.AUDIO_OUTPUT_DEVICE ?? 'default',
       wakeChime: (env.WAKE_CHIME ?? 'on') !== 'off',
       echoTailMs: num(env.AUDIO_ECHO_TAIL_MS, 1000),

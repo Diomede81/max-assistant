@@ -24,6 +24,14 @@ export function recordWake(outcome: WakeOutcome, heard?: string, ms?: number): v
   if (events.length > KEEP) events.splice(0, events.length - KEEP);
 }
 
+/** The latest wake-up turned out differently after all (a late verdict): say so. */
+export function amendLast(outcome: WakeOutcome, note: string): void {
+  const last = events[events.length - 1];
+  if (!last) return;
+  last.outcome = outcome;
+  last.heard = `${last.heard ?? ''} ${note}`.trim();
+}
+
 /** Max started listening this long after the latest wake-up. */
 export function markReady(readyMs: number): void {
   const last = events[events.length - 1];

@@ -15,7 +15,7 @@ import { RealtimeConversationService } from '../realtime/realtime-conversation.s
 import { MemoryLearnerService, TranscriptLine } from '../memory/memory-learner.service';
 import { Mode, ModesService } from '../memory/modes.service';
 import { heardWakeWord } from '../wake-word/verify';
-import { markReady, recordWake } from '../wake-word/wake-log';
+import { amendLast, markReady, recordWake } from '../wake-word/wake-log';
 import { LockService } from '../lock/lock.service';
 import { DeviceService } from '../device/device.service';
 import { LiveVoiceService } from '../realtime/live-voice.service';
@@ -37,8 +37,12 @@ const AFTER_GREETING_MS = 250;
 const STT_TIMEOUT_MS = 20_000;
 /** Wake-up double-check: how much sound before the detection, and how long to wait for the words. */
 const VERIFY_SECONDS = 2.5;
-/** Generous: in a noisy room the recogniser takes longer, and it runs while Max already greets you. */
+/**
+ * Generous: in a noisy room the recogniser takes longer, and nothing waits on it (Max listens meanwhile). While his
+ * own music plays the recogniser is slower still (the box is busier), so it gets longer.
+ */
 const VERIFY_TIMEOUT_MS = 4000;
+const VERIFY_TIMEOUT_MUSIC_MS = 8000;
 /**
  * How long after the wake word Max waits for the double-check before listening anyway: it carries on in the
  * background, and a late "false alarm" ends the conversation quietly if nobody has started talking.
@@ -190,10 +194,11 @@ export class ConversationService implements OnApplicationBootstrap {
     // again isn't enough on its own, and a check that didn't finish doesn't wake him.
     const ownAudio = this.music ? await this.music.playingNow() : false;
     const tag = ownAudio ? ' [music playing]' : '';
+    const timeoutMs = ownAudio ? VERIFY_TIMEOUT_MUSIC_MS : VERIFY_TIMEOUT_MS;
     try {
-      session = await withTimeout(this.stt.open(fmt), VERIFY_TIMEOUT_MS, 'took too long');
+      session = await withTimeout(this.stt.open(fmt), timeoutMs, 'took too long');
       session.write(audio);
-      const text = await withTimeout(session.finish(), VERIFY_TIMEOUT_MS, 'took too long');
+      const text = await withTimeout(session.finish(), timeoutMs, 'took too long');
       if (heardWakeWord(text, this.cfg.wakeWord.names, ownAudio)) {
         this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)${tag}`);
         recordWake('woke', text + tag, Date.now() - started);
@@ -211,13 +216,10 @@ export class ConversationService implements OnApplicationBootstrap {
       return false;
     } catch (err) {
       session?.abort();
-      if (ownAudio) {
-        this.log.warn(`Could not double-check the wake word (${(err as Error).message}) while music plays; staying asleep`);
-        recordWake('ignored', `check didn't finish${tag}`, Date.now() - started);
-        return false;
-      }
-      this.log.warn(`Could not double-check the wake word (${(err as Error).message}); waking up anyway`);
-      recordWake('unchecked', undefined, Date.now() - started);
+      // No verdict (the recogniser was too slow): not a false alarm, so Max keeps listening; with nothing said
+      // the conversation ends by itself in a few seconds.
+      this.log.warn(`Could not double-check the wake word (${(err as Error).message})${tag}; listening anyway`);
+      recordWake('unchecked', ownAudio ? `check didn't finish${tag}` : undefined, Date.now() - started);
       return true;
     }
   }
@@ -307,9 +309,11 @@ export class ConversationService implements OnApplicationBootstrap {
         if (ok || this.state === 'wake') return;
         if (this.realtime.userSpokeAt > heardAt || this.lastUserSpeechAt > heardAt) {
           this.log.log('The double-check came back late as a false alarm, but you were already talking: carrying on');
+          amendLast('woke', '(late check: you were already talking, so he carried on)');
           return;
         }
         this.log.log('The double-check came back late as a false alarm: going quiet');
+        amendLast('ignored', '(nobody had spoken: went quiet)');
         this.cancelled = true;
         this.realtime.stop('a false wake-up (double-check)');
       });

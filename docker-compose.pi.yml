@@ -29,8 +29,11 @@ services:
   # The secure link for live meetings (docs/MEETINGS.md): an outgoing connection to Cloudflare that brings Recall.ai's
   # live transcript to Max's port 8097, and nothing else (the control panel is never on it). Runs when
   # CLOUDFLARE_TUNNEL_TOKEN is set in .env (setup adds the "tunnel" profile).
+  # A fixed version, not "latest": an update only downloads an image whose name changed, so "latest" stayed
+  # on the version first downloaded. 2026.10.2 or later is needed after the eMudhra certificate compromise
+  # (Cloudflare, 20 October 2026); raise this number to move to a newer cloudflared.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.3
     profiles: ["tunnel"]
     restart: always
     network_mode: host

@@ -24,7 +24,7 @@ import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service'
 import { TrainsService } from '../trains/trains.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { DIETS, GOALS, MealName } from '../health/meals';
-import { GROCERS } from '../health/grocers';
+import { GROCERS, packsNeeded } from '../health/grocers';
 import { ACTIVITY, FITNESS, HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
 import { local } from '../routines/routines.service';
 import type { PanelHealth } from './health-page';
@@ -449,7 +449,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       eaters: h.eaters,
       diets: DIETS,
       meals: h.mealPlan,
-      shopping: h.shopping.map((i) => ({ ...i, link: h.searchLink(i), remembered: i.pick ? undefined : h.remembered(i), finding: h.finding.has(i.id) })),
+      shopping: h.shopping.map((i) => ({ ...i, link: h.searchLink(i), remembered: i.pick ? undefined : h.remembered(i), finding: h.finding.has(i.id), qty: i.qty ?? packsNeeded(i.text), cost: h.itemCost(i) })),
+      basket: h.basket(),
       grocer: h.grocer,
       grocers: Object.fromEntries(Object.entries(GROCERS).map(([k, g]) => [k, g.name])),
       canFind: Boolean(this.web?.enabled),
@@ -525,6 +526,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(h.findAll(), true, 'health-meals');
       case 'shop-pick':
         return back(h.pickProduct(get('id'), get('url')), true, 'health-meals');
+      case 'shop-qty':
+        h.setQty(get('id'), Number(get('qty')));
+        return this.redirect(res, '/#health-meals');
       case 'shop-unpick':
         return back(h.unpickProduct(get('id')), true, 'health-meals');
       case 'shop-clear':

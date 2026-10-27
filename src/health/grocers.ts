@@ -69,3 +69,28 @@ export function productsFrom(markdown: string, grocer: Grocer, max = 4): Product
   }
   return out;
 }
+
+/** "£1.85" → 185, "85p" → 85 (pence), undefined if not a price. */
+export function pence(price?: string): number | undefined {
+  if (!price) return undefined;
+  const pounds = /£\s?(\d+(?:\.\d{1,2})?)/.exec(price);
+  if (pounds) return Math.round(parseFloat(pounds[1]) * 100);
+  const p = /(\d{1,3})\s?p\b/.exec(price);
+  return p ? parseInt(p[1], 10) : undefined;
+}
+
+/** 185 → "£1.85". */
+export function money(p: number): string {
+  return `£${(p / 100).toFixed(2)}`;
+}
+
+/**
+ * How many to buy, from the list's wording: "4 tins chickpeas" → 4, "2 × 280 g firm tofu" → 2. Loose
+ * things ("2 red onions", "500 g rice") → 1 (one pack or bag): change it on the list if needed.
+ */
+export function packsNeeded(item: string): number {
+  const t = item.toLowerCase().trim();
+  // "2 × 280 g", "3 x 400g", "4 tins": the count; (× isn't a letter, so the word's end is a space or a digit)
+  const m = /^(\d{1,2})\s*(?:[x×](?=\s|\d)|(?:tins?|cans?|packs?|packets?|jars?|bottles?|cartons?|bags?|pots?|boxes|tubs?|loaves|blocks?)\b)/.exec(t);
+  return m ? Math.max(1, Math.min(20, parseInt(m[1], 10))) : 1;
+}

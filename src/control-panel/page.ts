@@ -1052,10 +1052,11 @@ function whatsappSection(w: WhatsAppStatus): string {
     )
     .join('');
   return `<section id="whatsapp"><h2>WhatsApp</h2><ul><li class="row"><div style="flex:1"><div class="name">Your WhatsApp ${state}</div>
-<div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web: he reads your chats and keeps the last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
+<div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web, but only sees your own chat and the chats you allow below, and keeps their last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
 ${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
 ${w.received ? receivedRow(w.received) : ''}
 ${link}</div></li>
+${readableRow(w)}
 <li class="row"><div style="flex:1"><div class="name">Who Max may send messages to</div>
 <div class="meta">Max only sends to the people on this list, and only after reading the message back and hearing your "yes". He can't add people himself.</div>
 ${people || '<p class="meta">Nobody yet: Max can read your messages but not send any.</p>'}
@@ -1065,11 +1066,32 @@ ${people || '<p class="meta">Nobody yet: Max can read your messages but not send
 </section>`;
 }
 
+/** The sandbox: Max sees your own chat, plus only the chats added here. */
+function readableRow(w: WhatsAppStatus): string {
+  const rows = w.readable
+    .map(
+      (r) => `<div class="addfact"><span class="meta"><b>${esc(r.name)}</b> · ${esc(r.shown)}</span>
+<form method="post" action="/whatsapp/read-remove"><input type="hidden" name="id" value="${esc(r.id)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
+    )
+    .join('');
+  const groups = w.groups?.length
+    ? `<form class="addfact" method="post" action="/whatsapp/read-allow"><select name="group" aria-label="Group">${w.groups.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select><button class="btn" type="submit">Add group</button></form>`
+    : w.state === 'connected'
+      ? '<form class="addfact" method="post" action="/whatsapp/groups"><button class="btn secondary" type="submit">Show my groups</button></form>'
+      : '';
+  return `<li class="row"><div style="flex:1"><div class="name">Chats Max can see</div>
+<div class="meta"><b>Only your own chat</b> ("Message yourself", where Max sends you things) <b>and the chats on this list.</b> Every other chat is dropped the moment it reaches Max: never kept, named or shown to his AI. Removing a chat deletes what he kept from it.</div>
+${rows || '<p class="meta">None yet: Max sees only your own chat.</p>'}
+<form class="addfact" method="post" action="/whatsapp/read-allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add person</button></form>
+${groups}
+</div></li>`;
+}
+
 /** What has reached Max (no message text): shows at a glance whether messages arrive, and whether they can be read. */
 function receivedRow(r: NonNullable<WhatsAppStatus['received']>): string {
   const t = (ms?: number) => (ms ? new Date(ms).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
   const recent = r.recent.map((c) => `${esc(c.name)} (${c.messages}, ${t(c.lastAt)})`).join(' · ');
-  return `<p class="meta"><b>Since Max started:</b> ${r.messages} message${r.messages === 1 ? '' : 's'} received${r.lastAt ? `, the last at ${t(r.lastAt)}` : ''}${r.unreadable ? ` · <b>${r.unreadable} couldn't be decrypted</b> (if this keeps growing, Unlink and link again)` : ''}.<br>
+  return `<p class="meta"><b>Since Max started:</b> ${r.messages} message${r.messages === 1 ? '' : 's'} received${r.lastAt ? `, the last at ${t(r.lastAt)}` : ''}${r.unreadable ? ` · <b>${r.unreadable} couldn't be decrypted</b> (if this keeps growing, Unlink and link again)` : ''}${r.ignored ? ` · ${r.ignored} from chats Max may not see, dropped unread` : ''}.<br>
 <b>Kept on the box:</b> ${r.kept} message${r.kept === 1 ? '' : 's'} in ${r.chats} chat${r.chats === 1 ? '' : 's'} (last 7 days, text only).${recent ? `<br><b>Latest chats:</b> ${recent}` : ''}</p>`;
 }
 

@@ -2,7 +2,7 @@
 
 Max can read your WhatsApp chats and send messages for you, to the people you allow.
 
-- "Any new WhatsApp messages?": who wrote since you last asked, summarised, with the messages on the screen.
+- "Any new WhatsApp messages?" (in the chats you allowed): who wrote since you last asked, summarised, with the messages on the screen.
 - "What did Magda say?", "read me the family group": the latest messages of a chat.
 - "Message Magda that I'm on my way": Max reads the message back, and sends it after your "yes".
 
@@ -21,6 +21,20 @@ limited to the people you allow, and every message needs your spoken "yes".
 2. On your phone: **WhatsApp → Settings → Linked devices → Link a device**, and scan the code.
 3. To let Max send messages to someone, add their name and number under **Who Max may send messages
    to** (e.g. "Magda", +44 7700 900123). UK numbers can be typed as 07…; others need the country code.
+
+## Which chats Max can see (the sandbox)
+
+By default Max sees **only your own chat** ("Message yourself": your notes, and what Max sends you, e.g. your
+workout plan). To let him see another chat, add it on the control panel under **Chats Max can see**: a person
+by their number, or a group picked from your list of groups ("Show my groups"). Remove it there and what he
+kept from it is deleted straight away.
+
+How it works: WhatsApp sends every linked device all your chats (that's how linked devices work), so Max drops
+every message from a chat that isn't on the list the moment it arrives. It is never stored, named or shown to
+his AI; the panel only counts how many were dropped. For a complete separation, give Max his own WhatsApp
+number (a spare SIM or eSIM) and chat with that instead: then he never receives your other chats at all.
+
+Sending is a separate list (**Who Max may send messages to**): seeing a chat doesn't let him send to it.
 
 ## Privacy and safety
 

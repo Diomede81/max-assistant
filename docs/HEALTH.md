@@ -72,6 +72,18 @@ is sent back to the AI to fix; anything still wrong is shown on the plan as "Ple
   tomorrow?", "what's on this week?", "what do I still need to buy?", "add oat milk to the shopping list",
   "I've got the spinach". Things you add yourself stay on the list when the next week's plan arrives.
 
+### Adding ingredients, and shopping online
+
+- **🛒 Add to the shopping list**: on the meal plan, "Add all the week's ingredients" (or under each recipe,
+  "Add these ingredients"). Things already on the list aren't added twice. By voice: "add tonight's dinner
+  ingredients to the shopping list". A new meal plan also fills the list by itself.
+- **I shop at**: Tesco, Sainsbury's, Asda, Morrisons, Waitrose, Ocado, Iceland or Amazon Fresh. Each item gets a
+  **🔍 link** to that supermarket's search for it ("2 × 280 g firm tofu" searches for "firm tofu").
+- **Find products** (needs Firecrawl, about one credit per item): Max reads the supermarket's results and lists
+  the products with prices; **Choose** one and next week Max suggests the same ("Last time").
+- Max can't put things in your basket: supermarkets don't allow it (it would mean logging in as you). Tap a
+  product to open it on the supermarket's site and add it there.
+
 ## Privacy
 
 Health records are personal: kept on the box, encrypted with Max's memory key, never in the logs, and only

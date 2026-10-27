@@ -172,6 +172,23 @@ export async function articleText(url: string): Promise<string> {
   return paras.join('\n').slice(0, 6000);
 }
 
+/**
+ * A page's readable text, lists and headings included (a workout is mostly lists: "3 × 12 squats"),
+ * menus, headers and footers left out. Public addresses only, like every download here.
+ */
+export async function pageText(url: string, max = 8000): Promise<string> {
+  const page = await download(url);
+  const body = removeBlocks(page.body, ['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'noscript', 'svg']);
+  return blocks(body, ['h1', 'h2', 'h3', 'h4', 'p', 'li'], 600)
+    .map((b) => {
+      const t = text(splitBlock(b).body);
+      return /^<h/i.test(b) ? `\n${t}` : /^<li/i.test(b) ? `- ${t}` : t;
+    })
+    .filter((t) => t.replace(/^[-\n ]+/, '').length > 2)
+    .join('\n')
+    .slice(0, max);
+}
+
 function tag(xml: string, name: string): string {
   return inner(xml, name);
 }

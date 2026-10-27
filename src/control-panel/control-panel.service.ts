@@ -23,6 +23,9 @@ import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
+import { local } from '../routines/routines.service';
+import type { PanelHealth } from './health-page';
 import { dismissCard, showCard } from '../face/screen';
 import { LockService } from '../lock/lock.service';
 import { RadioService } from '../music/radio.service';
@@ -50,6 +53,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(WebService) private readonly web?: WebService;
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
+  @Optional() @Inject(HealthService) private readonly health?: HealthService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(AboutService) private readonly about?: AboutService;
   @Optional() @Inject(MeetingsService) private readonly meetings?: MeetingsService;
@@ -314,6 +318,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const msg = await this.location.save({ place: f.get('place') ?? '', postcode: f.get('postcode') ?? '', country: f.get('country') ?? '' });
       return this.redirect(res, `/?${msg.startsWith('Saved') ? 'ok' : 'error'}=${encodeURIComponent(msg)}#location`);
     }
+    if (req.method === 'POST' && url.pathname.startsWith('/health/') && this.health) return this.healthAction(req, res, url.pathname.slice('/health/'.length));
     if (url.pathname.startsWith('/whatsapp/') && this.whatsapp) {
       const w = this.whatsapp;
       if (req.method === 'GET' && url.pathname === '/whatsapp/status') {
@@ -405,6 +410,104 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       providers,
       tasks: (Object.keys(TASKS) as Task[]).map((t) => ({ id: t, ...TASKS[t], ...m.assignment(t), describe: m.describe(t) })),
     };
+  }
+
+  /** The Health tab: each part with its last 14 days, and the plans. */
+  private healthData(): PanelHealth | undefined {
+    const h = this.health;
+    if (!h) return undefined;
+    const today = local().date;
+    const days = [...Array(14)].map((_, i) => local(new Date(Date.now() - (13 - i) * 86_400_000)).date);
+    const main: Record<Part, { key: string; label: string; unit: string; sum: boolean }> = {
+      exercise: { key: 'minutes', label: 'Minutes of exercise', unit: 'min', sum: true },
+      diet: { key: 'kcal', label: 'Calories', unit: 'kcal', sum: true },
+      heart: { key: h.entries.some((e) => e.part === 'heart' && e.values.sys !== undefined) ? 'sys' : 'bpm', label: h.entries.some((e) => e.part === 'heart' && e.values.sys !== undefined) ? 'Blood pressure (top)' : 'Resting heart rate', unit: '', sum: false },
+      sleep: { key: 'hours', label: 'Hours of sleep', unit: 'h', sum: false },
+      weight: { key: 'kg', label: 'Weight', unit: 'kg', sum: false },
+    };
+    return {
+      today,
+      model: this.models?.describe('health') ?? 'the main model',
+      emailTo: h.emailTo,
+      emailConnected: h.emailConnected,
+      whatsappReady: h.whatsappReady,
+      parts: PART_IDS.map((id) => {
+        const m = main[id];
+        const recent = h.recent(id, 14);
+        return {
+          id,
+          ...PARTS[id],
+          summary: h.summary(id),
+          goal: h.goals[id],
+          planable: PLAN_PARTS.includes(id),
+          entries: h.entries.filter((e) => e.part === id).slice(-10).reverse(),
+          chart: {
+            label: m.label,
+            unit: m.unit,
+            days: days.map((date) => {
+              const vs = recent.filter((e) => e.date === date && e.values[m.key] !== undefined).map((e) => e.values[m.key]);
+              return { date, value: vs.length ? (m.sum ? Math.round(vs.reduce((a, b) => a + b, 0) * 10) / 10 : vs[vs.length - 1]) : undefined };
+            }),
+          },
+        };
+      }),
+      plans: h.plans.map((p) => ({ ...p, running: h.running.has(p.id), latest: p.history[0] })),
+    };
+  }
+
+  private async healthAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const h = this.health!;
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const back = (msg: string, ok = true, anchor = 'health') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    const part = get('part') as Part;
+    switch (action) {
+      case 'log': {
+        if (!(part in PARTS)) return back('Unknown part.', false);
+        const values = Object.fromEntries(PARTS[part].fields.map((x) => [x.key, get(x.key)]));
+        const r = h.add(part, { text: get('text'), values, date: get('date') });
+        return back(r.message.split(' That ')[0], r.ok, `health-${part}`);
+      }
+      case 'delete':
+        return back(h.remove(get('id')) ? 'Removed.' : 'Already gone.', true, 'health');
+      case 'goal':
+        return part in PARTS ? back(h.setGoal(part, get('goal')), true, `health-${part}`) : back('Unknown part.', false);
+      case 'email': {
+        const msg = h.setEmail(get('email'));
+        return back(msg, !/doesn't look right/.test(msg), 'health-plans');
+      }
+      case 'plan-save': {
+        const id = get('id');
+        const r = h.savePlan(
+          {
+            name: get('name'),
+            part: get('part') as Part,
+            span: get('span') === 'week' ? 'week' : 'day',
+            sourcesText: f.get('sources') ?? '',
+            brief: get('brief'),
+            time: get('time'),
+            days: f.getAll('days').map(Number),
+            email: f.get('email') === 'yes',
+            whatsapp: f.get('whatsapp') === 'yes',
+            ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
+          },
+          id || undefined,
+        );
+        return back(r.message, r.ok, r.plan ? `plan-${r.plan.id}` : 'health-plan-new');
+      }
+      case 'plan-run': {
+        const id = get('id');
+        if (!h.plans.some((p) => p.id === id)) return back('That plan no longer exists.', false, 'health-plans');
+        void h.run(id);
+        return back('Preparing the plan: it takes up to a minute (the page refreshes by itself).', true, `plan-${id}`);
+      }
+      case 'plan-toggle':
+        return back(h.togglePlan(get('id')), true, `plan-${get('id')}`);
+      case 'plan-delete':
+        if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, `plan-${get('id')}`);
+        return back(h.deletePlan(get('id')), true, 'health-plans');
+    }
+    return back('Unknown action.', false);
   }
 
   private async routineAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
@@ -612,6 +715,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       web: this.web?.status,
       trains: this.trains?.status,
       whatsapp: await this.whatsapp?.status(),
+      health: this.healthData(),
       meetings: this.meetings && {
         enabled: this.meetings.enabled,
         live: Boolean(this.meetingsLive?.enabled),

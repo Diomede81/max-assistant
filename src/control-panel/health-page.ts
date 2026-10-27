@@ -20,7 +20,32 @@ export interface PanelHealth {
   diets: Record<string, string>;
   /** This week's meals, and the shopping list. */
   meals?: { title: string; notes?: string; at: string; warnings: string[]; days: { date: string; day: string; meals: Record<string, MealRecipe | undefined> }[] };
-  shopping: { id: string; text: string; aisle: string; done: boolean; extra?: boolean }[];
+  shopping: ShopRow[];
+  /** The online supermarket chosen, the ones to choose from, and whether products can be looked up (Firecrawl). */
+  grocer: string;
+  grocers: Record<string, string>;
+  canFind: boolean;
+}
+
+export interface ShopRow {
+  id: string;
+  text: string;
+  aisle: string;
+  done: boolean;
+  extra?: boolean;
+  /** The supermarket's search for this item. */
+  link: string;
+  found?: Product[];
+  pick?: Product;
+  /** The product chosen for this kind of item before (suggested). */
+  remembered?: Product;
+  finding: boolean;
+}
+
+interface Product {
+  title: string;
+  url: string;
+  price?: string;
 }
 
 export interface MealRecipe {
@@ -224,21 +249,43 @@ ${rows || '<p class="empty">Nobody yet: add yourself (and whoever eats with you)
 function mealsSection(h: PanelHealth, esc: Esc): string {
   const m = h.meals;
   const facts = (r: MealRecipe) => [r.minutes ? `${r.minutes} min` : '', r.kcal ? `${r.kcal} kcal` : '', r.protein ? `${r.protein} g protein` : '', `serves ${r.servings}`].filter(Boolean).join(' · ');
-  const recipe = (meal: string, r: MealRecipe) => `<details class="recipe"><summary><b>${esc(meal.charAt(0).toUpperCase() + meal.slice(1))}:</b> ${esc(r.name)} <span class="meta">${esc(facts(r))}</span></summary>
+  const addForm = (label: string, date?: string, meal?: string) =>
+    `<form method="post" action="/health/shop-add-meals">${date ? `<input type="hidden" name="date" value="${esc(date)}">` : ''}${meal ? `<input type="hidden" name="meal" value="${esc(meal)}">` : ''}<button class="btn secondary small" type="submit">🛒 ${esc(label)}</button></form>`;
+  const recipe = (meal: string, r: MealRecipe, date: string) => `<details class="recipe"><summary><b>${esc(meal.charAt(0).toUpperCase() + meal.slice(1))}:</b> ${esc(r.name)} <span class="meta">${esc(facts(r))}</span></summary>
 <div class="cols"><div><b class="meta">Ingredients</b><ul>${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div><div><b class="meta">Method</b><ol>${r.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div></div>
+${addForm('Add these ingredients to the shopping list', date, meal)}
 ${r.tip ? `<p class="meta">Tip: ${esc(r.tip)}</p>` : ''}${r.source ? `<p class="meta">From ${/^https?:\/\//.test(r.source) ? `<a href="${esc(r.source)}" target="_blank" rel="noopener noreferrer">${esc(r.source.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>` : esc(r.source)}</p>` : ''}</details>`;
   const week = m
     ? `<p class="meta">${esc(m.notes ?? '')} Made ${esc(when(m.at))}. Say "what's for dinner tonight?" and Max puts the recipe on his screen, step by step.</p>
 ${m.warnings.length ? `<p class="hint"><b>Please check:</b> ${esc(m.warnings.join('; '))}</p>` : ''}
-${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.day)} <span class="meta">${esc(d.date.slice(8))}/${esc(d.date.slice(5, 7))}${d.date === h.today ? ' · today' : ''}</span></h3>${['breakfast', 'lunch', 'dinner'].filter((x) => d.meals[x]).map((x) => recipe(x, d.meals[x]!)).join('')}`).join('')}`
+<div class="acts">${addForm(m.days.length > 1 ? "Add all the week's ingredients to the shopping list" : "Add all the ingredients to the shopping list")}</div>
+${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.day)} <span class="meta">${esc(d.date.slice(8))}/${esc(d.date.slice(5, 7))}${d.date === h.today ? ' · today' : ''}</span></h3>${['breakfast', 'lunch', 'dinner'].filter((x) => d.meals[x]).map((x) => recipe(x, d.meals[x]!, d.date)).join('')}`).join('')}`
     : '<p class="empty">No meal plan yet: create a weekly meal plan below (Plans → New plan: "Meal plan", "the week ahead").</p>';
   const aisles = [...new Set(h.shopping.map((i) => i.aisle))];
   const left = h.shopping.filter((i) => !i.done).length;
+  const shopName = h.grocers[h.grocer] ?? h.grocer;
+  const product = (i: ShopRow, p: Product, chosen: boolean) =>
+    `<div class="prod${chosen ? ' chosen' : ''}"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a>${p.price ? ` <b>${esc(p.price)}</b>` : ''}${
+      chosen
+        ? ` <form method="post" action="/health/shop-unpick"><input type="hidden" name="id" value="${esc(i.id)}"><button class="linkbtn" type="submit">change</button></form>`
+        : ` <form method="post" action="/health/shop-pick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="url" value="${esc(p.url)}"><button class="btn secondary small" type="submit">Choose</button></form>`
+    }</div>`;
+  const row = (i: ShopRow) => {
+    const extra = i.done
+      ? ''
+      : i.pick
+        ? product(i, i.pick, true)
+        : `${i.remembered ? `<div class="meta">Last time: </div>${product(i, i.remembered, false)}` : ''}${(i.found ?? []).map((p) => product(i, p, false)).join('')}`;
+    const find = i.done || i.pick ? '' : i.finding ? '<span class="meta">looking…</span><span data-wait></span>' : h.canFind ? `<form method="post" action="/health/shop-find"><input type="hidden" name="id" value="${esc(i.id)}"><button class="linkbtn" type="submit">${i.found ? 'find again' : 'find products'}</button></form>` : '';
+    return `<li class="${i.done ? 'done' : ''}"><div class="line"><form method="post" action="/health/shop-tick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="done" value="${i.done ? 'no' : 'yes'}"><button class="tick" type="submit" aria-label="${i.done ? 'Not bought' : 'Bought'}">${i.done ? '☑' : '☐'}</button></form><span>${esc(i.text)}</span>${i.done ? '' : ` <a class="meta" href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">🔍 ${esc(shopName)}</a> ${find}`}</div>${extra ? `<div class="prods">${extra}</div>` : ''}</li>`;
+  };
   const shop = `<h3>🛒 Shopping list <span class="meta">${left} to buy</span></h3>
-${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map((i) => `<li class="${i.done ? 'done' : ''}"><form method="post" action="/health/shop-tick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="done" value="${i.done ? 'no' : 'yes'}"><button class="tick" type="submit" aria-label="${i.done ? 'Not bought' : 'Bought'}">${i.done ? '☑' : '☐'}</button></form><span>${esc(i.text)}</span></li>`).join('')}</ul>`).join('') || '<p class="empty">Empty.</p>'}
+<form class="addfact" method="post" action="/health/grocer"><label class="meta" for="grocer">I shop at</label><select id="grocer" name="grocer">${Object.entries(h.grocers).map(([k, v]) => `<option value="${esc(k)}" ${k === h.grocer ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><button class="btn secondary" type="submit">Save</button>${h.canFind && left ? '<span></span>' : ''}</form>
+${h.canFind && h.shopping.some((i) => !i.done && !i.pick) ? `<form method="post" action="/health/shop-find-all"><button class="btn secondary small" type="submit">Find products at ${esc(shopName)} for everything</button></form>` : ''}
+${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map(row).join('')}</ul>`).join('') || '<p class="empty">Empty: add the meal plan\'s ingredients with the 🛒 buttons above.</p>'}
 <form class="addfact" method="post" action="/health/shop-add"><input name="item" maxlength="120" placeholder="Add something, e.g. oat milk" aria-label="Item"><button class="btn secondary" type="submit">Add</button></form>
 ${h.shopping.some((i) => i.done) ? '<form method="post" action="/health/shop-clear"><button class="btn secondary" type="submit">Clear ticked items</button></form>' : ''}
-<p class="meta">Tick things off in the shop (open this page on your phone), or tell Max: "add oat milk", "I've got the spinach", "what do I still need to buy?".</p>`;
+<p class="meta">🔍 opens ${esc(shopName)}'s search for that item. ${h.canFind ? `"Find products" lists what ${esc(shopName)} has, with prices: choose one and next week Max suggests the same. Max can't put things in your basket (supermarkets don't allow it), so tap a product to open it on ${esc(shopName)} and add it there.` : 'With Firecrawl set up (Connections → Web search), Max can also list the products and prices for each item.'} Tick things off as you buy them, or tell Max: "add oat milk", "I've got the spinach", "add tonight's dinner ingredients".</p>`;
   return `<section id="health-meals"><h2>🍽️ ${esc(m?.title ?? "This week's meals")}</h2>${week}${shop}</section>`;
 }
 
@@ -265,6 +312,7 @@ ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${
 }
 
 export const HEALTH_CSS =
+  '.shop li{flex-direction:column;align-items:stretch!important}.shop .line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prods{margin:2px 0 6px 28px;display:flex;flex-direction:column;gap:3px}.prod{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:14px}.prod.chosen a{font-weight:600}.btn.small{padding:3px 10px;font-size:13px}' +
   '.recipe{border-top:1px solid var(--line);padding:8px 0}.recipe summary{cursor:pointer}.recipe .cols{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-top:8px}@media(max-width:640px){.recipe .cols{grid-template-columns:1fr}}.recipe ul,.recipe ol{margin:4px 0;padding-left:20px}' +
   'h3.today{color:var(--accent)}.shop{list-style:none;padding:0;margin:0 0 8px}.shop li{display:flex;gap:8px;align-items:center;padding:2px 0}.shop li.done span{text-decoration:line-through;opacity:.55}.tick{background:none;border:0;font-size:20px;cursor:pointer;line-height:1;padding:0;color:var(--text)}' +
   '.htiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px}' +

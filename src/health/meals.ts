@@ -62,6 +62,9 @@ export interface ShopItem {
   done: boolean;
   /** Added by the user (kept when a new week's plan arrives). */
   extra?: boolean;
+  /** Products found at the chosen supermarket, and the one chosen. */
+  found?: { title: string; url: string; price?: string }[];
+  pick?: { title: string; url: string; price?: string };
 }
 
 export interface MealPlan {
@@ -145,7 +148,7 @@ function recipe(v: unknown, servings: number): Recipe | undefined {
 }
 
 /** The plan from the model's JSON (days in order from `start`), or undefined if it isn't usable. */
-export function parsePlan(reply: string, meals: MealName[], start: { date: string; weekday: number }, servings: number): { title: string; notes?: string; days: MealDay[]; shopping: { aisle: string; items: string[] }[] } | undefined {
+export function parsePlan(reply: string, meals: MealName[], start: { date: string; weekday: number }, servings: number, dayCount = 7): { title: string; notes?: string; days: MealDay[]; shopping: { aisle: string; items: string[] }[] } | undefined {
   let j: Record<string, unknown>;
   try {
     j = JSON.parse(reply.slice(reply.indexOf('{'), reply.lastIndexOf('}') + 1)) as Record<string, unknown>;
@@ -154,7 +157,7 @@ export function parsePlan(reply: string, meals: MealName[], start: { date: strin
   }
   const raw = Array.isArray(j.days) ? (j.days as Record<string, unknown>[]) : [];
   const days: MealDay[] = [];
-  for (let i = 0; i < Math.min(7, raw.length); i++) {
+  for (let i = 0; i < Math.min(dayCount, raw.length); i++) {
     const date = addDays(start.date, i);
     const dm: Partial<Record<MealName, Recipe>> = {};
     for (const m of meals) {
@@ -163,11 +166,32 @@ export function parsePlan(reply: string, meals: MealName[], start: { date: strin
     }
     if (Object.keys(dm).length) days.push({ date, day: WEEKDAYS[(start.weekday - 1 + i) % 7], meals: dm });
   }
-  if (days.length < 3) return undefined;
+  if (days.length < Math.min(3, dayCount)) return undefined;
   const shopping = (Array.isArray(j.shopping) ? (j.shopping as Record<string, unknown>[]) : [])
     .map((g) => ({ aisle: str(g?.aisle).slice(0, 40) || 'Other', items: list(g?.items) }))
     .filter((g) => g.items.length);
+  // no shopping list in the answer: made from the recipes' ingredients (so the list is never empty)
+  if (!shopping.length) shopping.push({ aisle: 'From the recipes', items: ingredientsOf(days) });
   return { title: str(j.title).slice(0, 120) || 'This week\'s meals', notes: str(j.notes).slice(0, 600) || undefined, days, shopping };
+}
+
+/** Every ingredient of these days' recipes (or one meal), once each. */
+export function ingredientsOf(days: MealDay[], meal?: MealName): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const d of days) {
+    for (const m of MEALS) {
+      if (meal && m !== meal) continue;
+      for (const i of d.meals[m]?.ingredients ?? []) {
+        const k = i.toLowerCase().trim();
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(i);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

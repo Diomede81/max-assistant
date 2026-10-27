@@ -75,6 +75,9 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
 - **Date and time**: "What's the date?", "What time is it?"
+- **Health**: a Health tab for exercise, diet, heart, sleep and weight ("I ran 5 km in 30 minutes", "my blood
+  pressure is 128 over 82"), with goals and trends; exercise routines and meal plans made from websites you
+  choose, daily or weekly, sent to you by email or WhatsApp. See [docs/HEALTH.md](docs/HEALTH.md).
 - **WhatsApp**: "Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way"
   (only to people you allow on the control panel, and after your "yes"). Links like WhatsApp Web. See
   [docs/WHATSAPP.md](docs/WHATSAPP.md).

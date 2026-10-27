@@ -328,6 +328,21 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     return `New WhatsApp messages ${UNTRUSTED}\n\n${out.join('\n\n')}`;
   }
 
+  /** Whether Max can send to the user's own WhatsApp (linked and connected). */
+  get canMessageSelf(): boolean {
+    return this.state === 'connected' && Boolean(this.phone);
+  }
+
+  /**
+   * A message to the user's own WhatsApp ("Message yourself"), e.g. the exercise plan they asked Max to
+   * send each morning. Only ever to their own number, so it needs no allowed list nor a spoken yes.
+   */
+  async sendToSelf(text: string): Promise<void> {
+    if (!this.sock || !this.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
+    await this.sock.sendMessage(`${this.phone}@s.whatsapp.net`, { text: text.slice(0, 4000) });
+    this.log.log('Sent a WhatsApp message to you');
+  }
+
   private async send(to: string, text: string): Promise<string> {
     const body = text.trim();
     if (!body) return 'Not sent: no message. Ask the user what to say.';

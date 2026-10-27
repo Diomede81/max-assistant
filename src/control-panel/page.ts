@@ -5,6 +5,7 @@ import { DEVICES_CSS, devicesPane } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 import { SPEAKER_TONES } from '../device/device.service';
 import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
+import { HEALTH_CSS, healthSection, PanelHealth } from './health-page';
 
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
@@ -63,6 +64,7 @@ export interface PanelData {
   web?: { configured: boolean; connected: boolean; remainingCredits?: number; error?: string };
   trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
   whatsapp?: WhatsAppStatus;
+  health?: PanelHealth;
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
@@ -624,7 +626,7 @@ const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
 /** One tap away at the top: what's used most. Everything else is in the menu drawer (DRAWER). */
-const QUICK = ['overview', 'devices', 'myday', 'projects'];
+const QUICK = ['overview', 'devices', 'myday', 'health', 'projects'];
 
 /** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
 const DRAWER: [string, [string, string, string][]][] = [
@@ -637,6 +639,7 @@ const TABS: [string, string][] = [
   ['overview', 'Home'],
   ['devices', 'Devices'],
   ['myday', 'My Day'],
+  ['health', 'Health'],
   ['routines', 'Routines'],
   ['max', 'Max'],
   ['memory', 'Memory'],
@@ -784,7 +787,7 @@ export function renderPanel(d: PanelData): string {
     )
     .join('');
 
-  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), meetings: Boolean(d.meetings), connections: true, settings: true };
+  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), health: Boolean(d.health), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), meetings: Boolean(d.meetings), connections: true, settings: true };
   const attention: Record<string, boolean> = {
     connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
     settings: Boolean(d.location && !d.location.place),
@@ -809,7 +812,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
-${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}
+${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}${HEALTH_CSS}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 .about .afield{margin:0 0 14px}.about label{display:block;font-weight:600;margin:0 0 4px}.about input{display:block;width:100%;max-width:420px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}.about textarea{box-sizing:border-box}.about .meta{margin-top:3px;font-size:13px}
@@ -857,6 +860,8 @@ ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` 
 <div class="pane" id="tab-overview">${micBanner(d)}${overview(d)}</div>
 
 <div class="pane" id="tab-myday">${d.memory ? myDaySection(d.memory) : ''}</div>
+
+<div class="pane" id="tab-health">${d.health ? healthSection(d.health, esc) : ''}</div>
 
 <div class="pane" id="tab-routines">${d.routines ? routinesSection(d.routines, esc) : ''}</div>
 

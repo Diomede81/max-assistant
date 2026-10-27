@@ -12,6 +12,7 @@ export const TASKS = {
   digest: { label: 'Memory tidy-up', help: 'Rolls old conversation notes up into weekly and monthly digests.' },
   meetings: { label: 'Meeting answers', help: 'Answers you out loud in online meetings: a fast model keeps the wait short.' },
   tasks: { label: 'Complex tasks', help: 'Travel planning, calendar questions and other jobs with several steps: the conversation hands them to this model, which works them out with Max\'s actions. Pick a strong model (e.g. DeepSeek); until you do, the conversation does them itself.' },
+  health: { label: 'Health plans', help: 'Writes your exercise routines and meal plans from the websites you chose: a strong model gives better plans.' },
   home: { label: 'Home automations', help: 'Turns an automation you describe ("when I\'m out and the alarm is on…") into one for Home Assistant.' },
 } as const;
 export type Task = keyof typeof TASKS;

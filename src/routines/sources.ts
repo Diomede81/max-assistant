@@ -189,6 +189,27 @@ export async function pageText(url: string, max = 8000): Promise<string> {
     .slice(0, max);
 }
 
+/** The links on a page with their text (public addresses only), for following a list of workouts or articles. */
+export async function pageLinks(url: string): Promise<{ url: string; title: string }[]> {
+  const page = await download(url);
+  const body = removeBlocks(page.body, ['script', 'style', 'nav', 'header', 'footer', 'noscript', 'svg']);
+  const out = new Map<string, string>();
+  for (const a of blocks(body, ['a'], 1500)) {
+    const { open, body: inside } = splitBlock(a);
+    const href = /\bhref\s*=\s*["']([^"'#]+)/i.exec(open)?.[1];
+    if (!href) continue;
+    let abs: string;
+    try {
+      abs = new URL(href.replace(/&amp;/g, '&'), page.url).toString();
+    } catch {
+      continue;
+    }
+    const t = text(inside);
+    if (!out.has(abs) || (t && !out.get(abs))) out.set(abs, t);
+  }
+  return [...out].map(([u, t]) => ({ url: u, title: t }));
+}
+
 function tag(xml: string, name: string): string {
   return inner(xml, name);
 }

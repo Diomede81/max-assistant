@@ -41,7 +41,7 @@ export interface PanelHealthPlan {
   enabled: boolean;
   running: boolean;
   lastError?: string;
-  latest?: { at: string; text: string; sent: string[]; failed: string[] };
+  latest?: { at: string; text: string; sent: string[]; failed: string[]; used?: { url: string; title: string }[] };
 }
 
 type Esc = (s: unknown) => string;
@@ -130,7 +130,11 @@ function planCard(p: PanelHealthPlan, esc: Esc): string {
   const days = p.span === 'week' ? `Every ${DAY[(p.days[0] ?? 1) - 1]}` : p.days.length === 7 ? 'Every day' : p.days.map((d) => DAY[d - 1]).join(', ');
   const to = [p.email && 'email', p.whatsapp && 'WhatsApp'].filter(Boolean).join(' and ') || 'not sent (ask Max or look here)';
   const latest = p.latest
-    ? `<p class="meta">Made ${esc(when(p.latest.at))}${p.latest.sent.length ? ` · sent by ${esc(p.latest.sent.join(' and '))}` : ''}${p.latest.failed.length ? ` · <span class="warntext">not sent: ${esc(p.latest.failed.join('; '))}</span>` : ''}</p><pre class="hplan">${esc(p.latest.text)}</pre>`
+    ? `<p class="meta">Made ${esc(when(p.latest.at))}${p.latest.sent.length ? ` · sent by ${esc(p.latest.sent.join(' and '))}` : ''}${p.latest.failed.length ? ` · <span class="warntext">not sent: ${esc(p.latest.failed.join('; '))}</span>` : ''}</p>${
+        p.latest.used?.length
+          ? `<p class="meta">Built from: ${p.latest.used.map((u) => `<a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${esc(u.title || u.url)}</a>`).join(' · ')}</p>`
+          : ''
+      }<pre class="hplan">${esc(p.latest.text)}</pre>`
     : `<p class="empty">Not made yet: it's made at the next scheduled time, or press Make now.</p>`;
   return `<section id="plan-${esc(p.id)}"><h2>${esc(p.name)} ${status}</h2>
 <p class="meta">${p.span === 'week' ? 'The week ahead' : 'The day'} · ${esc(days)} at ${esc(p.time)} · sent by ${esc(to)} · ${p.sources.length ? `following ${esc(p.sources.map(host).join(', '))}` : 'no websites (general advice)'}</p>
@@ -151,7 +155,7 @@ function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
 <div class="addfact wrap"><label class="inline">Name<input name="name" maxlength="60" value="${esc(p?.name ?? '')}" placeholder="Morning workout"></label>
 <label class="inline">For <select name="part">${opt('exercise', 'Exercise routine', p?.part ?? 'exercise')}${opt('diet', 'Meal plan', p?.part ?? 'exercise')}</select></label>
 <label class="inline">Covers <select name="span">${opt('day', 'the day', p?.span ?? 'day')}${opt('week', 'the week ahead', p?.span ?? 'day')}</select></label></div>
-<label>Websites to follow <span class="meta">(one per line, up to 5: a programme, a page of exercises or recipes, e.g. nhs.uk/live-well/exercise)</span>
+<label>Websites to follow <span class="meta">(one per line, up to 5: a programme, a page of exercises or recipes, or a whole list of them, e.g. menshealth.com/uk/workouts: Max opens the ones that fit you, different ones each time)</span>
 <textarea name="sources" rows="3" placeholder="nhs.uk/live-well/exercise/strength-exercises&#10;darebee.com/programs">${esc((p?.sources ?? []).join('\n'))}</textarea></label>
 <label>What you want <span class="meta">(your level, goal, equipment, time you have, injuries or foods to avoid)</span>
 <textarea name="brief" rows="3" required placeholder="Intermediate, want to get stronger and run 10 km. Dumbbells at home, 30–40 minutes on weekdays, longer at weekends. Bad left knee: no jumping.">${esc(p?.brief ?? '')}</textarea></label>

@@ -19,8 +19,12 @@ unusual resting heart rate comes with a nudge to measure again and to get advice
 
 In **Health → Plans**, create a plan:
 
-- **Websites to follow** (up to 5): a training programme, a page of exercises or recipes. Max reads them each
-  time and builds the plan from their methods, naming the site an idea comes from.
+- **Websites to follow** (up to 5): a training programme, a page of exercises or recipes, or a whole list of
+  them (e.g. `menshealth.com/uk/workouts`). A list is followed: Max picks the workouts that fit your brief
+  (4 for a day's plan, 7 for a week's), different ones from the last few plans, reads each and builds the
+  plan from them, naming where each idea comes from. The plan shows which pages it was built from. With
+  Firecrawl set up (Connections → Web search) Max reads sites that block simple downloads (about 5
+  Firecrawl credits a plan); without it he reads them directly where the site allows.
 - **What you want**: your level, goal, equipment, time you have, injuries or foods to avoid.
 - **Covers** the day or the week ahead; **when** it's made and sent (days and time).
 - **Send** by email (to the address you set, from your connected Gmail or Outlook) and/or WhatsApp (to your
@@ -30,7 +34,8 @@ Max takes your recent log into account (progressing gently, not repeating yester
 varies each plan from the last. Ask "what's my workout today?", or "make me a new workout" for a fresh one.
 
 The plans are written by the model chosen in **Settings → AI models → Health plans** (e.g. DeepSeek); until
-you choose one, Max's main model writes them. With Firecrawl set up (Connections → Web search), Max can read
+you choose one, Max's main model writes them. A "thinking" model (e.g. DeepSeek's reasoner) gets plenty of room to think
+and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web search), Max can read
 more websites (ones that need a browser).
 
 ## Privacy

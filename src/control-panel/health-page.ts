@@ -19,12 +19,14 @@ export interface PanelHealth {
   eaters: { id: string; name: string; diet: string; allergies?: string; other?: string }[];
   diets: Record<string, string>;
   /** This week's meals, and the shopping list. */
-  meals?: { title: string; notes?: string; at: string; warnings: string[]; days: { date: string; day: string; meals: Record<string, MealRecipe | undefined> }[] };
+  meals?: { title: string; notes?: string; at: string; warnings: string[]; estimatedCost?: number; days: { date: string; day: string; meals: Record<string, MealRecipe | undefined> }[] };
   shopping: ShopRow[];
   /** The online supermarket chosen, the ones to choose from, and whether products can be looked up (Firecrawl). */
   grocer: string;
   grocers: Record<string, string>;
   canFind: boolean;
+  /** What the list costs (pence): chosen products, and an estimate for everything still to buy. */
+  basket: { chosen: number; chosenItems: number; estimate: number; estimatedItems: number; open: number; unknown: number };
 }
 
 export interface ShopRow {
@@ -40,6 +42,9 @@ export interface ShopRow {
   /** The product chosen for this kind of item before (suggested). */
   remembered?: Product;
   finding: boolean;
+  /** How many of the chosen product, and what they cost (pence). */
+  qty: number;
+  cost?: number;
 }
 
 interface Product {
@@ -267,7 +272,7 @@ ${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.da
   const product = (i: ShopRow, p: Product, chosen: boolean) =>
     `<div class="prod${chosen ? ' chosen' : ''}"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a>${p.price ? ` <b>${esc(p.price)}</b>` : ''}${
       chosen
-        ? ` <form method="post" action="/health/shop-unpick"><input type="hidden" name="id" value="${esc(i.id)}"><button class="linkbtn" type="submit">change</button></form>`
+        ? ` <span class="qty"><form method="post" action="/health/shop-qty"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="qty" value="${i.qty - 1}"><button class="linkbtn" type="submit" aria-label="One fewer" ${i.qty <= 1 ? 'disabled' : ''}>−</button></form><b>${i.qty}</b><form method="post" action="/health/shop-qty"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="qty" value="${i.qty + 1}"><button class="linkbtn" type="submit" aria-label="One more">+</button></form></span>${i.cost !== undefined ? ` <b class="cost">${esc(gbp(i.cost))}</b>` : ''} <form method="post" action="/health/shop-unpick"><input type="hidden" name="id" value="${esc(i.id)}"><button class="linkbtn" type="submit">change</button></form>`
         : ` <form method="post" action="/health/shop-pick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="url" value="${esc(p.url)}"><button class="btn secondary small" type="submit">Choose</button></form>`
     }</div>`;
   const row = (i: ShopRow) => {
@@ -279,7 +284,14 @@ ${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.da
     const find = i.done || i.pick ? '' : i.finding ? '<span class="meta">looking…</span><span data-wait></span>' : h.canFind ? `<form method="post" action="/health/shop-find"><input type="hidden" name="id" value="${esc(i.id)}"><button class="linkbtn" type="submit">${i.found ? 'find again' : 'find products'}</button></form>` : '';
     return `<li class="${i.done ? 'done' : ''}"><div class="line"><form method="post" action="/health/shop-tick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="done" value="${i.done ? 'no' : 'yes'}"><button class="tick" type="submit" aria-label="${i.done ? 'Not bought' : 'Bought'}">${i.done ? '☑' : '☐'}</button></form><span>${esc(i.text)}</span>${i.done ? '' : ` <a class="meta" href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">🔍 ${esc(shopName)}</a> ${find}`}</div>${extra ? `<div class="prods">${extra}</div>` : ''}</li>`;
   };
+  const b = h.basket;
+  const totals = b.chosenItems || b.estimatedItems
+    ? `<div class="totals">${b.chosenItems ? `<div><b>${esc(gbp(b.chosen))}</b> <span class="meta">for the ${b.chosenItems} product${b.chosenItems === 1 ? '' : 's'} chosen</span></div>` : ''}${b.estimatedItems > b.chosenItems || b.unknown ? `<div><b>about ${esc(gbp(b.estimate))}</b> <span class="meta">for ${b.estimatedItems} of the ${b.open} items to buy (the cheapest found where none is chosen)${b.unknown ? `; ${b.unknown} without a price yet: find products for them` : ''}</span></div>` : ''}</div>`
+    : m?.estimatedCost
+      ? `<div class="totals"><div><b>roughly £${m.estimatedCost}</b> <span class="meta">the AI's estimate for the week's shopping; find products for ${esc(shopName)}'s real prices</span></div></div>`
+      : '';
   const shop = `<h3>🛒 Shopping list <span class="meta">${left} to buy</span></h3>
+${totals}
 <form class="addfact" method="post" action="/health/grocer"><label class="meta" for="grocer">I shop at</label><select id="grocer" name="grocer">${Object.entries(h.grocers).map(([k, v]) => `<option value="${esc(k)}" ${k === h.grocer ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><button class="btn secondary" type="submit">Save</button>${h.canFind && left ? '<span></span>' : ''}</form>
 ${h.canFind && h.shopping.some((i) => !i.done && !i.pick) ? `<form method="post" action="/health/shop-find-all"><button class="btn secondary small" type="submit">Find products at ${esc(shopName)} for everything</button></form>` : ''}
 ${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map(row).join('')}</ul>`).join('') || '<p class="empty">Empty: add the meal plan\'s ingredients with the 🛒 buttons above.</p>'}
@@ -288,6 +300,8 @@ ${h.shopping.some((i) => i.done) ? '<form method="post" action="/health/shop-cle
 <p class="meta">🔍 opens ${esc(shopName)}'s search for that item. ${h.canFind ? `"Find products" lists what ${esc(shopName)} has, with prices: choose one and next week Max suggests the same. Max can't put things in your basket (supermarkets don't allow it), so tap a product to open it on ${esc(shopName)} and add it there.` : 'With Firecrawl set up (Connections → Web search), Max can also list the products and prices for each item.'} Tick things off as you buy them, or tell Max: "add oat milk", "I've got the spinach", "add tonight's dinner ingredients".</p>`;
   return `<section id="health-meals"><h2>🍽️ ${esc(m?.title ?? "This week's meals")}</h2>${week}${shop}</section>`;
 }
+
+const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;
 
 function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
   const days = p?.days ?? [1, 2, 3, 4, 5, 6, 7];
@@ -312,6 +326,7 @@ ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${
 }
 
 export const HEALTH_CSS =
+  '.totals{display:flex;flex-direction:column;gap:2px;margin:6px 0 10px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}.totals b{font-size:17px}.qty{display:inline-flex;gap:4px;align-items:center}.qty .linkbtn{font-size:17px;padding:0 4px}.cost{white-space:nowrap}' +
   '.shop li{flex-direction:column;align-items:stretch!important}.shop .line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prods{margin:2px 0 6px 28px;display:flex;flex-direction:column;gap:3px}.prod{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:14px}.prod.chosen a{font-weight:600}.btn.small{padding:3px 10px;font-size:13px}' +
   '.recipe{border-top:1px solid var(--line);padding:8px 0}.recipe summary{cursor:pointer}.recipe .cols{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-top:8px}@media(max-width:640px){.recipe .cols{grid-template-columns:1fr}}.recipe ul,.recipe ol{margin:4px 0;padding-left:20px}' +
   'h3.today{color:var(--accent)}.shop{list-style:none;padding:0;margin:0 0 8px}.shop li{display:flex;gap:8px;align-items:center;padding:2px 0}.shop li.done span{text-decoration:line-through;opacity:.55}.tick{background:none;border:0;font-size:20px;cursor:pointer;line-height:1;padding:0;color:var(--text)}' +

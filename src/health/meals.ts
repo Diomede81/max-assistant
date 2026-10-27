@@ -65,6 +65,8 @@ export interface ShopItem {
   /** Products found at the chosen supermarket, and the one chosen. */
   found?: { title: string; url: string; price?: string }[];
   pick?: { title: string; url: string; price?: string };
+  /** How many of the chosen product to buy (from the wording, or set on the list). */
+  qty?: number;
 }
 
 export interface MealPlan {
@@ -75,6 +77,8 @@ export interface MealPlan {
   days: MealDay[];
   /** Problems the check found (and couldn't fix): shown, so nothing unsafe goes unnoticed. */
   warnings: string[];
+  /** The AI model's rough guess of the shopping cost (pounds), before any real prices are looked up. */
+  estimatedCost?: number;
 }
 
 // ---------- Dietary checks ----------
@@ -148,7 +152,7 @@ function recipe(v: unknown, servings: number): Recipe | undefined {
 }
 
 /** The plan from the model's JSON (days in order from `start`), or undefined if it isn't usable. */
-export function parsePlan(reply: string, meals: MealName[], start: { date: string; weekday: number }, servings: number, dayCount = 7): { title: string; notes?: string; days: MealDay[]; shopping: { aisle: string; items: string[] }[] } | undefined {
+export function parsePlan(reply: string, meals: MealName[], start: { date: string; weekday: number }, servings: number, dayCount = 7): { title: string; notes?: string; days: MealDay[]; shopping: { aisle: string; items: string[] }[]; cost?: number } | undefined {
   let j: Record<string, unknown>;
   try {
     j = JSON.parse(reply.slice(reply.indexOf('{'), reply.lastIndexOf('}') + 1)) as Record<string, unknown>;
@@ -172,7 +176,8 @@ export function parsePlan(reply: string, meals: MealName[], start: { date: strin
     .filter((g) => g.items.length);
   // no shopping list in the answer: made from the recipes' ingredients (so the list is never empty)
   if (!shopping.length) shopping.push({ aisle: 'From the recipes', items: ingredientsOf(days) });
-  return { title: str(j.title).slice(0, 120) || 'This week\'s meals', notes: str(j.notes).slice(0, 600) || undefined, days, shopping };
+  const cost = typeof j.cost === 'number' ? j.cost : typeof j.cost === 'string' ? parseFloat(j.cost.replace(/[^\d.]/g, '')) : NaN;
+  return { title: str(j.title).slice(0, 120) || 'This week\'s meals', notes: str(j.notes).slice(0, 600) || undefined, days, shopping, cost: Number.isFinite(cost) && cost > 0 && cost < 1000 ? Math.round(cost) : undefined };
 }
 
 /** Every ingredient of these days' recipes (or one meal), once each. */

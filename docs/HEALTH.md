@@ -81,6 +81,11 @@ is sent back to the AI to fix; anything still wrong is shown on the plan as "Ple
   **🔍 link** to that supermarket's search for it ("2 × 280 g firm tofu" searches for "firm tofu").
 - **Find products** (needs Firecrawl, about one credit per item): Max reads the supermarket's results and lists
   the products with prices; **Choose** one and next week Max suggests the same ("Last time").
+- **Costs**: each chosen product shows how many (worked out from the list: "4 tins chickpeas" is 4; change it with
+  − / +) and what they cost. At the top of the list: the total for the products chosen, and an estimate for
+  everything still to buy (the cheapest product found where none is chosen yet). Before any products are looked
+  up, the meal plan shows the AI's rough estimate for the week, labelled as such. "What do I still need to buy?"
+  includes the cost, and so does the WhatsApp summary.
 - Max can't put things in your basket: supermarkets don't allow it (it would mean logging in as you). Tap a
   product to open it on the supermarket's site and add it there.
 

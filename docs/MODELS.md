@@ -13,9 +13,23 @@ Max uses an AI model in two kinds of places:
 | Website suggestions | Suggests news websites for your interests | Broad knowledge of the web; runs rarely |
 | Filing conversations | After each conversation, decides what to remember and where | Reliable and cheap; runs often |
 | Memory tidy-up | Rolls old notes into weekly and monthly digests | Cheap; runs in the background |
+| Complex tasks | Travel planning, calendar questions and other jobs with several steps, handed over by the conversation | A strong, careful model (e.g. DeepSeek); a task takes up to a minute |
 
 By default every job uses the main model. Typically you'd pick a stronger model for website suggestions
 and news summaries, and keep a cheap fast one for filing.
+
+## Complex tasks: a stronger model for real work
+
+The conversation's model is chosen for speed, so it's weak at travel planning, calendar questions and
+anything with several steps. Once you pick a model for **Complex tasks**, the conversation hands those
+over: Max says "give me a moment", the stronger model works the task out with Max's own actions
+(trains, calendar, web search, memory, the screen), checking what it finds, and Max tells you the
+answer (details on the screen). It takes up to a minute.
+
+- It finds things out and shows them, but never sends, deletes, books or changes anything: it says what
+  should be done, and the conversation does it with you, asking for your "yes" as usual.
+- Until a model is chosen for it, nothing changes: the conversation does everything itself.
+- If the chosen model fails, that step uses Max's main model instead.
 
 ## Setting up a provider
 

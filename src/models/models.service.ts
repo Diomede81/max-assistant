@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam, ChatCompletionMessageToolCall, ChatCompletionTool } from 'openai/resources/chat/completions';
 import { APP_CONFIG, AppConfig } from '../config';
 import { SealedStore } from '../memory/sealed-store';
 
@@ -10,6 +11,7 @@ export const TASKS = {
   memory: { label: 'Filing conversations', help: 'After each conversation, decides what is worth remembering and where.' },
   digest: { label: 'Memory tidy-up', help: 'Rolls old conversation notes up into weekly and monthly digests.' },
   meetings: { label: 'Meeting answers', help: 'Answers you out loud in online meetings: a fast model keeps the wait short.' },
+  tasks: { label: 'Complex tasks', help: 'Travel planning, calendar questions and other jobs with several steps: the conversation hands them to this model, which works them out with Max\'s actions. Pick a strong model (e.g. DeepSeek); until you do, the conversation does them itself.' },
   home: { label: 'Home automations', help: 'Turns an automation you describe ("when I\'m out and the alarm is on…") into one for Home Assistant.' },
 } as const;
 export type Task = keyof typeof TASKS;
@@ -177,6 +179,47 @@ export class ModelsService implements OnModuleInit {
       if (a.provider === 'default') throw err;
       this.log.warn(`${TASKS[task].label}: ${this.describe(task)} failed (${(err as Error).message}); using the main model this time`);
       return this.call({ provider: 'default', model: '' }, req);
+    }
+  }
+
+  /** Whether a job has its own model (not the main one). */
+  hasOwnModel(task: Task): boolean {
+    return this.assignment(task).provider !== 'default';
+  }
+
+  /**
+   * One step of a job that uses Max's actions: the model answers or asks for actions (tool calls).
+   * Falls back to the main model for this step if the chosen one fails.
+   */
+  async step(task: Task, messages: ChatCompletionMessageParam[], tools: ChatCompletionTool[], opts: { maxTokens: number; timeoutMs: number }): Promise<{ content: string; toolCalls: ChatCompletionMessageToolCall[]; reasoning?: string }> {
+    const run = async (a: Assignment) => {
+      const main = a.provider === 'default';
+      const res = await this.client(a.provider).chat.completions.create(
+        {
+          model: main ? this.cfg.llm.model : a.model,
+          temperature: 0.2,
+          max_tokens: opts.maxTokens,
+          messages,
+          ...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
+          ...(main && this.cfg.llm.reasoningEffort ? { reasoning_effort: this.cfg.llm.reasoningEffort as 'low' } : {}),
+        },
+        { timeout: opts.timeoutMs, maxRetries: 1 },
+      );
+      const m = res.choices[0]?.message;
+      return {
+        content: m?.content ?? '',
+        toolCalls: (m?.tool_calls ?? []) as ChatCompletionMessageToolCall[],
+        // DeepSeek's thinking: sent back with the next request, or it refuses to carry on
+        reasoning: (m as { reasoning_content?: string } | undefined)?.reasoning_content,
+      };
+    };
+    const a = this.assignment(task);
+    try {
+      return await run(a);
+    } catch (err) {
+      if (a.provider === 'default') throw err;
+      this.log.warn(`${TASKS[task].label}: ${this.describe(task)} failed (${(err as Error).message}); using the main model for this step`);
+      return run({ provider: 'default', model: '' });
     }
   }
 

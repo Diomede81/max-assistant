@@ -170,6 +170,7 @@ export class RealtimeConversationService {
     let player: AsyncQueue<Buffer> | undefined;
     let playing: Promise<void> = Promise.resolve();
     let pendingTools: Promise<void>[] = [];
+    let toolsRunning = 0;
     let userSpeaking = false;
     let busy = false;
     let turns = 0;
@@ -265,7 +266,17 @@ export class RealtimeConversationService {
     client.on('tool-call', (c: { callId: string; name: string; args: Record<string, unknown> }) => {
       responseActive = true;
       transcript.push({ who: 'action', text: c.name });
-      pendingTools.push(this.tools.call(c.name, c.args).then((out) => client.sendToolResult(c.callId, out)));
+      // While actions run (a task worked out by the thinking model takes up to a minute), the conversation stays open.
+      toolsRunning++;
+      pendingTools.push(
+        this.tools
+          .call(c.name, c.args)
+          .then((out) => client.sendToolResult(c.callId, out))
+          .finally(() => {
+            toolsRunning--;
+            lastActivity = Date.now();
+          }),
+      );
     });
     client.on('response-done', async (r: { toolCalls: number; status?: string; reason?: string }) => {
       responseActive = false;
@@ -340,6 +351,7 @@ export class RealtimeConversationService {
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;
         else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
+        else if (toolsRunning > 0) lastActivity = now; // an action is still working: not "no answer", not quiet
         else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
           lastActivity = now;

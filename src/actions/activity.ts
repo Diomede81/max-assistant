@@ -18,6 +18,7 @@ const CHANGING = /(CREATE|UPDATE|DELETE|CANCEL|ACCEPT|DECLINE|MOVE)/;
 export function describeActivity(name: string): Activity | undefined {
   if (INSTANT.has(name)) return undefined;
   const n = name.toUpperCase();
+  if (name === 'work_on_task') return { icon: '🧠', label: 'Working it out' };
   if (name === 'recall') return { icon: '🧠', label: 'Checking my memory' };
   if (name === 'remember' || name === 'forget') return { icon: '🧠', label: 'Updating my memory' };
   if (name === 'about_you') return { icon: '🙂', label: 'Noting that about you' };

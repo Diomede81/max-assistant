@@ -26,6 +26,7 @@ import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
 import { detail } from '../log-content';
 import { ConfirmationGate } from './confirmation';
+import type { TaskAgentService } from './task-agent.service';
 
 /** Emitted around every action: 'start' and 'end' (for the face and spoken "checking…" cues). */
 export interface ActivityEvent extends Activity {
@@ -128,7 +129,7 @@ export class ToolRouterService {
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
-    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...ha, ...external];
+    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...ha, ...external, ...(this.taskAgent?.available ? [this.taskAgent.tool] : [])];
   }
 
   /** The user's own WhatsApp: never in guest mode (visitors shouldn't read or send anyone's messages). */
@@ -170,7 +171,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name)) return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name) || name === 'work_on_task') return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -248,6 +249,9 @@ export class ToolRouterService {
   }
 
   /** 'start' / 'end' (ActivityEvent) around every action that isn't instant. */
+  /** Hard tasks handed to a stronger model (./task-agent.service); it registers itself. */
+  taskAgent?: TaskAgentService;
+
   readonly activity = new EventEmitter();
   private activityId = 0;
 
@@ -318,6 +322,7 @@ export class ToolRouterService {
         // Max's own actions still expect their flag; external apps and Home Assistant get the plain details.
         args = this.builtin.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) ? { ...c.args, [CONFIRM_PARAM]: true } : c.args;
       }
+      if (name === 'work_on_task' && this.taskAgent) return await this.taskAgent.run(String(args.task ?? ''));
       if (this.builtin.has(name)) return this.builtin.call(name, args);
       if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''))) {
         this.log.warn(`read_webpage refused: ${String(args.url ?? '').slice(0, 120)} wasn't in anything Max read`);

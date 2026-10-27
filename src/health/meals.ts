@@ -88,7 +88,8 @@ const has = (text: string, word: string) => new RegExp(`(^|[^a-zà-ÿ])${word.re
 
 /** What in a recipe breaks someone's diet or allergies: "Lasagne: pancetta (not vegetarian: Magda)". */
 export function checkRecipe(r: Recipe, eaters: Eater[]): string[] {
-  const out: string[] = [];
+  /** "line (why)" → who: one problem per ingredient and reason, naming everyone it affects. */
+  const found = new Map<string, string[]>();
   const lines = [r.name, ...r.ingredients];
   for (const e of eaters) {
     const banned: { words: string[]; why: string }[] = [];
@@ -104,11 +105,14 @@ export function checkRecipe(r: Recipe, eaters: Eater[]): string[] {
         // "vegetarian sausages", "oat milk", "vegan mayo": fine, except for an allergy
         if (b.why !== 'allergy' && SAFE.test(line) && !RENNET.includes(hit)) continue;
         if (b.why !== 'allergy' && RENNET.includes(hit) && /\bvegetarian\b/i.test(line)) continue;
-        out.push(`${r.name}: "${line}" (${b.why === 'allergy' ? `allergy` : b.why}: ${e.name})`);
+        const key = `${r.name}: "${line}" (${b.why}`;
+        const who = found.get(key) ?? [];
+        if (!who.includes(e.name)) who.push(e.name);
+        found.set(key, who);
       }
     }
   }
-  return [...new Set(out)];
+  return [...found].map(([k, who]) => `${k}: ${who.join(', ')})`);
 }
 
 // ---------- Targets ----------

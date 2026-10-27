@@ -23,6 +23,7 @@ import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { DIETS, GOALS, MealName } from '../health/meals';
 import { ACTIVITY, FITNESS, HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
 import { local } from '../routines/routines.service';
 import type { PanelHealth } from './health-page';
@@ -436,6 +437,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       profile: { ...h.profile, age: h.age(), summary: h.profileText() },
       fitnessLevels: FITNESS,
       activityLevels: ACTIVITY,
+      goals: GOALS,
+      eaters: h.eaters,
+      diets: DIETS,
+      meals: h.mealPlan,
+      shopping: h.shopping,
       emailConnected: h.emailConnected,
       whatsappReady: h.whatsappReady,
       parts: PART_IDS.map((id) => {
@@ -480,9 +486,22 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'goal':
         return part in PARTS ? back(h.setGoal(part, get('goal')), true, `health-${part}`) : back('Unknown part.', false);
       case 'profile': {
-        const r = h.saveProfile({ age: get('age'), sex: get('sex'), heightCm: get('height'), fitness: get('fitness'), activity: get('activity'), limits: get('limits') });
+        const r = h.saveProfile({ age: get('age'), sex: get('sex'), heightCm: get('height'), fitness: get('fitness'), activity: get('activity'), limits: get('limits'), goal: get('goal') });
         return back(r.message, r.ok, 'health-you');
       }
+      case 'eater-add': {
+        const r = h.addEater({ name: get('name'), diet: get('diet'), allergies: get('allergies'), other: get('other') });
+        return back(r.message, r.ok, 'health-diet-needs');
+      }
+      case 'eater-remove':
+        return back(h.removeEater(get('id')), true, 'health-diet-needs');
+      case 'shop-add':
+        return back(h.addShopping(get('item')), true, 'health-meals');
+      case 'shop-tick':
+        h.tickShopping(get('id'), get('done') === 'yes');
+        return this.redirect(res, '/#health-meals');
+      case 'shop-clear':
+        return back(h.clearBought(), true, 'health-meals');
       case 'email': {
         const msg = h.setEmail(get('email'));
         return back(msg, !/doesn't look right/.test(msg), 'health-plans');
@@ -500,6 +519,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             days: f.getAll('days').map(Number),
             email: f.get('email') === 'yes',
             whatsapp: f.get('whatsapp') === 'yes',
+            meals: f.getAll('meals') as MealName[],
+            daily: f.get('daily') === 'yes',
             ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
           },
           id || undefined,

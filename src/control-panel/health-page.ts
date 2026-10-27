@@ -11,9 +11,28 @@ export interface PanelHealth {
   /** Today in the household's time zone ("YYYY-MM-DD"). */
   today: string;
   /** About the user (Health → You), and the choices for its lists. */
-  profile: { age?: number; sex?: string; heightCm?: number; fitness?: string; activity?: string; limits?: string; summary: string };
+  profile: { age?: number; sex?: string; heightCm?: number; fitness?: string; activity?: string; limits?: string; goal?: string; summary: string };
   fitnessLevels: Record<string, string>;
   activityLevels: Record<string, string>;
+  goals: Record<string, string>;
+  /** Who eats the meals, with their requirements; the diets to choose from. */
+  eaters: { id: string; name: string; diet: string; allergies?: string; other?: string }[];
+  diets: Record<string, string>;
+  /** This week's meals, and the shopping list. */
+  meals?: { title: string; notes?: string; at: string; warnings: string[]; days: { date: string; day: string; meals: Record<string, MealRecipe | undefined> }[] };
+  shopping: { id: string; text: string; aisle: string; done: boolean; extra?: boolean }[];
+}
+
+export interface MealRecipe {
+  name: string;
+  servings: number;
+  minutes?: number;
+  kcal?: number;
+  protein?: number;
+  ingredients: string[];
+  steps: string[];
+  source?: string;
+  tip?: string;
 }
 
 export interface PanelHealthPart {
@@ -46,6 +65,8 @@ export interface PanelHealthPlan {
   running: boolean;
   lastError?: string;
   latest?: { at: string; text: string; sent: string[]; failed: string[]; used?: { url: string; title: string }[] };
+  meals?: string[];
+  daily?: boolean;
 }
 
 type Esc = (s: unknown) => string;
@@ -60,6 +81,8 @@ export function healthSection(h: PanelHealth, esc: Esc): string {
 <p class="meta">Keep track of your exercise, diet, heart, sleep and weight, here or just by telling Max ("I ran 5 km in 30 minutes", "my blood pressure is 128 over 82", "I slept 7 hours"). Ask "how am I doing this week?". Max also makes your exercise routines and meal plans from the websites you choose, and sends them to you. Everything here stays on the box, encrypted, and only in personal mode. Max isn't a doctor: for anything worrying, talk to your GP.</p>
 <div class="htiles">${tiles}</div></section>
 ${profileSection(h, esc)}
+${needsSection(h, esc)}
+${mealsSection(h, esc)}
 ${plansSection(h, esc)}
 ${h.parts.map((p) => partSection(p, h.today, esc)).join('')}`;
 }
@@ -80,6 +103,7 @@ function profileSection(h: PanelHealth, esc: Esc): string {
 <div class="addfact wrap">
 <label class="inline">Fitness level<select name="fitness">${opts(h.fitnessLevels, p.fitness)}</select></label>
 <label class="inline">Day to day<select name="activity">${opts(h.activityLevels, p.activity)}</select></label>
+<label class="inline">Goal<select name="goal">${opts(h.goals, p.goal)}</select></label>
 </div>
 <label>Injuries, conditions or limits <span class="meta">(optional: Max plans around them, e.g. "bad left knee, no jumping", "asthma", "pregnant")</span>
 <textarea name="limits" rows="2" maxlength="500">${esc(p.limits ?? '')}</textarea></label>
@@ -177,6 +201,47 @@ ${p.running ? '<span data-wait></span>' : ''}${latest}
 </section>`;
 }
 
+/** Health → Dietary requirements: who eats, and what every recipe must respect. */
+function needsSection(h: PanelHealth, esc: Esc): string {
+  const rows = h.eaters
+    .map(
+      (e) => `<div class="addfact"><span class="meta"><b>${esc(e.name)}</b> · ${esc(h.diets[e.diet] ?? e.diet)}${e.allergies ? ` · <span class="warntext">allergic to ${esc(e.allergies)}</span>` : ''}${e.other ? ` · ${esc(e.other)}` : ''}</span>
+<form method="post" action="/health/eater-remove"><input type="hidden" name="id" value="${esc(e.id)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
+    )
+    .join('');
+  return `<section id="health-diet-needs"><h2>🥕 Dietary requirements</h2>
+<p class="meta">Everyone who eats the meals Max plans. Every recipe has to suit everyone on this list, and Max checks each one himself (meat or fish in a vegetarian meal, an allergen, a cheese made with animal rennet): a slip is sent back to be fixed, and anything left is flagged on the plan. The number of people sets the portions.</p>
+${rows || '<p class="empty">Nobody yet: add yourself (and whoever eats with you).</p>'}
+<form class="stack" method="post" action="/health/eater-add"><div class="addfact wrap">
+<label class="inline">Name<input name="name" maxlength="40" required placeholder="Me, Magda…"></label>
+<label class="inline">Diet<select name="diet">${Object.entries(h.diets).map(([k, v]) => `<option value="${esc(k)}" ${k === 'vegetarian' ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+<label class="inline">Allergies <span class="meta">(never used)</span><input name="allergies" maxlength="200" placeholder="e.g. peanuts, sesame"></label>
+<label class="inline">Other <span class="meta">(needs, dislikes)</span><input name="other" maxlength="300" placeholder="e.g. gluten-free, no mushrooms"></label>
+<button class="btn" type="submit">Add</button></div></form></section>`;
+}
+
+/** Health → This week's meals: each day's recipes, and the shopping list to tick off in the shop. */
+function mealsSection(h: PanelHealth, esc: Esc): string {
+  const m = h.meals;
+  const facts = (r: MealRecipe) => [r.minutes ? `${r.minutes} min` : '', r.kcal ? `${r.kcal} kcal` : '', r.protein ? `${r.protein} g protein` : '', `serves ${r.servings}`].filter(Boolean).join(' · ');
+  const recipe = (meal: string, r: MealRecipe) => `<details class="recipe"><summary><b>${esc(meal.charAt(0).toUpperCase() + meal.slice(1))}:</b> ${esc(r.name)} <span class="meta">${esc(facts(r))}</span></summary>
+<div class="cols"><div><b class="meta">Ingredients</b><ul>${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div><div><b class="meta">Method</b><ol>${r.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div></div>
+${r.tip ? `<p class="meta">Tip: ${esc(r.tip)}</p>` : ''}${r.source ? `<p class="meta">From ${/^https?:\/\//.test(r.source) ? `<a href="${esc(r.source)}" target="_blank" rel="noopener noreferrer">${esc(r.source.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>` : esc(r.source)}</p>` : ''}</details>`;
+  const week = m
+    ? `<p class="meta">${esc(m.notes ?? '')} Made ${esc(when(m.at))}. Say "what's for dinner tonight?" and Max puts the recipe on his screen, step by step.</p>
+${m.warnings.length ? `<p class="hint"><b>Please check:</b> ${esc(m.warnings.join('; '))}</p>` : ''}
+${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.day)} <span class="meta">${esc(d.date.slice(8))}/${esc(d.date.slice(5, 7))}${d.date === h.today ? ' · today' : ''}</span></h3>${['breakfast', 'lunch', 'dinner'].filter((x) => d.meals[x]).map((x) => recipe(x, d.meals[x]!)).join('')}`).join('')}`
+    : '<p class="empty">No meal plan yet: create a weekly meal plan below (Plans → New plan: "Meal plan", "the week ahead").</p>';
+  const aisles = [...new Set(h.shopping.map((i) => i.aisle))];
+  const left = h.shopping.filter((i) => !i.done).length;
+  const shop = `<h3>🛒 Shopping list <span class="meta">${left} to buy</span></h3>
+${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map((i) => `<li class="${i.done ? 'done' : ''}"><form method="post" action="/health/shop-tick"><input type="hidden" name="id" value="${esc(i.id)}"><input type="hidden" name="done" value="${i.done ? 'no' : 'yes'}"><button class="tick" type="submit" aria-label="${i.done ? 'Not bought' : 'Bought'}">${i.done ? '☑' : '☐'}</button></form><span>${esc(i.text)}</span></li>`).join('')}</ul>`).join('') || '<p class="empty">Empty.</p>'}
+<form class="addfact" method="post" action="/health/shop-add"><input name="item" maxlength="120" placeholder="Add something, e.g. oat milk" aria-label="Item"><button class="btn secondary" type="submit">Add</button></form>
+${h.shopping.some((i) => i.done) ? '<form method="post" action="/health/shop-clear"><button class="btn secondary" type="submit">Clear ticked items</button></form>' : ''}
+<p class="meta">Tick things off in the shop (open this page on your phone), or tell Max: "add oat milk", "I've got the spinach", "what do I still need to buy?".</p>`;
+  return `<section id="health-meals"><h2>🍽️ ${esc(m?.title ?? "This week's meals")}</h2>${week}${shop}</section>`;
+}
+
 function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
   const days = p?.days ?? [1, 2, 3, 4, 5, 6, 7];
   const opt = (v: string, label: string, cur: string) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
@@ -191,6 +256,8 @@ function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
 <div class="addfact wrap"><label class="inline">Time <input type="time" name="time" required value="${esc(p?.time ?? '06:45')}"></label>
 <label class="check"><input type="checkbox" name="email" value="yes" ${p?.email ?? true ? 'checked' : ''}> Email it to me</label>
 <label class="check"><input type="checkbox" name="whatsapp" value="yes" ${p?.whatsapp ? 'checked' : ''}> WhatsApp it to me</label></div>
+<div class="addfact wrap"><span class="meta">For a weekly meal plan:</span>${['breakfast', 'lunch', 'dinner'].map((m) => `<label class="check"><input type="checkbox" name="meals" value="${m}" ${(p?.meals?.length ? p.meals : ['lunch', 'dinner']).includes(m) ? 'checked' : ''}> ${m.charAt(0).toUpperCase() + m.slice(1)}</label>`).join('')}
+<label class="check"><input type="checkbox" name="daily" value="yes" ${p?.daily ?? true ? 'checked' : ''}> Each morning, WhatsApp me that day's recipes</label></div>
 <div class="days">${DAY.map((d, i) => `<label class="day"><input type="checkbox" name="days" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <p class="meta">Days: when it's made and sent. For a weekly plan, the first day ticked (e.g. Sunday evening or Monday morning).</p>
 ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${p.enabled ? 'checked' : ''}> On</label>` : ''}
@@ -198,6 +265,8 @@ ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${
 }
 
 export const HEALTH_CSS =
+  '.recipe{border-top:1px solid var(--line);padding:8px 0}.recipe summary{cursor:pointer}.recipe .cols{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-top:8px}@media(max-width:640px){.recipe .cols{grid-template-columns:1fr}}.recipe ul,.recipe ol{margin:4px 0;padding-left:20px}' +
+  'h3.today{color:var(--accent)}.shop{list-style:none;padding:0;margin:0 0 8px}.shop li{display:flex;gap:8px;align-items:center;padding:2px 0}.shop li.done span{text-decoration:line-through;opacity:.55}.tick{background:none;border:0;font-size:20px;cursor:pointer;line-height:1;padding:0;color:var(--text)}' +
   '.htiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px}' +
   '.htile{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit;background:var(--card)}.htile:hover{border-color:var(--accent)}.hicon{font-size:22px}' +
   '.hchart{margin:8px 0}.hchart svg{width:100%;max-width:420px;height:auto;display:block}.hchart rect{fill:var(--accent);opacity:.8}.hchart text{font-size:9px;fill:var(--muted);text-anchor:middle}' +

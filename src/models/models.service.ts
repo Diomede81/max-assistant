@@ -175,7 +175,13 @@ export class ModelsService implements OnModuleInit {
   async complete(task: Task, req: ChatRequest): Promise<string> {
     const a = this.assignment(task);
     try {
-      return await this.call(a, req);
+      try {
+        return await this.call(a, req);
+      } catch (err) {
+        // a long answer asked of a model that allows less (many cap answers at 8192 tokens): same model, its limit
+        if (req.maxTokens > 8192 && /max[_ ]?(completion[_ ])?tokens|maximum.*tokens|too (large|many)/i.test((err as Error).message)) return await this.call(a, { ...req, maxTokens: 8192 });
+        throw err;
+      }
     } catch (err) {
       if (a.provider === 'default') throw err;
       this.log.warn(`${TASKS[task].label}: ${this.describe(task)} failed (${(err as Error).message}); using the main model this time`);

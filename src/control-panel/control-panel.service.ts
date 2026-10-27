@@ -332,6 +332,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         else if (url.pathname === '/whatsapp/unlink') out = { ok: true, message: await w.unlink() };
         else if (url.pathname === '/whatsapp/allow') out = await w.allow(f.get('name') ?? '', f.get('number') ?? '');
         else if (url.pathname === '/whatsapp/disallow') out = { ok: true, message: w.disallow(f.get('number') ?? '') };
+        else if (url.pathname === '/whatsapp/read-allow') out = w.allowReading({ name: f.get('name') ?? '', number: f.get('number') ?? undefined, group: f.get('group') ?? undefined });
+        else if (url.pathname === '/whatsapp/read-remove') out = { ok: true, message: w.stopReading(f.get('id') ?? '') };
+        else if (url.pathname === '/whatsapp/groups') out = await w.loadGroups().then((message) => ({ ok: !/isn't connected/.test(message), message })).catch((err) => ({ ok: false, message: `Couldn't get your groups: ${(err as Error).message}` }));
         if (out) return this.redirect(res, `/?${out.ok ? 'ok' : 'error'}=${encodeURIComponent(out.message)}#whatsapp`);
       }
     }

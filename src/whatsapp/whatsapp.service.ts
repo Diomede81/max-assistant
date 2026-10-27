@@ -45,6 +45,8 @@ export interface WhatsAppStatus {
   /** The linked phone number. */
   phone?: string;
   allowed: { name: string; number: string; shown: string }[];
+  /** Max answers what you write in your own chat. */
+  chat: boolean;
   /** The chats Max may see besides your own (the sandbox): people by number, groups by their id. */
   readable: { id: string; name: string; group: boolean; shown: string }[];
   /** Your groups, to pick from (loaded on request, not kept). */
@@ -56,6 +58,8 @@ export interface WhatsAppStatus {
 }
 
 const KEEP_DAYS = 7;
+/** How Max's own messages start in your chat, so you can tell them from yours (and he never answers them). */
+const MAX_MARK = '🤖 ';
 const PER_CHAT = 60;
 const MAX_CHATS = 300;
 const TEXT_MAX = 600;
@@ -107,7 +111,7 @@ function quietLogger(log: Logger): Parameters<Baileys['makeWASocket']>[0]['logge
 export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('WhatsApp');
   private readonly authStore: SealedStore<{ data: string }>;
-  private readonly settingsStore: SealedStore<{ allowed: AllowedContact[]; readable?: Readable[]; self?: string; selfLid?: string }>;
+  private readonly settingsStore: SealedStore<{ allowed: AllowedContact[]; readable?: Readable[]; self?: string; selfLid?: string; chat?: boolean }>;
   private readonly msgStore: SealedStore<{ chats: Record<string, Chat>; names: Record<string, string>; lids?: Record<string, string> }>;
   private lib?: Baileys;
   private sock?: Socket;
@@ -154,6 +158,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       this.allowed = st?.allowed ?? [];
       this.readable = st?.readable ?? [];
       this.phone = st?.self;
+      this.chatOn = st?.chat !== false;
       this.selfLid = st?.selfLid;
       const m = this.msgStore.load();
       this.chats = m?.chats ?? {};
@@ -188,6 +193,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       qrSvg: this.state === 'linking' && this.qr ? await QRCode.toString(this.qr, { type: 'svg', margin: 1 }) : undefined,
       phone: this.phone ? showNumber(this.phone) : undefined,
       allowed: this.allowed.map((a) => ({ ...a, shown: showNumber(a.number) })),
+      chat: this.chatOn,
       readable: this.readable.map((r) => ({ ...r, shown: r.group ? 'group' : showNumber(r.id.split('@')[0]) })),
       groups: this.groupList && Date.now() - this.groupList.at < 10 * 60_000 ? this.groupList.items.filter((g) => !this.readable.some((r) => r.id === g.id)) : undefined,
       note: this.note,
@@ -434,8 +440,54 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
    */
   async sendToSelf(text: string): Promise<void> {
     if (!this.sock || !this.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
-    await this.sock.sendMessage(`${this.phone}@s.whatsapp.net`, { text: text.slice(0, 4000) });
+    const body = `${MAX_MARK}${text.replace(/^🤖\s*/u, '')}`.slice(0, 4000);
+    const sent = await this.sock.sendMessage(`${this.phone}@s.whatsapp.net`, { text: body });
+    if (sent?.key.id) this.remember(sent.key.id);
     this.log.log('Sent a WhatsApp message to you');
+  }
+
+  /**
+   * Chatting with Max in your own chat: what you write there (from your phone or another device) is
+   * answered by this, and the answer is sent back to the same chat. Set by WhatsAppChatService.
+   */
+  onSelfMessage?: (text: string) => Promise<string | undefined>;
+  /** Messages Max sent himself (so he never answers his own). */
+  private readonly sentByMax = new Set<string>();
+  /** Max answers what you write in your own chat (on unless switched off on the panel). */
+  private chatOn = true;
+
+  setChat(on: boolean): string {
+    this.chatOn = on;
+    this.saveSettings();
+    return on ? 'Max now answers what you write to him in your own chat.' : 'Max no longer answers in your own chat.';
+  }
+  private answering: Promise<void> = Promise.resolve();
+
+  private remember(id: string): void {
+    this.sentByMax.add(id);
+    if (this.sentByMax.size > 300) this.sentByMax.delete(this.sentByMax.values().next().value!);
+  }
+
+  /** A message the user just wrote in their own chat, for Max to answer (not his own, not an old one). */
+  private fromUserToMax(m: WAMessage): string | undefined {
+    if (!m.key.fromMe || !m.key.remoteJid || !m.key.id || this.sentByMax.has(m.key.id)) return undefined;
+    const raw = bare(m.key.remoteJid);
+    if (raw !== this.selfKey && raw !== this.selfLid) return undefined;
+    const at = Number(m.messageTimestamp ?? 0) * 1000;
+    if (!at || Date.now() - at > 2 * 60_000) return undefined; // only what was just written
+    const text = messageText(this.lib!, m).trim();
+    if (!text || text.startsWith('🤖') || text.startsWith('[')) return undefined; // Max's own, or a photo/voice note
+    return text;
+  }
+
+  private async answer(text: string): Promise<void> {
+    if (!this.onSelfMessage || !this.chatOn) return;
+    try {
+      const reply = await this.onSelfMessage(text);
+      if (reply?.trim()) await this.sendToSelf(reply.trim());
+    } catch (err) {
+      this.log.warn(`Couldn't answer in WhatsApp: ${(err as Error).message}`);
+    }
   }
 
   private async send(to: string, text: string): Promise<string> {
@@ -663,7 +715,14 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         }
       }
       await this.resolveAll(messages);
-      for (const m of messages) if (this.keep(m, false)) kept++;
+      const toMax: string[] = [];
+      for (const m of messages) {
+        const ask = this.fromUserToMax(m);
+        if (ask) toMax.push(ask);
+        if (this.keep(m, false)) kept++;
+      }
+      // what you wrote to Max in your own chat: answered there, one at a time
+      for (const t of toMax) this.answering = this.answering.then(() => this.answer(t));
       if (kept) this.log.log(`WhatsApp: ${kept} new message${kept === 1 ? '' : 's'} kept`);
       this.saveMessages();
     });
@@ -814,7 +873,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (old) chat.seen = Math.max(chat.seen, at);
     const id = m.key.id ?? `${at}`;
     if (chat.msgs.some((x) => x.id === id)) return false;
-    const from = m.key.fromMe ? 'You' : group ? m.pushName || this.names[bare(m.key.participant ?? '')] || 'Someone' : chat.name;
+    const from = m.key.fromMe ? (this.sentByMax.has(id) || text.startsWith('🤖') ? 'Max' : 'You') : group ? m.pushName || this.names[bare(m.key.participant ?? '')] || 'Someone' : chat.name;
     chat.msgs.push({ id, at, from, mine: Boolean(m.key.fromMe), text: text.slice(0, TEXT_MAX) });
     chat.msgs.sort((a, b) => a.at - b.at);
     if (chat.msgs.length > PER_CHAT) chat.msgs.splice(0, chat.msgs.length - PER_CHAT);
@@ -863,7 +922,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   }
 
   private saveSettings(): void {
-    this.settingsStore.save({ allowed: this.allowed, readable: this.readable, self: this.phone, selfLid: this.selfLid }).catch((err) => this.log.warn(`Could not save the WhatsApp list: ${(err as Error).message}`));
+    this.settingsStore.save({ allowed: this.allowed, readable: this.readable, self: this.phone, selfLid: this.selfLid, chat: this.chatOn }).catch((err) => this.log.warn(`Could not save the WhatsApp list: ${(err as Error).message}`));
   }
 
   private async flush(): Promise<void> {

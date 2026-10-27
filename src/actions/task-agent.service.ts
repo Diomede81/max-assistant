@@ -120,7 +120,12 @@ export class TaskAgentService implements OnModuleInit {
             return { id: c.id, content: 'Error: the details were not valid JSON.' };
           }
           actions++;
-          const out = await this.router.call(name, args).catch((err) => `Error: ${(err as Error).message}`);
+          // within the task's own time: an action that hangs doesn't hold the whole task
+          const left = Math.max(5000, TOTAL_MS - (Date.now() - started));
+          const out = await Promise.race([
+            this.router.call(name, args).catch((err) => `Error: ${(err as Error).message}`),
+            new Promise<string>((r) => setTimeout(() => r('Error: this action took too long; carry on without it.'), left).unref()),
+          ]);
           return { id: c.id, content: out.length > RESULT_MAX ? `${out.slice(0, RESULT_MAX)}\n…(cut: ask more precisely for the rest)` : out };
         }),
       );

@@ -43,6 +43,8 @@ export interface PanelData {
   };
   /** The wake words installed, and the ones Max listens for (Settings → Device & voice). */
   wakeWords?: { available: string[]; active: string[]; error?: string };
+  /** Max's recent log (Settings → Log). */
+  log?: { at: number; level: string; context: string; message: string }[];
   /** The last "Hey Max" wake-ups and what happened to each. */
   wakeUps?: { list: { at: number; outcome: string; heard?: string; ms?: number; readyMs?: number }[]; verify: boolean; channel?: number };
   /** Real-time mode: Max's voice and speaking style. */
@@ -646,7 +648,7 @@ const QUICK = ['overview', 'devices', 'myday', 'health', 'projects'];
 const DRAWER: [string, [string, string, string][]][] = [
   ['Max', [['#tab-meetings', 'Meetings', 'meetings'], ['#about-you', 'About you', 'memory'], ['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
   ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
-  ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#security', 'Security', 'settings']]],
+  ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#log', 'Log', 'settings'], ['#security', 'Security', 'settings']]],
 ];
 
 const TABS: [string, string][] = [
@@ -686,6 +688,20 @@ function newsTile(r: PanelRoutines, tile: (href: string, k: string, v: string, m
     first.running ? 'Gathering now…' : b?.articles.length ? `${b.articles.length} articles ready` : 'Nothing gathered yet',
     `${first.daysText} at ${first.time}${r.list.length > 1 ? ` · ${r.list.length} routines` : ''}`,
   );
+}
+
+/** Settings → Log: what Max did lately (the same lines as the box's Docker log, never message content). */
+function logSection(lines: NonNullable<PanelData['log']>): string {
+  const t = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const shown = lines.slice(-200).reverse();
+  const problems = lines.filter((l) => l.level === 'warn' || l.level === 'error').length;
+  const rows = shown
+    .map((l) => `<div class="logline ${esc(l.level)}"><span class="meta">${esc(t(l.at))}</span> <b>${esc(l.context)}</b> ${esc(l.message)}</div>`)
+    .join('');
+  return `<section id="log"><h2>Log</h2>
+<p class="meta">What Max has been doing, newest first (the last ${shown.length} of ${lines.length} lines since he started${problems ? `; <span class="warntext">${problems} warnings or errors</span>` : ''}). The same lines as the box's own log: actions, timings and problems, never what was said. If something went wrong, download the log and send it to whoever helps you.</p>
+<div class="acts"><a class="btn secondary" href="/log.txt" download="max-log.txt">Download the log</a><a class="btn secondary" href="/#log">Refresh</a></div>
+<div class="logbox">${rows || '<p class="empty">Nothing yet.</p>'}</div></section>`;
 }
 
 function updatesSection(u: NonNullable<PanelData['updates']>): string {
@@ -827,6 +843,7 @@ select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:1
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
 ${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}${HEALTH_CSS}
+.logbox{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg)}.logline{white-space:pre-wrap;word-break:break-word}.logline.warn{color:#b26b00}.logline.error{color:var(--err)}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}
 .about .afield{margin:0 0 14px}.about label{display:block;font-weight:600;margin:0 0 4px}.about input{display:block;width:100%;max-width:420px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}.about textarea{box-sizing:border-box}.about .meta{margin-top:3px;font-size:13px}
@@ -939,6 +956,7 @@ ${d.onBox
   : '<p class="meta">Turning off and restarting are available when Max runs on the Max box (Raspberry Pi).</p>'}
 </section>
 ${d.updates ? updatesSection(d.updates) : ''}
+${d.log ? logSection(d.log) : ''}
 <section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>
 ${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" method="post" action="/security/password" style="margin-top:8px">

@@ -46,6 +46,32 @@ you choose one, Max's main model writes them. A "thinking" model (e.g. DeepSeek'
 and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web search), Max can read
 more websites (ones that need a browser).
 
+## Weekly meals and the shopping list
+
+1. **Health → You**: set your **goal** (lose weight, build muscle, keep my weight, eat healthily). With your age,
+   height, weight and activity, Max works out your daily calories and protein, and splits them across the meals.
+2. **Health → Dietary requirements**: add everyone who eats (e.g. you and Magda): their diet (vegetarian, vegan,
+   pescatarian, or none), allergies (never used), and other needs or dislikes. The number of people sets the portions.
+3. **Health → Plans → New plan**: "Meal plan", covering "the week ahead", with lunch and dinner ticked (and
+   breakfast if you like), recipe websites if you have favourites, the day and time it's made (e.g. Sunday 17:00),
+   and how it's sent.
+
+Max writes the week's recipes (ingredients with quantities, steps, time, calories and protein each), practical
+for a busy home (weekday dinners within 40 minutes, lunches from the previous dinner's leftovers, ingredients
+reused to cut waste) and one shopping list for the week, by supermarket aisle.
+
+**Every recipe is checked by Max himself** against everyone's requirements: meat, fish or seafood (and stock,
+gelatine, Worcestershire sauce) in a vegetarian meal, animal products in a vegan one, allergens, and the cheeses
+made with animal rennet (Parmesan, Pecorino, Grana Padano, Gorgonzola: a vegetarian hard cheese instead). A slip
+is sent back to the AI to fix; anything still wrong is shown on the plan as "Please check".
+
+- **Email**: the whole week, every recipe and the shopping list. **WhatsApp**: the week at a glance and the
+  shopping list, and (if ticked) **each morning that day's recipes**.
+- **Health → This week's meals**: every recipe, and the shopping list to tick off in the shop on your phone.
+- Ask Max: "what's for dinner tonight?" (he puts the recipe on his screen, step by step), "what's for lunch
+  tomorrow?", "what's on this week?", "what do I still need to buy?", "add oat milk to the shopping list",
+  "I've got the spinach". Things you add yourself stay on the list when the next week's plan arrives.
+
 ## Privacy
 
 Health records are personal: kept on the box, encrypted with Max's memory key, never in the logs, and only

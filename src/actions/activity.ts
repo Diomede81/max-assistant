@@ -9,7 +9,7 @@ export interface Activity {
 }
 
 const INSTANT = new Set([
-  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'airplay', 'device_power', 'device_settings', 'show_on_screen', 'health_log',
+  'get_current_datetime', 'set_timer', 'set_reminder', 'list_timers', 'cancel_timer', 'end_conversation', 'set_mode', 'music_control', 'airplay', 'device_power', 'device_settings', 'show_on_screen', 'health_log', 'shopping_list',
 ]);
 
 const SENDING = /(SEND|REPLY|FORWARD|CREATE_DRAFT|DRAFT)/;
@@ -19,6 +19,7 @@ export function describeActivity(name: string): Activity | undefined {
   if (INSTANT.has(name)) return undefined;
   const n = name.toUpperCase();
   if (name === 'health_plan') return { icon: '🏋️', label: 'Preparing your plan' };
+  if (name === 'meals') return { icon: '🥗', label: 'Checking your meal plan' };
   if (name === 'health_summary') return { icon: '❤️', label: 'Checking your health log' };
   if (name === 'work_on_task') return { icon: '🧠', label: 'Working it out' };
   if (name === 'recall') return { icon: '🧠', label: 'Checking my memory' };

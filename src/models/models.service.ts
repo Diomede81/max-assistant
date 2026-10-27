@@ -228,7 +228,7 @@ export class ModelsService implements OnModuleInit {
   async test(task: Task): Promise<string> {
     const started = Date.now();
     try {
-      const out = await this.call(this.assignment(task), { system: 'Reply with the single word OK.', user: 'Test', maxTokens: 20, timeoutMs: 30_000 });
+      const out = await this.call(this.assignment(task), { system: 'Reply with the single word OK.', user: 'Test', maxTokens: 2000, timeoutMs: 60_000 });
       return `${this.describe(task)} answered in ${((Date.now() - started) / 1000).toFixed(1)}s ("${out.slice(0, 30)}").`;
     } catch (err) {
       return `${this.describe(task)} failed: ${(err as Error).message}`;
@@ -251,6 +251,17 @@ export class ModelsService implements OnModuleInit {
       },
       { timeout: req.timeoutMs ?? 60_000, maxRetries: 1 },
     );
-    return res.choices[0]?.message?.content ?? '';
+    const choice = res.choices[0];
+    const text = choice?.message?.content ?? '';
+    // An empty answer is a failure (so the main model can step in): typically a thinking model that
+    // spent all its room thinking, or a provider that filtered the reply.
+    if (!text.trim()) {
+      throw new Error(
+        choice?.finish_reason === 'length'
+          ? `it used all its room (${req.maxTokens} tokens) before answering: a thinking model needs more, or pick a non-thinking one`
+          : `it returned an empty answer${choice?.finish_reason ? ` (${choice.finish_reason})` : ''}`,
+      );
+    }
+    return text;
   }
 }

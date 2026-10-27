@@ -213,6 +213,28 @@ export class WebService implements OnModuleInit {
     return markdown ? { title: meta.title ? String(meta.title) : undefined, markdown } : undefined;
   }
 
+  /** A page's text (markdown) and the links on it with their titles, e.g. a list of workouts or articles. */
+  async pageWithLinks(url: string): Promise<{ title?: string; markdown: string; links: { url: string; title: string }[] } | undefined> {
+    if (!this.enabled) return undefined;
+    const res = await this.request(
+      'POST',
+      '/v2/scrape',
+      { url, formats: ['markdown', 'links'], onlyMainContent: true, maxAge: CACHE_MS, timeout: SCRAPE_TIMEOUT_MS - 3000 },
+      SCRAPE_TIMEOUT_MS,
+    );
+    const data = (res.data ?? {}) as Record<string, unknown>;
+    const meta = (data.metadata ?? {}) as Record<string, unknown>;
+    const markdown = String(data.markdown ?? '');
+    // titles from the markdown's [title](link); the plain link list adds any it missed
+    const titles = new Map<string, string>();
+    for (const m of markdown.matchAll(/\[([^\]]{3,200})\]\((https?:\/\/[^)\s]+)\)/g)) {
+      const t = m[1].replace(/!\[[^\]]*\]/g, '').replace(/[*_#]/g, '').trim();
+      if (t && !titles.has(m[2])) titles.set(m[2], t);
+    }
+    const all = [...new Set([...titles.keys(), ...(Array.isArray(data.links) ? (data.links as unknown[]).filter((l): l is string => typeof l === 'string') : [])])];
+    return { title: meta.title ? String(meta.title) : undefined, markdown, links: all.map((u) => ({ url: u, title: titles.get(u) ?? '' })) };
+  }
+
   private async read(url: string): Promise<string> {
     if (!/^https?:\/\/\S+\.\S+/.test(url)) return 'Error: that is not a web address (it must start with http:// or https://).';
     const res = await this.request(

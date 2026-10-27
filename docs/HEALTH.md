@@ -3,6 +3,14 @@
 A **Health** tab on the control panel (next to My Day) with five parts: **Exercise**, **Diet**, **Heart**,
 **Sleep** and **Weight**. Each has a 7-day summary, a 14-day chart, a goal, and its log.
 
+## You
+
+At the top of the Health tab, **You**: your age, sex (optional), height, fitness level (from "just starting"
+to "athlete"), how active you are day to day, and any injuries, conditions or limits. Every plan matches your
+age and fitness level and works around your limits; with no profile, plans stay gentle. Max also works out
+your BMI (height and latest weight) and heart-rate zones for your age, and includes them in "how am I doing?".
+Your age goes up by itself each year.
+
 ## Logging
 
 On the control panel (**Add** in each part), or just tell Max:

@@ -23,7 +23,7 @@ import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
-import { HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
+import { ACTIVITY, FITNESS, HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
 import { local } from '../routines/routines.service';
 import type { PanelHealth } from './health-page';
 import { dismissCard, showCard } from '../face/screen';
@@ -429,6 +429,9 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       today,
       model: this.models?.describe('health') ?? 'the main model',
       emailTo: h.emailTo,
+      profile: { ...h.profile, age: h.age(), summary: h.profileText() },
+      fitnessLevels: FITNESS,
+      activityLevels: ACTIVITY,
       emailConnected: h.emailConnected,
       whatsappReady: h.whatsappReady,
       parts: PART_IDS.map((id) => {
@@ -472,6 +475,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(h.remove(get('id')) ? 'Removed.' : 'Already gone.', true, 'health');
       case 'goal':
         return part in PARTS ? back(h.setGoal(part, get('goal')), true, `health-${part}`) : back('Unknown part.', false);
+      case 'profile': {
+        const r = h.saveProfile({ age: get('age'), sex: get('sex'), heightCm: get('height'), fitness: get('fitness'), activity: get('activity'), limits: get('limits') });
+        return back(r.message, r.ok, 'health-you');
+      }
       case 'email': {
         const msg = h.setEmail(get('email'));
         return back(msg, !/doesn't look right/.test(msg), 'health-plans');

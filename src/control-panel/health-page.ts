@@ -10,6 +10,10 @@ export interface PanelHealth {
   model: string;
   /** Today in the household's time zone ("YYYY-MM-DD"). */
   today: string;
+  /** About the user (Health → You), and the choices for its lists. */
+  profile: { age?: number; sex?: string; heightCm?: number; fitness?: string; activity?: string; limits?: string; summary: string };
+  fitnessLevels: Record<string, string>;
+  activityLevels: Record<string, string>;
 }
 
 export interface PanelHealthPart {
@@ -55,8 +59,33 @@ export function healthSection(h: PanelHealth, esc: Esc): string {
   return `<section id="health"><h2>Health</h2>
 <p class="meta">Keep track of your exercise, diet, heart, sleep and weight, here or just by telling Max ("I ran 5 km in 30 minutes", "my blood pressure is 128 over 82", "I slept 7 hours"). Ask "how am I doing this week?". Max also makes your exercise routines and meal plans from the websites you choose, and sends them to you. Everything here stays on the box, encrypted, and only in personal mode. Max isn't a doctor: for anything worrying, talk to your GP.</p>
 <div class="htiles">${tiles}</div></section>
+${profileSection(h, esc)}
 ${plansSection(h, esc)}
 ${h.parts.map((p) => partSection(p, h.today, esc)).join('')}`;
+}
+
+/** Health → You: age, fitness level and the rest, used by every plan. */
+function profileSection(h: PanelHealth, esc: Esc): string {
+  const p = h.profile;
+  const opts = (list: Record<string, string>, cur?: string) =>
+    `<option value="" ${cur ? '' : 'selected'}>Choose…</option>${Object.entries(list).map(([k, v]) => `<option value="${esc(k)}" ${k === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}`;
+  return `<section id="health-you"><h2>👤 You</h2>
+<p class="meta">${p.summary ? esc(p.summary) : 'Tell Max about yourself so your plans suit your age and fitness: a beginner of 60 and a runner of 30 need very different workouts.'}</p>
+<form class="stack" method="post" action="/health/profile">
+<div class="addfact wrap">
+<label class="inline">Age<input type="number" name="age" min="12" max="110" value="${p.age ?? ''}" style="width:5em"></label>
+<label class="inline">Sex <span class="meta">(optional)</span><select name="sex"><option value="" ${p.sex ? '' : 'selected'}>Prefer not to say</option><option value="male" ${p.sex === 'male' ? 'selected' : ''}>Male</option><option value="female" ${p.sex === 'female' ? 'selected' : ''}>Female</option></select></label>
+<label class="inline">Height <span class="meta">cm</span><input type="number" name="height" min="100" max="250" value="${p.heightCm ?? ''}" style="width:5em"></label>
+</div>
+<div class="addfact wrap">
+<label class="inline">Fitness level<select name="fitness">${opts(h.fitnessLevels, p.fitness)}</select></label>
+<label class="inline">Day to day<select name="activity">${opts(h.activityLevels, p.activity)}</select></label>
+</div>
+<label>Injuries, conditions or limits <span class="meta">(optional: Max plans around them, e.g. "bad left knee, no jumping", "asthma", "pregnant")</span>
+<textarea name="limits" rows="2" maxlength="500">${esc(p.limits ?? '')}</textarea></label>
+<div class="acts"><button class="btn" type="submit">Save</button></div>
+<p class="meta">Your weight comes from the Weight log. Your age goes up by itself each year. If you have a heart condition or another health problem, check with your GP before starting a new routine.</p>
+</form></section>`;
 }
 
 function chart(c: PanelHealthPart['chart'], esc: Esc): string {

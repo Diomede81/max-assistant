@@ -1079,7 +1079,10 @@ function readableRow(w: WhatsAppStatus): string {
     : w.state === 'connected'
       ? '<form class="addfact" method="post" action="/whatsapp/groups"><button class="btn secondary" type="submit">Show my groups</button></form>'
       : '';
-  return `<li class="row"><div style="flex:1"><div class="name">Chats Max can see</div>
+  const chat = `<li class="row"><div style="flex:1"><div class="name">Chat with Max ${w.chat ? badge(true, 'On') : '<span class="badge off">Off</span>'}</div>
+<div class="meta">Write to Max in your own chat ("Message yourself", the chat with your own number) and he answers there, starting with 🤖: anything you'd ask him out loud ("what's on tomorrow?", "remind me at 6 to call Mum", "turn off the heating"). Only you can reach him this way, and he asks for your typed "yes" before sending or changing anything.</div>
+<form method="post" action="/whatsapp/chat"><input type="hidden" name="on" value="${w.chat ? 'no' : 'yes'}"><button class="btn secondary" type="submit">${w.chat ? 'Switch off' : 'Switch on'}</button></form></div></li>`;
+  return `${chat}<li class="row"><div style="flex:1"><div class="name">Chats Max can see</div>
 <div class="meta"><b>Only your own chat</b> ("Message yourself", where Max sends you things) <b>and the chats on this list.</b> Every other chat is dropped the moment it reaches Max: never kept, named or shown to his AI. Removing a chat deletes what he kept from it.</div>
 ${rows || '<p class="meta">None yet: Max sees only your own chat.</p>'}
 <form class="addfact" method="post" action="/whatsapp/read-allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add person</button></form>

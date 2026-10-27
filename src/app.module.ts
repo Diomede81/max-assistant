@@ -19,10 +19,11 @@ import { TrainsModule } from './trains/trains.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { HealthModule } from './health/health.module';
+import { WhatsAppChatModule } from './whatsapp/whatsapp-chat.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, AboutModule, WebModule, TrainsModule, MeetingsModule, WhatsAppModule, HealthModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, AboutModule, WebModule, TrainsModule, MeetingsModule, WhatsAppModule, HealthModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, WhatsAppChatModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

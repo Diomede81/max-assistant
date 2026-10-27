@@ -22,6 +22,17 @@ limited to the people you allow, and every message needs your spoken "yes".
 3. To let Max send messages to someone, add their name and number under **Who Max may send messages
    to** (e.g. "Magda", +44 7700 900123). UK numbers can be typed as 07…; others need the country code.
 
+## Chat with Max on WhatsApp
+
+Write to Max in your own chat ("Message yourself": the chat with your own number) and he answers there, starting
+with 🤖 so you can tell his messages from yours. Anything you'd ask him out loud works: "what's on tomorrow?",
+"remind me at 6 to call Mum", "turn off the heating", "how do I get to Bath by 10?". He remembers the chat while
+it goes on, and files it in memory once it has been quiet for half an hour, like a spoken conversation.
+
+- Only you can reach him this way: messages from other people (even in chats he may see) are never answered.
+- Sending or changing something still needs your "yes": here you type it.
+- Not while Max is locked or in guest mode. Switch it off on the control panel (**Chat with Max**).
+
 ## Which chats Max can see (the sandbox)
 
 By default Max sees **only your own chat** ("Message yourself": your notes, and what Max sends you, e.g. your

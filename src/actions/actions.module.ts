@@ -9,10 +9,11 @@ import { TimerService } from './timer.service';
 import { ToolRouterService } from './tool-router.service';
 import { ConversationControl } from './conversation-control';
 import { ScreenToolsService } from './screen-tools.service';
+import { TaskAgentService } from './task-agent.service';
 
 @Module({
   imports: [HaMcpModule, HomeModule, McpModule, ComposioModule, MemoryModule],
-  providers: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService],
+  providers: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService, TaskAgentService],
   exports: [TimerService, BuiltinActionsService, ToolRouterService, ConversationControl, ScreenToolsService, MemoryModule],
 })
 export class ActionsModule {}

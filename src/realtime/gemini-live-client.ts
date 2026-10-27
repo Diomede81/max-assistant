@@ -11,15 +11,24 @@ import { toGeminiSchema } from './gemini-schema';
  *
  * Differences handled here:
  * - Gemini continues by itself after tool results, so `response-done` always reports
- *   toolCalls: 0 and requestResponse() is a no-op.
+ *   toolCalls: 0 and requestResponse() is a no-op. It answers after every tool response it gets,
+ *   so the results of actions asked for together (three to-dos at once) go back together, in one
+ *   response: otherwise Max says "Done" once per action.
  * - Speech start/stop events come from the server when it sends them (voiceActivity);
  *   otherwise a simple loudness detector on the outgoing mic audio provides them.
  * - There is no "cancel reply" message; interrupted audio is simply discarded.
  */
+/** How long to wait after the last result for more actions asked for in the same go. */
+const TOOL_BATCH_MS = 120;
+
 export class GeminiLiveClient extends EventEmitter implements VoiceClient {
   readonly inputRate = 16000;
   private ws?: WebSocket;
   private readonly toolNames = new Map<string, string>();
+  /** Actions asked for and not answered yet, and the answers held until they all are. */
+  private readonly outstanding = new Set<string>();
+  private results: { id: string; name: string; response: { result: string } }[] = [];
+  private flushTimer?: NodeJS.Timeout;
   private userText = '';
   private maxText = '';
   private interrupted = false;
@@ -90,11 +99,20 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
   }
 
   sendToolResult(callId: string, output: string): void {
-    this.send({
-      toolResponse: {
-        functionResponses: [{ id: callId, name: this.toolNames.get(callId) ?? '', response: { result: output } }],
-      },
-    });
+    if (!this.toolNames.has(callId)) return; // cancelled meanwhile: nothing waits for it
+    this.outstanding.delete(callId);
+    this.results.push({ id: callId, name: this.toolNames.get(callId) ?? '', response: { result: output } });
+    this.toolNames.delete(callId);
+    clearTimeout(this.flushTimer);
+    // all answered: send them together, after a moment in case Gemini asks for more in the same go
+    if (!this.outstanding.size) this.flushTimer = setTimeout(() => this.flushResults(), TOOL_BATCH_MS);
+  }
+
+  private flushResults(): void {
+    if (this.outstanding.size || !this.results.length) return;
+    const functionResponses = this.results;
+    this.results = [];
+    this.send({ toolResponse: { functionResponses } });
   }
 
   requestResponse(): void {
@@ -114,6 +132,7 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
   }
 
   close(): void {
+    clearTimeout(this.flushTimer);
     this.closing = true;
     this.ws?.close();
     this.ws = undefined;
@@ -130,10 +149,21 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
       if (m.voiceActivity.voiceActivityType === 'ACTIVITY_END') this.emit('speech-stopped');
     }
     if (m.toolCall?.functionCalls) {
+      clearTimeout(this.flushTimer);
       for (const c of m.toolCall.functionCalls as Array<{ id: string; name: string; args?: Record<string, unknown> }>) {
         this.toolNames.set(c.id, c.name);
+        this.outstanding.add(c.id);
         this.emit('tool-call', { callId: c.id, name: c.name, args: c.args ?? {} });
       }
+    }
+    // Gemini dropped actions it asked for (the user interrupted): don't wait for them
+    if (m.toolCallCancellation?.ids) {
+      for (const id of m.toolCallCancellation.ids as string[]) {
+        this.outstanding.delete(id);
+        this.toolNames.delete(id);
+      }
+      this.results = this.results.filter((r) => !(m.toolCallCancellation.ids as string[]).includes(r.id));
+      if (!this.outstanding.size && this.results.length) this.flushTimer = setTimeout(() => this.flushResults(), TOOL_BATCH_MS);
     }
     const sc = m.serverContent;
     if (sc) {

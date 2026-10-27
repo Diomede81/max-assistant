@@ -199,7 +199,7 @@ export class ConversationService implements OnApplicationBootstrap {
       session = await withTimeout(this.stt.open(fmt), timeoutMs, 'took too long');
       session.write(audio);
       const text = await withTimeout(session.finish(), timeoutMs, 'took too long');
-      if (heardWakeWord(text, this.cfg.wakeWord.names, ownAudio)) {
+      if (heardWakeWord(text, this.wake.names, ownAudio)) {
         this.log.log(`Wake word confirmed (${said(text)}, ${Date.now() - started} ms)${tag}`);
         recordWake('woke', text + tag, Date.now() - started);
         return true;
@@ -242,7 +242,7 @@ export class ConversationService implements OnApplicationBootstrap {
         recentBytes += c.length;
         while (recentBytes - recent[0].length >= keepBytes) recentBytes -= recent.shift()!.length;
       };
-      this.log.log(`Listening for wake word: ${this.cfg.wakeWord.names.join(', ')}`);
+      this.log.log(`Listening for wake word: ${this.wake.names.join(', ')}`);
       name = await detected;
       this.wake.disarm();
     } catch (err) {

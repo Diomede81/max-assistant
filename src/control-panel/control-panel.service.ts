@@ -35,6 +35,7 @@ import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
 import { MicrophoneService } from '../audio/microphone.service';
 import { wakeLog } from '../wake-word/wake-log';
+import { WakeWordService } from '../wake-word/wake-word.service';
 import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
 
@@ -54,6 +55,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(TrainsService) private readonly trains?: TrainsService;
   @Optional() @Inject(WhatsAppService) private readonly whatsapp?: WhatsAppService;
   @Optional() @Inject(HealthService) private readonly health?: HealthService;
+  @Optional() @Inject(WakeWordService) private readonly wakeWords?: WakeWordService;
   @Optional() @Inject(LocationService) private readonly location?: LocationService;
   @Optional() @Inject(AboutService) private readonly about?: AboutService;
   @Optional() @Inject(MeetingsService) private readonly meetings?: MeetingsService;
@@ -342,6 +344,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname === '/trains/home' && this.trains) {
       const msg = this.trains.setHome((await readForm(req)).get('station') ?? '');
       return this.redirect(res, `/?${/^Home station/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#trains`);
+    }
+    if (req.method === 'POST' && url.pathname === '/device/wake-words' && this.wakeWords) {
+      const f = await readForm(req);
+      const msg = await this.wakeWords.setNames(f.getAll('names')).catch((err: Error) => `Couldn't change the wake words: ${err.message}`);
+      return this.redirect(res, `/?${/^Max now/.test(msg) ? 'ok' : 'error'}=${encodeURIComponent(msg)}#device`);
     }
     if (req.method === 'POST' && url.pathname === '/security/device-remove') {
       const msg = this.auth.removeDevice(req, (await readForm(req)).get('id') ?? '');
@@ -770,6 +777,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       onBox: this.cfg.face.onBox,
       device: this.device && { ...(await this.device.status()), mic: this.mic?.canMute ? { muted: this.mic.muted } : undefined },
       wakeUps: { list: wakeLog(), verify: this.cfg.wakeWord.verify, channel: this.cfg.audio.inputChannel },
+      wakeWords: this.wakeWords && (await Promise.race([this.wakeWords.availableNames(), new Promise<string[]>((_, no) => setTimeout(() => no(new Error('no answer in 2 s')), 2000))]).then((available) => ({ available, active: this.wakeWords!.names })).catch((err: Error) => ({ available: [], active: [], error: err.message }))),
       liveVoice: this.liveVoice
         ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
         : undefined,

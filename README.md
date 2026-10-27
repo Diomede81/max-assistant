@@ -49,7 +49,7 @@ docker compose up -d
 cp .env.example .env    # set HA_TOKEN, LLM_API_KEY (free Groq key: https://console.groq.com)
 
 # 5. Wake word: train "hey max" once (about 1 hour, free) - see training/README.md
-#    Until then, set WAKEWORD_NAMES=hey_jarvis in .env (built in) to try everything else.
+#    Until then, tick "Hey Jarvis" (built in) in Settings → Device & voice → Wake words on the control panel.
 npm install
 npm run mic-check       # live mic levels + wake word detections, for tuning
 

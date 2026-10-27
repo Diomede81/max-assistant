@@ -174,7 +174,7 @@ with the larger settings).
 cp ~/Downloads/hey_max.tflite wakewords/
 docker compose restart openwakeword
 ```
-In `.env`, make sure you have `WAKEWORD_NAMES=hey_max`.
+Then tick "Hey Max" under **Settings → Device & voice → Wake words** on the control panel (or `WAKEWORD_NAMES=hey_max` in `.env`).
 
 ## Test and tune: the wake word coach (5 minutes)
 
@@ -218,5 +218,7 @@ more prone to accidental wake-ups than a longer phrase. Tuning the threshold usu
 solves it. If it doesn't, "Hey Max, …" can be trained alongside a longer variant such as
 "Okay Max", and you can keep whichever performs better.
 
-**Until the model is trained:** set `WAKEWORD_NAMES=hey_jarvis`. That phrase is built in,
-so you can use everything else straight away.
+**Until the model is trained:** on the control panel, **Settings → Device & voice → Wake words**, tick
+"Hey Jarvis" (built in, works well straight away) alongside "Hey Max": Max wakes up for either, so you can use
+everything while you train and test your own. Untick "Hey Jarvis" once "Hey Max" works reliably. Changes work at
+once, no restart. (Or `WAKEWORD_NAMES=hey_max,hey_jarvis` in `.env`: the control panel's choice wins once saved.)

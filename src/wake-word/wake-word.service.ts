@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config';
+import { SealedStore } from '../memory/sealed-store';
 import { WyomingClient } from '../wyoming/wyoming-client';
 
 /**
@@ -12,8 +13,42 @@ import { WyomingClient } from '../wyoming/wyoming-client';
 export class WakeWordService {
   private readonly log = new Logger(WakeWordService.name);
   private client?: WyomingClient;
+  /** The wake words chosen on the control panel (Settings → Device & voice); else WAKEWORD_NAMES. */
+  private readonly store: SealedStore<{ names: string[] }>;
+  private chosen?: string[];
 
-  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
+  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
+    this.store = new SealedStore(cfg.memory.dir, 'wake-words');
+    try {
+      const saved = this.store.load()?.names;
+      if (saved?.length) this.chosen = saved;
+    } catch {
+      // WAKEWORD_NAMES then
+    }
+  }
+
+  /** The wake words Max listens for now (e.g. "hey_max" and "hey_jarvis" while hey_max is being trained). */
+  get names(): string[] {
+    return this.chosen ?? this.cfg.wakeWord.names;
+  }
+
+  /** Whether the choice comes from the control panel (rather than .env). */
+  get chosenOnPanel(): boolean {
+    return Boolean(this.chosen);
+  }
+
+  /** Changes the wake words (only installed ones, at least one); the listening session switches straight away. */
+  async setNames(names: string[]): Promise<string> {
+    const available = await this.availableNames();
+    const wanted = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => available.includes(n)))];
+    if (!wanted.length) return 'Choose at least one wake word.';
+    this.chosen = wanted;
+    await this.store.save({ names: wanted });
+    // the session already listening switches now (a fresh connection with the new words; no restart)
+    if (this.session) await this.open().catch((err) => this.log.warn(`Wake words saved; they apply from the next wake-up (${(err as Error).message})`));
+    this.log.log(`Wake words now: ${wanted.join(', ')}`);
+    return `Max now wakes up for ${wanted.map((n) => `"${phrase(n)}"`).join(' or ')}.`;
+  }
 
   /**
    * Lists the wake words the openWakeWord service actually has. Important because the
@@ -36,8 +71,8 @@ export class WakeWordService {
   async checkConfiguredNames(): Promise<void> {
     try {
       const available = await this.availableNames();
-      const active = this.cfg.wakeWord.names.filter((n) => available.includes(n));
-      const missing = this.cfg.wakeWord.names.filter((n) => !available.includes(n));
+      const active = this.names.filter((n) => available.includes(n));
+      const missing = this.names.filter((n) => !available.includes(n));
       this.log.log(`Wake words installed: ${available.join(', ')}`);
       if (missing.length) {
         this.log.warn(
@@ -59,18 +94,41 @@ export class WakeWordService {
    */
   async arm(format: { rate: number; width: number; channels: number }): Promise<{ detected: Promise<string> }> {
     this.disarm();
+    let resolve!: (name: string) => void;
+    let reject!: (err: Error) => void;
+    const detected = new Promise<string>((ok, no) => {
+      resolve = ok;
+      reject = no;
+    });
+    this.session = { format, resolve, reject };
+    await this.open();
+    return { detected };
+  }
+
+  /** The listening session: what it listens to, and how to answer the one waiting for the wake word. */
+  private session?: { format: { rate: number; width: number; channels: number }; resolve: (name: string) => void; reject: (err: Error) => void };
+
+  /** Connects for the current session, with the current wake words (again after they change). */
+  private async open(): Promise<void> {
+    const s = this.session;
+    if (!s) return;
     const client = new WyomingClient(this.cfg.wakeWord.host, this.cfg.wakeWord.port);
     await client.connect();
+    if (this.session !== s) {
+      client.close(); // disarmed meanwhile
+      return;
+    }
+    const old = this.client;
     this.client = client;
-    const detected = new Promise<string>((resolve, reject) => {
-      client.on('event', (e) => {
-        if (e.type === 'detection') resolve(String(e.data.name ?? 'wake'));
-      });
-      client.on('error', reject);
+    old?.close();
+    client.on('event', (e) => {
+      if (e.type === 'detection' && this.client === client) s.resolve(String(e.data.name ?? 'wake'));
     });
-    client.send('detect', { names: this.cfg.wakeWord.names });
-    client.send('audio-start', { ...format, timestamp: 0 });
-    return { detected };
+    client.on('error', (err: Error) => {
+      if (this.client === client) s.reject(err);
+    });
+    client.send('detect', { names: this.names });
+    client.send('audio-start', { ...s.format, timestamp: 0 });
   }
 
   feed(chunk: Buffer, format: { rate: number; width: number; channels: number }): void {
@@ -78,8 +136,10 @@ export class WakeWordService {
   }
 
   disarm(): void {
-    this.client?.close();
+    this.session = undefined;
+    const c = this.client;
     this.client = undefined;
+    c?.close();
   }
 }
 
@@ -87,4 +147,9 @@ export class WakeWordService {
 export function wakeWordNames(info: Record<string, unknown>): string[] {
   const programs = (info.wake ?? []) as Array<{ models?: Array<{ name?: string }> }>;
   return programs.flatMap((p) => (p.models ?? []).map((m) => String(m.name ?? ''))).filter(Boolean);
+}
+
+/** "hey_jarvis" → "Hey Jarvis". */
+export function phrase(name: string): string {
+  return name.replace(/_v\d.*$/, '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }

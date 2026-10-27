@@ -41,6 +41,8 @@ export interface PanelData {
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
+  /** The wake words installed, and the ones Max listens for (Settings → Device & voice). */
+  wakeWords?: { available: string[]; active: string[]; error?: string };
   /** The last "Hey Max" wake-ups and what happened to each. */
   wakeUps?: { list: { at: number; outcome: string; heard?: string; ms?: number; readyMs?: number }[]; verify: boolean; channel?: number };
   /** Real-time mode: Max's voice and speaking style. */
@@ -316,6 +318,18 @@ ${draft}
 ${switches}
 <form class="addfact" method="post" action="/automations/switch"><input name="name" maxlength="40" required placeholder="New on/off switch, e.g. Alarm, Holiday, Guests"><button class="btn secondary" type="submit">Add switch</button></form>
 </section>`;
+}
+
+/** Which wake words Max listens for: e.g. "Hey Jarvis" too, while your own "Hey Max" is being trained. */
+function wakeWordsRow(w: NonNullable<PanelData['wakeWords']>): string {
+  const say = (n: string) => n.replace(/_v\d.*$/, '').split('_').map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(' ');
+  const builtIn = new Set(['hey_jarvis', 'alexa', 'hey_mycroft', 'hey_rhasspy', 'ok_nabu', 'okay_nabu']);
+  if (w.error) return `<p class="meta"><b>Wake words:</b> couldn't reach the wake-word service (${esc(w.error)}).</p>`;
+  const boxes = w.available
+    .map((n) => `<label class="check"><input type="checkbox" name="names" value="${esc(n)}" ${w.active.includes(n) ? 'checked' : ''}> "${esc(say(n))}"${builtIn.has(n) ? ' <span class="meta">(ready-made)</span>' : ' <span class="meta">(your own model)</span>'}</label>`)
+    .join('');
+  return `<form class="stack" method="post" action="/device/wake-words"><p class="meta"><b>Wake words</b>: Max wakes up for any of the ones ticked. The ready-made ones work well straight away; tick "Hey Jarvis" alongside "Hey Max" while your own model is being trained, then untick it. Changes work at once.</p>
+<div class="addfact wrap">${boxes}</div><div class="acts"><button class="btn secondary" type="submit">Save wake words</button></div></form>`;
 }
 
 /** "Hey Max": the last wake-ups and what happened to each, for tuning. */
@@ -895,6 +909,7 @@ ${d.screen ? screenSection(d.screen, esc) : ''}
 ${d.models ? modelsSection(d.models, esc) : ''}
 <section id="device"><h2>Device</h2>
 ${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
+${d.wakeWords ? wakeWordsRow(d.wakeWords) : ''}
 ${d.wakeUps ? wakeUpsSection(d.wakeUps) : ''}
 ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>

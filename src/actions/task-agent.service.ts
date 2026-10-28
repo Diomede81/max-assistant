@@ -204,7 +204,8 @@ export class TaskAgentService implements OnModuleInit {
         ? 'This runs on a schedule with nobody listening: your final answer is kept as a note and sent to the user (email, ' +
           'WhatsApp, the control panel), so make it complete and self-contained: a title line, then short paragraphs or lines ' +
           'starting with "- ", with the key facts (names, times, places, prices, links). Plain text: no markdown symbols (#, *), ' +
-          'no tables. If you could not find something, say so plainly. You cannot send, email or message anything yourself: ' +
+          'no tables. (Only if the task asks for a nicely formatted or HTML email: write the whole answer as a complete HTML document ' +
+          'with simple inline styles, and nothing before or after it.) If you could not find something, say so plainly. You cannot send, email or message anything yourself: ' +
           'never say you have; the result is delivered by Max afterwards.'
         : 'Your final answer is spoken by Max: plain sentences, no lists or markdown, at most about 5 sentences with the key facts ' +
           '(times, names, places). Put longer details on the screen. If you could not find something, say so plainly.',

@@ -608,6 +608,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             say: f.get('say') === 'yes',
             email: f.get('email') === 'yes',
             whatsapp: f.get('whatsapp') === 'yes',
+            emailTo: get('emailTo'),
+            whatsappTo: f.getAll('whatsappTo'),
             vault: get('vault'),
             ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
           },
@@ -885,6 +887,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             emailReady: this.jobs.emailReady,
             emailTo: this.health?.emailTo,
             whatsappReady: this.jobs.whatsappReady,
+            people: this.whatsapp ? (await this.whatsapp.status()).allowed.map((a) => ({ name: a.name, number: a.number, shown: a.shown })) : [],
           }
         : undefined,
       models: this.models && (await this.modelsData(this.models)),

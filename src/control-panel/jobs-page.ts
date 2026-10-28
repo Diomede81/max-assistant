@@ -9,6 +9,8 @@ export interface PanelJobs {
   emailReady: boolean;
   emailTo?: string;
   whatsappReady: boolean;
+  /** The WhatsApp allowed list, to send results to. */
+  people: { name: string; number: string; shown: string }[];
 }
 
 export interface PanelJob {
@@ -29,6 +31,8 @@ export interface PanelJob {
   say: boolean;
   email: boolean;
   whatsapp: boolean;
+  emailTo: string[];
+  whatsappTo: string[];
   running: boolean;
   lastError?: string;
   runs: { at: string; seconds: number; ok: boolean; text: string; actions: number; sent: string[]; failed: string[] }[];
@@ -50,7 +54,8 @@ ${cards}
 
 function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
   const status = x.running ? '<span class="badge warn">running…</span>' : x.enabled ? '<span class="badge ok">on</span>' : '<span class="badge off">paused</span>';
-  const to = [x.say && 'spoken', x.email && 'email', x.whatsapp && 'WhatsApp'].filter(Boolean).join(', ') || 'kept here';
+  const names = x.whatsappTo.map((n) => j.people.find((p) => p.number === n)?.name ?? n);
+  const to = [x.say && 'spoken', x.email && 'email', x.whatsapp && 'WhatsApp', ...x.emailTo.map((e) => `email to ${e}`), ...names.map((n) => `WhatsApp to ${n}`)].filter(Boolean).join(', ') || 'kept here';
   const r = x.runs[0];
   const latest = r
     ? `<p class="meta">${r.ok ? 'Done' : '<span class="warntext">Failed</span>'} ${esc(when(r.at))} · ${r.seconds}s · ${r.actions} action${r.actions === 1 ? '' : 's'}${r.sent.length ? ` · sent by ${esc(r.sent.join(', '))}` : ''}${r.failed.length ? ` · <span class="warntext">not sent: ${esc(r.failed.join('; '))}</span>` : ''}</p>
@@ -94,7 +99,9 @@ function jobForm(x: PanelJob | undefined, p: PanelJobs, esc: Esc): string {
 <div class="addfact wrap model"><label class="inline">Model <select name="provider" onchange="var i=this.form.model;i.setAttribute('list','models-'+this.value);i.disabled=!this.value;if(!this.value)i.value=''">${providers}</select></label>
 <input name="model" value="${esc(x?.model ?? '')}" list="models-${esc(x?.provider ?? '')}" placeholder="model name, e.g. pick from the list" ${x?.provider ? '' : 'disabled'} aria-label="Model"></div>
 <div class="addfact wrap"><span class="meta">Result:</span>${tick('say', x?.say ?? true, 'Say it and show it on the screen')}${tick('email', x?.email ?? false, 'Email me', p.emailReady, p.emailReady ? `to ${p.emailTo}` : 'set your address in Health → Plans and connect Gmail or Outlook')}${tick('whatsapp', x?.whatsapp ?? false, 'WhatsApp me', p.whatsappReady, p.whatsappReady ? '' : 'link WhatsApp first')}</div>
+<label>Also email to <span class="meta">(other people, separated by commas; sent from your own email account when the task works out)</span><input name="emailTo" maxlength="400" value="${esc((x?.emailTo ?? []).join(', '))}" placeholder="magda@example.com, marco@example.com" ${p.emailReady ? '' : 'disabled'}></label>
+<div class="addfact wrap"><span class="meta">Also WhatsApp to:</span>${p.people.length ? p.people.map((w) => `<label class="check"><input type="checkbox" name="whatsappTo" value="${esc(w.number)}" ${(x?.whatsappTo ?? []).includes(w.number) ? 'checked' : ''} ${p.whatsappReady ? '' : 'disabled'}> ${esc(w.name)} <span class="meta">${esc(w.shown)}</span></label>`).join('') : '<span class="meta">nobody on the allowed list yet (Connections → WhatsApp)</span>'}</div>
 <div class="addfact wrap"><label class="inline">Whose <select name="vault">${lists}</select></label>${x ? tick('enabled', x.enabled, 'On') : ''}</div>
 <div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button></div>
-<p class="meta">A work task is spoken about in work mode only (its result is still kept and sent). The model list comes from each provider; keys go in .env (Settings → AI models shows which are set up).</p></form>`;
+<p class="meta">Results for other people only go out when the task worked out, and only to the addresses and people you choose here (WhatsApp: the allowed list). A work task is spoken about in work mode only (its result is still kept and sent). The model list comes from each provider; keys go in .env (Settings → AI models shows which are set up).</p></form>`;
 }

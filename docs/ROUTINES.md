@@ -30,7 +30,7 @@ Which AI model makes the suggestions is up to you: see [MODELS.md](MODELS.md).
 
 You can also do it by voice: "Add theverge.com to my news", "I'm interested in tennis", "Leave out
 celebrity news", "Gather my news at 6:45", "What are my news settings?", "Suggest some news websites for me"
-(the suggestions then appear on the Routines tab).
+(the suggestions then appear under News briefing on the control panel).
 
 ## Using it
 

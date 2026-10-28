@@ -100,21 +100,41 @@ export interface PanelHealthPlan {
 }
 
 type Esc = (s: unknown) => string;
+
+/** One part of the Health area (its own entry in the sub-menu). `one`: its sections show one at a time. */
+export interface HealthPart {
+  id: string;
+  label: string;
+  html: string;
+  one?: boolean;
+}
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export function healthSection(h: PanelHealth, esc: Esc): string {
+/** The Health area as parts for the sub-menu: Overview, Meals & shopping, Plans, Track, You & diet. */
+export function healthParts(h: PanelHealth, esc: Esc): HealthPart[] {
   const tiles = h.parts
     .map((p) => `<a class="htile" href="#health-${p.id}"><span class="hicon">${p.icon}</span><b>${esc(p.label)}</b><span class="meta">${esc(p.summary)}</span>${p.goal ? `<span class="meta">Goal: ${esc(p.goal)}</span>` : ''}</a>`)
     .join('');
-  return `<section id="health"><h2>Health</h2>
-<p class="meta">Keep track of your exercise, diet, heart, sleep and weight, here or just by telling Max ("I ran 5 km in 30 minutes", "my blood pressure is 128 over 82", "I slept 7 hours"). Ask "how am I doing this week?". Max also makes your exercise routines and meal plans from the websites you choose, and sends them to you. Everything here stays on the box, encrypted, and only in personal mode. Max isn't a doctor: for anything worrying, talk to your GP.</p>
+  const today = h.meals?.days.find((d) => d.date === h.today);
+  const meals = today ? ['breakfast', 'lunch', 'dinner'].filter((x) => today.meals[x]).map((x) => `<b>${esc(x.charAt(0).toUpperCase() + x.slice(1))}:</b> ${esc(today.meals[x]!.name)}`) : [];
+  const toBuy = h.shopping.filter((i) => !i.done).length;
+  const next = h.plans.filter((p) => p.enabled).map((p) => `${esc(p.name)} (${esc(p.span === 'week' ? `every ${DAY[(p.days[0] ?? 1) - 1]}` : p.days.length === 7 ? 'every day' : p.days.map((d) => DAY[d - 1]).join(', '))} at ${esc(p.time)})`);
+  const overview = `<section id="health"><h2>Health</h2>
+<p class="meta">Keep track of your exercise, diet, heart, sleep and weight, here or just by telling Max ("I ran 5 km in 30 minutes", "my blood pressure is 128 over 82", "I slept 7 hours"). Ask "how am I doing this week?". Max isn't a doctor: for anything worrying, talk to your GP.</p>
 <div class="htiles">${tiles}</div></section>
-${profileSection(h, esc)}
-${needsSection(h, esc)}
-${mealsSection(h, esc)}
-${plansSection(h, esc)}
-${h.parts.map((p) => partSection(p, h.today, esc)).join('')}`;
+<section id="health-today"><h2>Today</h2>
+<ul><li class="row"><div><div class="name">Meals</div><div class="meta">${meals.length ? meals.join(' · ') : h.meals ? 'Nothing planned for today.' : 'No meal plan yet.'}</div></div><a class="btn secondary" href="#health-meals">${h.meals ? 'This week' : 'Plan meals'}</a></li>
+<li class="row"><div><div class="name">Shopping list</div><div class="meta">${toBuy ? `${toBuy} to buy` : 'Nothing to buy'}</div></div><a class="btn secondary" href="#health-shop">Open</a></li>
+<li class="row"><div><div class="name">Plans</div><div class="meta">${next.length ? next.join(' · ') : 'No routine or meal plan is scheduled.'}</div></div><a class="btn secondary" href="#health-plans">${next.length ? 'See' : 'Create'}</a></li></ul>
+<p class="meta">Everything here stays on the box, encrypted, and only in personal mode.</p></section>`;
+  return [
+    { id: 'overview', label: 'Overview', html: overview },
+    { id: 'meals', label: 'Meals & shopping', html: mealsSection(h, esc), one: true },
+    { id: 'plans', label: 'Plans', html: plansSection(h, esc) },
+    { id: 'track', label: 'Track', html: h.parts.map((p) => partSection(p, h.today, esc)).join(''), one: true },
+    { id: 'you', label: 'You & diet', html: profileSection(h, esc) + needsSection(h, esc) },
+  ];
 }
 
 /** Health → You: age, fitness level and the rest, used by every plan. */
@@ -122,7 +142,7 @@ function profileSection(h: PanelHealth, esc: Esc): string {
   const p = h.profile;
   const opts = (list: Record<string, string>, cur?: string) =>
     `<option value="" ${cur ? '' : 'selected'}>Choose…</option>${Object.entries(list).map(([k, v]) => `<option value="${esc(k)}" ${k === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}`;
-  return `<section id="health-you"><h2>👤 You</h2>
+  return `<section id="health-you"><h2>You</h2>
 <p class="meta">${p.summary ? esc(p.summary) : 'Tell Max about yourself so your plans suit your age and fitness: a beginner of 60 and a runner of 30 need very different workouts.'}</p>
 <form class="stack" method="post" action="/health/profile">
 <div class="addfact wrap">
@@ -170,7 +190,7 @@ function partSection(p: PanelHealthPart, today: string, esc: Esc): string {
   const inputs = p.fields
     .map((f) => `<label class="inline">${esc(f.label)}${f.unit ? ` <span class="meta">${esc(f.unit)}</span>` : ''}<input type="number" step="any" min="0" name="${esc(f.key)}" style="width:6em"></label>`)
     .join('');
-  return `<section id="health-${esc(p.id)}"><h2>${p.icon} ${esc(p.label)}</h2>
+  return `<section id="health-${esc(p.id)}"><h2>${esc(p.label)}</h2>
 <p class="meta">${esc(p.summary)}</p>
 ${chart(p.chart, esc)}
 <h3>Add</h3>
@@ -199,7 +219,7 @@ function plansSection(h: PanelHealth, esc: Esc): string {
       : 'Email: connect Gmail or Outlook first (Connections → Apps).',
     h.whatsappReady ? 'WhatsApp: to your own number ("Message yourself").' : 'WhatsApp: link it first (Connections → WhatsApp).',
   ].join(' ');
-  return `<section id="health-plans"><h2>🏋️ Plans</h2>
+  return `<section id="health-plans"><h2>Plans</h2>
 <p class="meta">Max reads the websites you choose and writes your routine (or meal plan) for the day or the week, following your brief and what you've logged, then sends it to you. Ask "what's my workout today?" any time. Written by ${esc(h.model)} (change it in Settings → AI models → Health plans). ${delivery}</p>
 <form class="addfact" method="post" action="/health/email"><label class="meta" for="hemail">Send plans to</label><input id="hemail" type="email" name="email" maxlength="120" value="${esc(h.emailTo ?? '')}" placeholder="you@example.com"><button class="btn secondary" type="submit">Save</button></form>
 ${h.plans.length ? '' : '<p class="empty">No plans yet: create your first below.</p>'}</section>
@@ -239,7 +259,7 @@ function needsSection(h: PanelHealth, esc: Esc): string {
 <form method="post" action="/health/eater-remove"><input type="hidden" name="id" value="${esc(e.id)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
     )
     .join('');
-  return `<section id="health-diet-needs"><h2>🥕 Dietary requirements</h2>
+  return `<section id="health-diet-needs"><h2>Dietary requirements</h2>
 <p class="meta">Everyone who eats the meals Max plans. Every recipe has to suit everyone on this list, and Max checks each one himself (meat or fish in a vegetarian meal, an allergen, a cheese made with animal rennet): a slip is sent back to be fixed, and anything left is flagged on the plan. The number of people sets the portions.</p>
 ${rows || '<p class="empty">Nobody yet: add yourself (and whoever eats with you).</p>'}
 <form class="stack" method="post" action="/health/eater-add"><div class="addfact wrap">
@@ -265,7 +285,7 @@ ${r.tip ? `<p class="meta">Tip: ${esc(r.tip)}</p>` : ''}${r.source ? `<p class="
 ${m.warnings.length ? `<p class="hint"><b>Please check:</b> ${esc(m.warnings.join('; '))}</p>` : ''}
 <div class="acts">${addForm(m.days.length > 1 ? "Add all the week's ingredients to the shopping list" : "Add all the ingredients to the shopping list")}</div>
 ${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.day)} <span class="meta">${esc(d.date.slice(8))}/${esc(d.date.slice(5, 7))}${d.date === h.today ? ' · today' : ''}</span></h3>${['breakfast', 'lunch', 'dinner'].filter((x) => d.meals[x]).map((x) => recipe(x, d.meals[x]!, d.date)).join('')}`).join('')}`
-    : '<p class="empty">No meal plan yet: create a weekly meal plan below (Plans → New plan: "Meal plan", "the week ahead").</p>';
+    : '<p class="empty">No meal plan yet: create a weekly meal plan (Plans → New plan: "Meal plan", "the week ahead").</p>';
   const aisles = [...new Set(h.shopping.map((i) => i.aisle))];
   const left = h.shopping.filter((i) => !i.done).length;
   const shopName = h.grocers[h.grocer] ?? h.grocer;
@@ -290,15 +310,15 @@ ${m.days.map((d) => `<h3${d.date === h.today ? ' class="today"' : ''}>${esc(d.da
     : m?.estimatedCost
       ? `<div class="totals"><div><b>roughly £${m.estimatedCost}</b> <span class="meta">the AI's estimate for the week's shopping; find products for ${esc(shopName)}'s real prices</span></div></div>`
       : '';
-  const shop = `<h3>🛒 Shopping list <span class="meta">${left} to buy</span></h3>
+  const shop = `<section id="health-shop"><h2>Shopping list <span class="meta">${left} to buy</span></h2>
 ${totals}
 <form class="addfact" method="post" action="/health/grocer"><label class="meta" for="grocer">I shop at</label><select id="grocer" name="grocer">${Object.entries(h.grocers).map(([k, v]) => `<option value="${esc(k)}" ${k === h.grocer ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><button class="btn secondary" type="submit">Save</button>${h.canFind && left ? '<span></span>' : ''}</form>
 ${h.canFind && h.shopping.some((i) => !i.done && !i.pick) ? `<form method="post" action="/health/shop-find-all"><button class="btn secondary small" type="submit">Find products at ${esc(shopName)} for everything</button></form>` : ''}
-${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map(row).join('')}</ul>`).join('') || '<p class="empty">Empty: add the meal plan\'s ingredients with the 🛒 buttons above.</p>'}
+${aisles.map((a) => `<p class="meta"><b>${esc(a)}</b></p><ul class="shop">${h.shopping.filter((i) => i.aisle === a).map(row).join('')}</ul>`).join('') || '<p class="empty">Empty: add the meal plan\'s ingredients with the 🛒 buttons on the Meals tab.</p>'}
 <form class="addfact" method="post" action="/health/shop-add"><input name="item" maxlength="120" placeholder="Add something, e.g. oat milk" aria-label="Item"><button class="btn secondary" type="submit">Add</button></form>
 ${h.shopping.some((i) => i.done) ? '<form method="post" action="/health/shop-clear"><button class="btn secondary" type="submit">Clear ticked items</button></form>' : ''}
-<p class="meta">🔍 opens ${esc(shopName)}'s search for that item. ${h.canFind ? `"Find products" lists what ${esc(shopName)} has, with prices: choose one and next week Max suggests the same. Max can't put things in your basket (supermarkets don't allow it), so tap a product to open it on ${esc(shopName)} and add it there.` : 'With Firecrawl set up (Connections → Web search), Max can also list the products and prices for each item.'} Tick things off as you buy them, or tell Max: "add oat milk", "I've got the spinach", "add tonight's dinner ingredients".</p>`;
-  return `<section id="health-meals"><h2>🍽️ ${esc(m?.title ?? "This week's meals")}</h2>${week}${shop}</section>`;
+<p class="meta">🔍 opens ${esc(shopName)}'s search for that item. ${h.canFind ? `"Find products" lists what ${esc(shopName)} has, with prices: choose one and next week Max suggests the same. Max can't put things in your basket (supermarkets don't allow it), so tap a product to open it on ${esc(shopName)} and add it there.` : 'With Firecrawl set up (Connections → Web & trains), Max can also list the products and prices for each item.'} Tick things off as you buy them, or tell Max: "add oat milk", "I've got the spinach", "add tonight's dinner ingredients".</p>`;
+  return `<section id="health-meals"><h2>${esc(m?.title ?? "This week's meals")}</h2>${week}</section>${shop}</section>`;
 }
 
 const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;

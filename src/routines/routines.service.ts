@@ -685,7 +685,7 @@ export class RoutinesService extends EventEmitter implements OnModuleInit, OnMod
           description:
             'Change the news briefing: add_source / remove_source (a website), add_interest / remove_interest (a topic), ' +
             'avoid (a topic to leave out), set_time (HH:MM), show (current settings), create (a new briefing with a first website), ' +
-            'suggest (Max finds websites for the interests; the user picks them on the control panel, Routines tab).',
+            'suggest (Max finds websites for the interests; the user picks them on the control panel, News briefing).',
           parameters: {
             type: 'object',
             properties: {
@@ -772,7 +772,7 @@ export class RoutinesService extends EventEmitter implements OnModuleInit, OnMod
       case 'suggest':
         if (!r.interests) return 'Ask the user what interests them first (add_interest), then suggest.';
         void this.suggest(r.id);
-        return 'Looking for websites now (about a minute). Tell the user the suggestions will be on the control panel, Routines tab, where they can tick the ones they want.';
+        return 'Looking for websites now (about a minute). Tell the user the suggestions will be on the control panel, News briefing, where they can tick the ones they want.';
       case 'show':
         return `${r.name}: ${daysText(r.days)} at ${r.time}, ${r.count} articles. Websites: ${r.sources.map(host).join(', ') || 'none'}. Interests: ${r.interests || 'not set'}.${r.avoid ? ` Leaves out: ${r.avoid}.` : ''}${r.search ? ' Also searches the news for the interests.' : ''}`;
       case 'add_source':

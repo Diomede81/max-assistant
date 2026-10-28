@@ -142,7 +142,7 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   conversation, say "stop", "that's all" or **"thank you"**, on its own or in a sentence ("that was
   really helpful, thank you"); a request after it still goes through ("thanks, can you also set a timer").
   When the box starts or Max restarts (an update), a short **jingle** tells you he's ready. The greeting
-  (empty = a short beep) and the jingle are set in **Settings → Device** on the control panel.
+  (empty = a short beep) and the jingle are set in **Settings → Voice & wake word** on the control panel.
 - **Microphone off (privacy):** press the button on top of the box, or use **Mute the microphone** on the control
   panel's Home tab (also in **Settings → Device**). Max then hears nothing; his face and the panel show
   "Microphone off", and the button's light is on. Turn it back on the same way, from either. It stays as you left it
@@ -313,7 +313,7 @@ The very first time (to install this updater) it's the old way: copy the new ver
 | Face shows "Reconnecting…" | Max isn't running: `cd ~/max-assistant && docker compose logs --tail 50 max` |
 | No sound, or Max can't hear | `pactl list short sinks` and `pactl list short sources` should list the mic board (XVF3800). If not, check its USB cable, then run `systemctl --user restart max-audio-defaults`. |
 | Max wakes up by himself (TV, music, noise) | Set `WAKEWORD_TRIGGER_LEVEL=2` in `.env` and run `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d`. The log line `Ignored a false wake-up` shows the double-check catching others. More: `training/README.md`, "Waking up by itself". |
-| Max doesn't wake reliably | **Settings → Device → Wake-ups** on the control panel shows each time the box heard something like "Hey Max" and what happened: *Ignored* means he heard it but the double-check didn't make out the words (noise): say it again within 15 s and he wakes anyway. Then, in order: (1) `WHISPER_MODEL=small-int8` in `.env` (the double-check hears better through noise); (2) `AUDIO_INPUT_CHANNEL=1`, then `0` (the mic board's two channels are processed differently; `npm run mic-check` shows each one's level); (3) `./scripts/wake-coach.sh` from where you usually sit, which suggests `WAKEWORD_THRESHOLD`; (4) retrain "Hey Max" with your own voice and your home's background noise: `training/README.md`. After each change: `docker compose up -d`. |
+| Max doesn't wake reliably | **Settings → Voice & wake word → Wake-ups** on the control panel shows each time the box heard something like "Hey Max" and what happened: *Ignored* means he heard it but the double-check didn't make out the words (noise): say it again within 15 s and he wakes anyway. Then, in order: (1) `WHISPER_MODEL=small-int8` in `.env` (the double-check hears better through noise); (2) `AUDIO_INPUT_CHANNEL=1`, then `0` (the mic board's two channels are processed differently; `npm run mic-check` shows each one's level); (3) `./scripts/wake-coach.sh` from where you usually sit, which suggests `WAKEWORD_THRESHOLD`; (4) retrain "Hey Max" with your own voice and your home's background noise: `training/README.md`. After each change: `docker compose up -d`. |
 | Face service | `journalctl -u max-face -n 50` |
 | WiFi setup service | `journalctl -u max-wifi -n 50` |
 | Start WiFi setup without the screen | `echo 1 \| sudo tee /run/max/wifi-request` |

@@ -1,5 +1,5 @@
 /**
- * The last wake-ups, for the control panel (Settings → Device → Wake-ups): did "Hey Max" get through, and if
+ * The last wake-ups, for the control panel (Settings → Voice & wake word → Wake-ups): did "Hey Max" get through, and if
  * not, why. Helps tuning: the wake word engine's hits that the double-check threw away show up here with what
  * the speech recogniser heard instead.
  */

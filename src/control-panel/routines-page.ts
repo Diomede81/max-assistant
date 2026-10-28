@@ -1,4 +1,4 @@
-/** The Routines tab of the control panel: scheduled jobs such as the news briefing. */
+/** The News briefing area of the control panel: scheduled jobs such as the news briefing. */
 export interface PanelRoutines {
   /** Firecrawl is set up (news search, and reading sites that need a browser). */
   firecrawl: boolean;
@@ -45,7 +45,7 @@ export function routinesSection(r: PanelRoutines, esc: Esc): string {
   return `<section id="routines"><h2>Routines</h2>
 <p class="meta">Jobs Max does on a schedule, so the result is ready when you ask. The <b>news briefing</b> checks your websites, picks the
 articles that match your interests, reads them and prepares a short summary of each. Ask "Hey Max, what's the news?", or hear about it in
-"what's going on in my day?". ${r.firecrawl ? '' : 'Tip: add a Firecrawl key (Connections tab) so Max can also read sites that need a browser and search the news for your interests.'}</p>
+"what's going on in my day?". ${r.firecrawl ? '' : 'Tip: add a Firecrawl key (Connections → Web & trains) so Max can also read sites that need a browser and search the news for your interests.'}</p>
 ${r.list.length ? '' : '<p class="empty">No routines yet: create your first news briefing below.</p>'}</section>
 ${cards}
 <section id="routine-new"><h2>New news briefing</h2>${routineForm(undefined, r.firecrawl, esc)}</section>`;

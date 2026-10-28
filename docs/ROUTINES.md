@@ -96,7 +96,7 @@ Saturday".
 | Field | What to put |
 | --- | --- |
 | What to do | In full, as you'd say it to Max: what, where, which dates, what matters to you. The more you say, the better the result |
-| Links | A task may open the exact web addresses you type in the brief, and the links its own searches return. Naming a website is not enough: type the page's address. (A link can carry information out, so Max never opens one he built himself.) |
+| Links | A task may open the exact pages you name in the brief (with or without "https://": "princecharlescinema.com/whats-on" is fine), and the links its own searches and pages return. Naming a website is not enough: name the page. (A link can carry information out, so Max never opens one he built himself.) |
 | When | On chosen days of the week, once on a date (it switches itself off afterwards), or monthly on a day (the 31st = the month's last day); and the time |
 | Effort | **Quick** (a look-up, about a minute), **Normal** (a few steps, up to 4 minutes), **Thorough** (research and comparisons, up to 10 minutes) |
 | Model | The model for this task, from any provider you've set up (see [MODELS.md](MODELS.md)); leave it on *Scheduled tasks model* to use the one chosen in Settings → AI models |

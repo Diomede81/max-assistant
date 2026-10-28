@@ -52,6 +52,8 @@ interface Readable {
 interface Known {
   id: string;
   name: string;
+  /** Where the name came from: your phone's contacts beat the name people set for themselves ("D"). */
+  nameFrom?: 'contact' | 'self' | 'group';
   group: boolean;
   /** The other id for the same person (phone number ↔ hidden id). */
   alt?: string;
@@ -364,8 +366,37 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       this.note_(g.id, g.subject || 'A group', true);
       n++;
     }
+    // the phone's contact names again (they only come once, and an earlier Max kept just a few of them)
+    let contacts = '';
+    try {
+      await this.sock.resyncAppState(['critical_unblock_low', 'regular_low'], false);
+      contacts = ' Names from your phone\'s contacts are being refreshed: give it a minute and reload.';
+    } catch (err) {
+      this.log.warn(`WhatsApp: couldn't ask the phone for the contact names: ${(err as Error).message}`);
+    }
     this.saveMessages();
-    return n ? `${n} groups on the list.` : 'You aren\'t in any groups.';
+    return `${n ? `${n} groups on the list.` : 'You aren\'t in any groups.'}${contacts}`;
+  }
+
+  /** A name you give a chat yourself (the panel): kept over anything WhatsApp says. */
+  rename(id: string, name: string): string {
+    const k = this.knownOf(id);
+    const n = name.replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!k) return 'That chat is not on the list.';
+    if (!n) return 'Give it a name.';
+    const target = this.known[k.id] ?? this.known[this.chatKey(k.id)];
+    if (target) {
+      target.name = n;
+      target.nameFrom = 'contact';
+    }
+    this.names[k.id] = n;
+    for (const r of this.readable) if (r.ids.includes(k.id) || (k.alt && r.ids.includes(k.alt))) r.name = n;
+    for (const a of this.allowed) if (a.number === sendIdOf(k)) a.name = n;
+    const chat = this.chats[k.id] ?? (k.alt ? this.chats[k.alt] : undefined);
+    if (chat) chat.name = n;
+    this.saveSettings();
+    this.saveMessages();
+    return `Named ${n}.`;
   }
 
   /** The chats to pick from on the panel: most recent first, with what Max may do with each. */
@@ -401,12 +432,17 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Notes a chat for the list (its name and id only). */
-  private note_(id: string, name: string | undefined, group: boolean, at?: number): void {
+  private note_(id: string, name: string | undefined, group: boolean, at?: number, from: Known['nameFrom'] = group ? 'group' : 'self'): void {
     const raw = bare(id);
     if (!raw || raw === 'status@broadcast' || raw.endsWith('@broadcast') || raw.endsWith('@newsletter')) return;
     const j = this.chatKey(raw);
     const k = (this.known[j] ??= { id: j, name: name || (group ? 'A group' : j.endsWith('@s.whatsapp.net') ? showNumber(j.split('@')[0]) : 'Someone'), group });
-    if (name && (!k.name || /^(Someone|A group|\+\d[\d ]*)$/.test(k.name) || this.names[j] === name)) k.name = name;
+    // a better name wins: the phone's contact name over what people call themselves, and anything over a bare number
+    const placeholder = !k.name || /^(Someone|A group|\+\d[\d ]*)$/.test(k.name);
+    if (name && (placeholder || from === 'contact' || (from === 'group' && k.group) || (k.nameFrom !== 'contact' && this.names[j] === name))) {
+      k.name = name;
+      k.nameFrom = from;
+    }
     if (at && at > (k.lastAt ?? 0)) k.lastAt = at;
     const alt = this.lids[j] ?? Object.keys(this.lids).find((l) => this.lids[l] === j);
     if (alt) k.alt = alt;
@@ -898,7 +934,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         else if (c.id && c.pnJid) this.learn(c.id, c.pnJid);
         const n = c.name || c.displayName;
         if (c.id && n && !this.names[c.id]) this.names[c.id] = n;
-        if (c.id) this.note_(c.id, n || undefined, c.id.endsWith('@g.us'), Number(c.conversationTimestamp ?? 0) * 1000 || undefined);
+        if (c.id) this.note_(c.id, n || undefined, c.id.endsWith('@g.us'), Number(c.conversationTimestamp ?? 0) * 1000 || undefined, c.id.endsWith('@g.us') ? 'group' : 'contact');
       }
       for (const c of contacts) this.nameOf(c);
       this.log.log(`WhatsApp: received ${chats.length} chats, ${contacts.length} contacts and ${messages.length} recent messages from the phone`);
@@ -1008,7 +1044,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     for (const id of ids) {
       if (c.name) this.names[id] = c.name;
       else if (c.notify && !this.names[id]) this.names[id] = c.notify;
-      if (id.endsWith('@g.us') || id.endsWith('@s.whatsapp.net') || id.endsWith('@lid')) this.note_(id, c.name || c.notify || undefined, id.endsWith('@g.us'));
+      if (id.endsWith('@g.us') || id.endsWith('@s.whatsapp.net') || id.endsWith('@lid')) this.note_(id, c.name || c.notify || undefined, id.endsWith('@g.us'), undefined, id.endsWith('@g.us') ? 'group' : c.name ? 'contact' : 'self');
     }
     for (const id of ids) {
       const chat = this.chats[this.chatKey(id)];

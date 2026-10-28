@@ -25,7 +25,8 @@ import { DeviceService } from '../device/device.service';
 import { UpdatesService } from '../updates/updates.service';
 import { AmbientService, FACE_STYLES, FaceStyle } from '../face/ambient.service';
 import { TrainsService } from '../trains/trains.service';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppService, WhatsAppStatus } from '../whatsapp/whatsapp.service';
+import { normaliseNumber } from '../whatsapp/contacts';
 import { DIETS, GOALS, MealName } from '../health/meals';
 import { GROCERS, packsNeeded } from '../health/grocers';
 import { ACTIVITY, FITNESS, HealthService, Part, PARTS, PART_IDS, PLAN_PARTS } from '../health/health.service';
@@ -370,6 +371,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         else if (url.pathname === '/whatsapp/disallow') out = { ok: true, message: w.disallow(f.get('number') ?? '') };
         else if (url.pathname === '/whatsapp/read-allow') out = w.allowReading({ name: f.get('name') ?? '', number: f.get('number') ?? undefined, id: f.get('id') ?? undefined });
         else if (url.pathname === '/whatsapp/send-allow') out = w.allowSendingTo(f.get('id') ?? '');
+        else if (url.pathname === '/whatsapp/rename') out = { ok: true, message: w.rename(f.get('id') ?? '', f.get('name') ?? '') };
         else if (url.pathname === '/whatsapp/chat') out = { ok: true, message: w.setChat(f.get('on') === 'yes') };
         else if (url.pathname === '/whatsapp/read-remove') out = { ok: true, message: w.stopReading(f.get('id') ?? '') };
         else if (url.pathname === '/whatsapp/groups') out = await w.loadGroups().then((message) => ({ ok: !/isn't connected/.test(message), message })).catch((err) => ({ ok: false, message: `Couldn't get your groups: ${(err as Error).message}` }));
@@ -949,7 +951,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       homeAssistant: { connected: ha.connected, tools: ha.tools, error: ha.error, where: this.ha.where },
       web: this.web?.status,
       trains: this.trains?.status,
-      whatsapp: await this.whatsapp?.status(),
+      whatsapp: await this.whatsappStatus(),
       health: this.healthData(),
       meetings: this.meetings && {
         enabled: this.meetings.enabled,
@@ -1399,6 +1401,22 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     out.push('', 'Log:');
     for (const l of recentLog()) out.push(`${new Date(l.at).toISOString()} ${l.level.toUpperCase().padEnd(5)} [${l.context}] ${l.message}`);
     return `${out.join('\n')}\n`;
+  }
+
+  /** The WhatsApp page's data, with the names from your People list filled in where WhatsApp only has a number or an initial. */
+  private async whatsappStatus(): Promise<WhatsAppStatus | undefined> {
+    const w = await this.whatsapp?.status();
+    if (!w || !this.social) return w;
+    const byNumber = new Map<string, string>();
+    for (const p of this.social.people) {
+      const n = p.phone && normaliseNumber(p.phone);
+      if (n) byNumber.set(n, p.name);
+    }
+    for (const k of w.known) {
+      const mine = k.sendId && !k.group ? byNumber.get(k.sendId) : undefined;
+      if (mine && (k.name.length <= 2 || /^(\+|Someone)/.test(k.name) || k.name === k.shown)) k.name = `${mine}`;
+    }
+    return w;
   }
 
   private json(res: ServerResponse, body: unknown): void {

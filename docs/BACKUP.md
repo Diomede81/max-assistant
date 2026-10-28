@@ -58,6 +58,8 @@ A backup made with a different key says so and changes nothing.
 
 In: every file in Max's data folder (the encrypted stores, photos for the screen, Max's notes), except the
 key, and Home Assistant's settings folder on the box (minus its history database, which is large and
-rebuilds itself, and its logs and caches). Not in: `.env` (your API keys and passwords: keep your own
+rebuilds itself, and its logs and caches). A few Home Assistant files are readable by Home Assistant
+alone (its login store, `.storage/auth`): they are left out, the panel says so, and after a restore Home
+Assistant simply asks you to create its account again (Max does that himself on the box). Not in: `.env` (your API keys and passwords: keep your own
 copy), the voice models and the Spotify or AirPlay containers' own data. A single file over 256 MB is
 left out with a line in the log.

@@ -13,7 +13,7 @@ export function backupSection(b: BackupStatus, esc: Esc): string {
   const files = b.files.slice(0, 5).map((f) => `<li class="row"><div><div class="name">${esc(f.name)}</div><div class="meta">${esc(when(f.at))} · ${esc(mb(f.size))}</div></div></li>`).join('');
   return `<section id="backup"><h2>Backup</h2>
 ${b.restarting ? '<p class="hint">Restoring: Max restarts in a moment and comes back with the backup\'s data. <span data-updating></span></p>' : ''}
-<p class="meta">${last}${b.lastError ? ` <span class="badge warn">problem</span> ${esc(b.lastError)}` : ''}</p>
+<p class="meta">${last}${b.lastError ? ` <span class="badge warn">problem</span> ${esc(b.lastError)}` : ''}${b.leftOut.length ? ` · ${b.leftOut.length} Home Assistant file${b.leftOut.length === 1 ? '' : 's'} it keeps for itself left out (${esc(b.leftOut.slice(0, 2).map((f) => f.replace(/^home-assistant\//, '')).join(', '))}${b.leftOut.length > 2 ? '…' : ''}): its devices and automations are in.` : ''}</p>
 <p class="meta">A backup is one encrypted file with everything Max keeps: memory, people, journal, health, routines, scheduled tasks, WhatsApp, Home Assistant's login${b.withHome ? ' and Home Assistant\'s own settings (devices, rooms, automations)' : ''}. Only Max's encryption key opens it, and the key is never inside it, so the file is safe on a laptop, a USB stick, a cloud drive or in an email to yourself.</p>
 <div class="acts" style="margin:12px 0"><a class="btn" href="/backup/download" download>Download a backup</a>
 <form method="post" action="/backup/now"><button class="btn secondary" type="submit" ${b.folder ? '' : 'disabled title="The backup folder is missing"'}>Save one into the folder now</button></form></div>

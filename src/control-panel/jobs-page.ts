@@ -35,7 +35,8 @@ export interface PanelJob {
   whatsappTo: string[];
   running: boolean;
   lastError?: string;
-  runs: { at: string; seconds: number; ok: boolean; text: string; actions: number; sent: string[]; failed: string[] }[];
+  retryAt?: number;
+  runs: { at: string; seconds: number; ok: boolean; status: 'ok' | 'partial' | 'failed'; text: string; actions: number; sent: string[]; failed: string[]; problems: { what: string; fix: string; retry: boolean }[]; attempt: number }[];
 }
 
 type Esc = (s: unknown) => string;
@@ -57,14 +58,18 @@ function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
   const names = x.whatsappTo.map((n) => j.people.find((p) => p.number === n)?.name ?? n);
   const to = [x.say && 'spoken', x.email && 'email', x.whatsapp && 'WhatsApp', ...x.emailTo.map((e) => `email to ${e}`), ...names.map((n) => `WhatsApp to ${n}`)].filter(Boolean).join(', ') || 'kept here';
   const r = x.runs[0];
+  const badge = (st: string) => (st === 'ok' ? '<span class="badge ok">✓ Done</span>' : st === 'partial' ? '<span class="badge imp">⚠ Done, not fully sent</span>' : '<span class="badge warn">✗ Failed</span>');
+  const retry = x.retryAt ? `<span class="badge">retrying at ${esc(new Date(x.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}</span>` : '';
+  const problems = r?.problems.length
+    ? `<ul class="problems">${r.problems.map((p) => `<li><b>${esc(p.what)}</b><br><span class="meta">How to fix: ${esc(p.fix)}${p.retry && x.retryAt ? ' (Max tries again by himself.)' : ''}</span></li>`).join('')}</ul>`
+    : '';
   const latest = r
-    ? `<p class="meta">${r.ok ? 'Done' : '<span class="warntext">Failed</span>'} ${esc(when(r.at))} · ${r.seconds}s · ${r.actions} action${r.actions === 1 ? '' : 's'}${r.sent.length ? ` · sent by ${esc(r.sent.join(', '))}` : ''}${r.failed.length ? ` · <span class="warntext">not sent: ${esc(r.failed.join('; '))}</span>` : ''}</p>
-<pre class="hplan">${esc(r.text)}</pre>${x.runs.length > 1 ? `<details><summary class="meta">Earlier results (${x.runs.length - 1})</summary>${x.runs.slice(1).map((e) => `<p class="meta">${esc(when(e.at))}${e.ok ? '' : ' · failed'}</p><pre class="hplan">${esc(e.text)}</pre>`).join('')}</details>` : ''}`
+    ? `<p class="meta">${badge(r.status)} ${retry} ${esc(when(r.at))}${r.attempt > 1 ? ` · attempt ${r.attempt}` : ''} · ${r.seconds}s · ${r.actions} action${r.actions === 1 ? '' : 's'}${r.sent.length ? ` · sent by ${esc(r.sent.join(', '))}` : ''}${r.failed.length ? ` · <span class="warntext">not sent: ${esc(r.failed.map((f) => f.replace(/ \(.*$/, '')).join(', '))}</span>` : ''}</p>${problems}
+<pre class="hplan">${esc(r.text)}</pre>${x.runs.length > 1 ? `<details><summary class="meta">Earlier results (${x.runs.length - 1})</summary>${x.runs.slice(1).map((e) => `<p class="meta">${badge(e.status)} ${esc(when(e.at))}${e.problems.length ? ` · ${esc(e.problems.map((p) => p.what).join('; '))}` : ''}</p><pre class="hplan">${esc(e.text)}</pre>`).join('')}</details>` : ''}`
     : '<p class="empty">Not run yet: it runs at the next scheduled time, or press Run now.</p>';
   return `<section id="job-${esc(x.id)}"><h2>${esc(x.name)} ${status}</h2>
 <p class="meta">${esc(x.scheduleText)} · ${esc(x.effort)} effort · ${esc(x.modelText)} · result ${esc(to)} · ${esc(LIST[x.vault]?.split(' (')[0] ?? x.vault)}</p>
 <p>${esc(x.brief)}</p>
-${x.lastError && !x.running ? `<p class="hint">Last time: ${esc(x.lastError)}</p>` : ''}
 ${x.running ? '<span data-wait></span>' : ''}${latest}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/jobs/run"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn" type="submit" ${x.running ? 'disabled' : ''}>Run now</button></form>

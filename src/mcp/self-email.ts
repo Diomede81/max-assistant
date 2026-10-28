@@ -32,5 +32,23 @@ export async function sendPersonalEmail(mcp: McpServersService | undefined, to: 
   if (props.includes('is_html')) args.is_html = false;
   const name = found.tool.type === 'function' ? found.tool.function.name : '';
   const out = await found.server.call(name, args);
-  if (/^error|"successful":\s*false|failed/i.test(out.slice(0, 200))) throw new Error(out.slice(0, 160));
+  const problem = emailProblem(out);
+  if (problem) throw new Error(problem);
+}
+
+/** What went wrong according to the email app's answer, or undefined when it says the email went. */
+export function emailProblem(out: string): string | undefined {
+  const text = out.trim();
+  try {
+    const data = JSON.parse(text) as { successful?: boolean; error?: unknown; data?: { error?: unknown } };
+    if (data && typeof data === 'object') {
+      const err = data.error ?? data.data?.error;
+      if (data.successful === false || (err && err !== 'null')) return `the email app said: ${typeof err === 'string' ? err : JSON.stringify(err ?? data).slice(0, 200)}`;
+      return undefined;
+    }
+  } catch {
+    // not JSON: read it as text
+  }
+  if (/"successful"\s*:\s*false|"error"\s*:\s*"[^"]|not connected|unauthori[sz]ed|invalid|expired|forbidden|quota|^error/i.test(text)) return `the email app said: ${text.slice(0, 200)}`;
+  return undefined;
 }

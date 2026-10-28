@@ -758,6 +758,12 @@ function attentionItems(d: PanelData): Attention[] {
   if (d.whatsapp?.note) out.push({ area: 'connections', href: '#whatsapp', where: 'Connections › WhatsApp', text: `<b>WhatsApp</b> · ${esc(d.whatsapp.note)}` });
   for (const r of d.routines?.list ?? []) if (r.enabled && r.lastError && !r.running) out.push({ area: 'routines', href: '#routines', where: 'News briefing', text: `<b>${esc(r.name)} failed last time</b> · ${esc(r.lastError)}` });
   for (const p of d.health?.plans ?? []) if (p.enabled && p.lastError && !p.running) out.push({ area: 'health', href: `#plan-${esc(p.id)}`, where: 'Health › Plans', text: `<b>${esc(p.name)} failed last time</b> · ${esc(p.lastError)}` });
+  for (const j of d.jobs?.list ?? []) {
+    const r = j.runs[0];
+    if (!r || r.status === 'ok' || j.running) continue;
+    const p = r.problems[0];
+    out.push({ area: 'routines', href: `#job-${esc(j.id)}`, where: 'Routines › Scheduled tasks', text: `<b>${esc(j.name)} ${r.status === 'failed' ? 'failed' : 'was done but not fully sent'}</b>${p ? ` · ${esc(p.what)}. <i>${esc(p.fix)}</i>` : ''}${j.retryAt ? ` · retrying at ${esc(new Date(j.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}` : ''}` });
+  }
   if (d.location && !d.location.place) out.push({ area: 'settings', href: '#location', where: 'Settings › Home location', text: '<b>Home location not set</b> · for local answers, trains and the weather' });
   if (d.updates?.onBox && d.updates.available?.behind && !d.updates.auto.auto) out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>An update is ready</b> · ${d.updates.available.behind} change${d.updates.available.behind === 1 ? '' : 's'} since your version` });
   if (d.updates?.state?.state === 'failed') out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>The last update failed</b> · ${esc(d.updates.state.message)}` });
@@ -1004,7 +1010,7 @@ ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justi
 select{flex:none}.modes,.tabs,.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.acts{margin:0;flex:none}.move{display:flex;gap:6px}
 .tab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--text)}.tab.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{background:var(--errbg);color:var(--err)}.badge.imp{background:#fff4e0;color:#9a5b00}.warntext{color:var(--err)}
-${ROUTINES_CSS}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}${HEALTH_CSS}
+${ROUTINES_CSS}.problems{margin:6px 0 10px;padding-left:18px}.problems li{margin:4px 0}${MODELS_CSS}${SCREEN_CSS}${DEVICES_CSS}${HEALTH_CSS}
 .logbox{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg)}.logline{white-space:pre-wrap;word-break:break-word}.logline.warn{color:#b26b00}.logline.error{color:var(--err)}
 .wrap{flex-wrap:wrap}.level{align-items:center}.level label{width:84px;flex:none}.level input[type=range]{flex:1;accent-color:var(--accent)}.level span{width:44px;text-align:right}.edit{flex-wrap:wrap;margin:8px 0}summary{cursor:pointer}
 h3{font-size:14px;margin:16px 0 8px}.stack{margin:12px 0}.stack .addfact{margin:6px 0}.danger{margin-top:20px;align-items:center;justify-content:space-between}

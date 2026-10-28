@@ -180,6 +180,39 @@ export function parsePlan(reply: string, meals: MealName[], start: { date: strin
   return { title: str(j.title).slice(0, 120) || 'This week\'s meals', notes: str(j.notes).slice(0, 600) || undefined, days, shopping, cost: Number.isFinite(cost) && cost > 0 && cost < 1000 ? Math.round(cost) : undefined };
 }
 
+/** One day's meals from the model's JSON ({"lunch":{…},"dinner":{…}}): undefined when it can't be read. */
+export function parseDay(reply: string, meals: MealName[], servings: number): Partial<Record<MealName, Recipe>> | undefined {
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(reply.slice(reply.indexOf('{'), reply.lastIndexOf('}') + 1)) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const src = (j.meals && typeof j.meals === 'object' ? (j.meals as Record<string, unknown>) : j) as Record<string, unknown>;
+  const dm: Partial<Record<MealName, Recipe>> = {};
+  for (const m of meals) {
+    const r = recipe(src[m], servings);
+    if (r) dm[m] = r;
+  }
+  return Object.keys(dm).length === meals.length ? dm : undefined;
+}
+
+/** The week's shopping list and a title from the model's JSON; the list falls back to the recipes' ingredients. */
+export function parseShopping(reply: string, days: MealDay[]): { title: string; notes?: string; shopping: { aisle: string; items: string[] }[]; cost?: number } {
+  let j: Record<string, unknown> = {};
+  try {
+    j = JSON.parse(reply.slice(reply.indexOf('{'), reply.lastIndexOf('}') + 1)) as Record<string, unknown>;
+  } catch {
+    /* no list: made from the recipes below */
+  }
+  const shopping = (Array.isArray(j.shopping) ? (j.shopping as Record<string, unknown>[]) : [])
+    .map((g) => ({ aisle: str(g?.aisle).slice(0, 40) || 'Other', items: list(g?.items) }))
+    .filter((g) => g.items.length);
+  if (!shopping.length) shopping.push({ aisle: 'From the recipes', items: ingredientsOf(days) });
+  const cost = typeof j.cost === 'number' ? j.cost : typeof j.cost === 'string' ? parseFloat(j.cost.replace(/[^\d.]/g, '')) : NaN;
+  return { title: str(j.title).slice(0, 120) || 'This week\'s meals', notes: str(j.notes).slice(0, 600) || undefined, shopping, cost: Number.isFinite(cost) && cost > 0 && cost < 1000 ? Math.round(cost) : undefined };
+}
+
 /** Every ingredient of these days' recipes (or one meal), once each. */
 export function ingredientsOf(days: MealDay[], meal?: MealName): string[] {
   const out: string[] = [];

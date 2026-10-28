@@ -62,7 +62,8 @@ const URL_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
 const BARE_LINK_RE = /(?<![\w@/.-])((?:[a-z0-9-]+\.)+(?:com|co\.uk|org\.uk|net|org|io|uk|it|de|fr|es|nl|eu|info|gov|gov\.uk|ac\.uk|edu|app|dev|tv|me|ch|at|be|ie|pt|us|ca|au|nz|cinema|london|news|travel|shop|store|live))(\/[^\s<>"'`)\],;!?]*)?(?![\w-])/gi;
 /** How long an action may take before Max stops waiting for it (some do more work: a task, a meal plan). */
 const DEFAULT_TIME_LIMIT_MS = 45_000;
-export const TIME_LIMIT_MS: Record<string, number> = { work_on_task: 120_000, health_plan: 300_000, plan_train_journey: 60_000, software_update: 60_000 };
+// web_search / read_webpage: several at once queue up behind Firecrawl's per-minute allowance (../web/web.service)
+export const TIME_LIMIT_MS: Record<string, number> = { work_on_task: 120_000, health_plan: 300_000, plan_train_journey: 60_000, software_update: 60_000, web_search: 120_000, read_webpage: 120_000 };
 /** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
 const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 /** "Remember that…", "don't forget…", "make a note…" (and Italian): the user asking Max to save something. */

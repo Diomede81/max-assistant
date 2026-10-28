@@ -55,6 +55,8 @@ export interface Job {
   whatsappTo: string[];
   lastRunDay?: string;
   lastError?: string;
+  /** A retry is due at this time (epoch ms), after a run that failed or wasn't fully sent. */
+  retryAt?: number;
   /** The latest results, newest first. */
   runs: JobRun[];
 }
@@ -62,11 +64,27 @@ export interface Job {
 export interface JobRun {
   at: string;
   seconds: number;
+  /** The task itself worked out (a result was found). */
   ok: boolean;
+  /** ok: found and delivered; partial: found but not everything was sent; failed: no result. */
+  status: 'ok' | 'partial' | 'failed';
   text: string;
   actions: number;
   sent: string[];
   failed: string[];
+  /** What went wrong, in plain words, each with how to fix it. */
+  problems: Problem[];
+  /** 1 for the scheduled run, 2 and 3 for the retries. */
+  attempt: number;
+}
+
+/** Something that went wrong in a run: what, how to fix it, and whether trying again may help. */
+export interface Problem {
+  what: string;
+  fix: string;
+  retry: boolean;
+  /** Which delivery failed ('email', 'whatsapp', 'email:addr', 'wa:number'), for retrying just that. */
+  channel?: string;
 }
 
 export interface JobInput {
@@ -94,6 +112,8 @@ interface State {
 }
 
 const CHECK_MS = 60_000;
+/** After a failure: try again after 10 minutes, then after 30 more; then give up until the next scheduled time. */
+const RETRY_MS = [10 * 60_000, 30 * 60_000];
 const RUNS_KEPT = 5;
 const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 const CARD_MS = 15 * 60_000;
@@ -133,7 +153,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     this.store = new SealedStore(this.cfg.memory.dir, 'jobs', memorySecret(this.cfg));
     try {
       const s = this.store.load();
-      if (s) this.state = { jobs: (s.jobs ?? []).map((j) => ({ ...j, runs: j.runs ?? [], emailTo: j.emailTo ?? [], whatsappTo: j.whatsappTo ?? [] })) };
+      if (s) this.state = { jobs: (s.jobs ?? []).map((j) => ({ ...j, retryAt: undefined, runs: (j.runs ?? []).map((r) => ({ ...r, status: r.status ?? (r.ok ? (r.failed?.length ? 'partial' : 'ok') : 'failed'), problems: r.problems ?? [], attempt: r.attempt ?? 1 })), emailTo: j.emailTo ?? [], whatsappTo: j.whatsappTo ?? [] })) };
     } catch (err) {
       this.log.error(`Could not read the scheduled tasks (${(err as Error).message}); starting without them`);
     }
@@ -282,6 +302,11 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
   private tick(): void {
     const now = local();
     for (const j of this.state.jobs) {
+      if (j.retryAt && j.retryAt <= Date.now() && !this.running.has(j.id)) {
+        j.retryAt = undefined;
+        void this.retry(j);
+        continue;
+      }
       if (!j.enabled || this.running.has(j.id) || j.lastRunDay === now.date || now.time < j.time) continue;
       if (!runsOn(j, now.date, now.weekday)) continue;
       void this.run(j.id);
@@ -289,9 +314,10 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
   }
 
   /** Runs a task now and delivers the result. manual: someone asked. */
-  async run(id: string, manual = false): Promise<JobRun | undefined> {
+  async run(id: string, manual = false, attempt = 1): Promise<JobRun | undefined> {
     const j = this.state.jobs.find((x) => x.id === id);
     if (!j || this.running.has(id)) return undefined;
+    j.retryAt = undefined;
     const agent = this.router.taskAgent;
     if (!agent) {
       j.lastError = 'The task runner is not available.';
@@ -308,17 +334,21 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
       const run: JobRun = {
         at: new Date().toISOString(),
         seconds: Math.round((Date.now() - started) / 1000),
-        ok: !r.error && Boolean(r.text),
-        text: r.error ? `The AI model failed: ${r.error}` : r.timedOut ? `${r.text || 'Nothing yet.'}\n\n(Stopped: it ran out of time. Give it more effort, or ask for less.)` : r.text || 'Nothing found.',
+        ok: !r.error && !r.timedOut && Boolean(r.text),
+        status: 'ok',
+        text: r.error ? `The AI model failed: ${r.error}` : r.timedOut ? `${r.text || 'Nothing yet.'}\n\n(Stopped: it ran out of time.)` : r.text || 'Nothing found.',
         actions: r.actions,
         sent: [],
         failed: [],
+        problems: [],
+        attempt,
       };
-      j.lastError = run.ok ? undefined : r.error ? `The AI model failed: ${r.error}` : r.timedOut ? 'Ran out of time' : 'Nothing found';
+      if (r.error) run.problems.push(diagnose('model', r.error));
+      else if (r.timedOut) run.problems.push(diagnose('time', `${effort.label.toLowerCase()} effort, ${Math.round(effort.totalMs / 60000)} min`));
+      else if (!r.text) run.problems.push(diagnose('empty', ''));
+      for (const f of r.failedActions) run.problems.push(diagnose('action', f));
       await this.deliver(j, run, manual);
-      j.runs = [run, ...j.runs].slice(0, RUNS_KEPT);
-      this.log.log(`"${j.name}" ${run.ok ? 'done' : 'failed'} in ${run.seconds}s (${run.actions} action${run.actions === 1 ? '' : 's'}${run.sent.length ? `; sent by ${run.sent.join(', ')}` : ''}${run.failed.length ? `; not sent: ${run.failed.join('; ')}` : ''})`);
-      this.emit('done', j, run);
+      this.finish(j, run, manual);
       return run;
     } catch (err) {
       j.lastError = (err as Error).message;
@@ -330,62 +360,110 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     }
   }
 
-  private async deliver(j: Job, run: JobRun, manual: boolean): Promise<void> {
-    const title = `${j.name} · ${new Date(run.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
-    if (j.email) {
-      try {
-        await sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text);
-        run.sent.push('email');
-      } catch (err) {
-        run.failed.push(`email (${(err as Error).message})`);
-      }
+  /** Works out how the run went, records it, says so, and plans a retry when one may help. */
+  private finish(j: Job, run: JobRun, manual: boolean, redelivery = false): void {
+    run.status = !run.ok ? 'failed' : run.failed.length ? 'partial' : 'ok';
+    // A result found: only a delivery that failed is worth retrying. No result: the task itself (not a single action).
+    const retryable = run.problems.filter((p) => p.retry && (run.ok ? Boolean(p.channel) : !p.channel && !p.what.startsWith('The action ')));
+    const canRetry = retryable.length > 0 && run.attempt <= RETRY_MS.length && !j.once;
+    if (canRetry) j.retryAt = Date.now() + RETRY_MS[run.attempt - 1];
+    j.lastError = run.status === 'ok' ? undefined : run.problems.map((p) => p.what).join('; ') || (run.ok ? 'Not everything was sent' : 'Nothing found');
+    if (redelivery) j.runs = [run, ...j.runs.filter((r) => r.at !== run.at)].slice(0, RUNS_KEPT);
+    else j.runs = [run, ...j.runs].slice(0, RUNS_KEPT);
+    this.log[run.status === 'ok' ? 'log' : 'warn'](
+      `"${j.name}" ${run.status === 'ok' ? 'done' : run.status === 'partial' ? 'done but not fully sent' : 'failed'} (attempt ${run.attempt}) in ${run.seconds}s, ${run.actions} action${run.actions === 1 ? '' : 's'}${run.sent.length ? `; sent by ${run.sent.join(', ')}` : ''}${run.problems.length ? `; problems: ${run.problems.map((p) => `${p.what} → ${p.fix}`).join(' | ')}` : ''}${j.retryAt ? `; retrying at ${new Date(j.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}`,
+    );
+    this.announce(j, run, manual);
+    this.emit('done', j, run);
+  }
+
+  /** The planned retry: the whole task again when it failed; only the deliveries that failed when it worked out. */
+  private async retry(j: Job): Promise<void> {
+    const last = j.runs[0];
+    if (!last || last.status === 'ok') return;
+    if (last.status === 'failed') {
+      this.log.log(`"${j.name}": trying again (attempt ${last.attempt + 1})`);
+      await this.run(j.id, false, last.attempt + 1);
+      return;
     }
-    if (j.whatsapp) {
+    this.running.add(j.id);
+    try {
+      const run: JobRun = { ...last, attempt: last.attempt + 1, failed: [], problems: last.problems.filter((p) => !p.channel) };
+      const channels = new Set(last.problems.filter((p) => p.channel).map((p) => p.channel!));
+      this.log.log(`"${j.name}": sending again (attempt ${run.attempt}): ${[...channels].join(', ')}`);
+      await this.deliver(j, run, false, channels);
+      this.finish(j, run, false, true);
+    } finally {
+      this.running.delete(j.id);
+      this.persist();
+    }
+  }
+
+  private async deliver(j: Job, run: JobRun, manual: boolean, only?: Set<string>): Promise<void> {
+    const title = `${j.name} · ${new Date(run.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    const want = (channel: string) => !only || only.has(channel);
+    const attempt = async (channel: string, label: string, kind: 'email' | 'whatsapp', send: () => Promise<unknown>) => {
+      if (!want(channel)) return;
       try {
+        await send();
+        run.sent.push(label);
+        this.log.log(`"${j.name}": sent by ${label}`);
+      } catch (err) {
+        run.failed.push(`${label} (${(err as Error).message})`);
+        run.problems.push({ ...diagnose(kind, (err as Error).message), channel });
+        this.log.warn(`"${j.name}": not sent by ${label}: ${(err as Error).message}`);
+      }
+    };
+    if (j.email) await attempt('email', 'email', 'email', () => sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text));
+    if (j.whatsapp) {
+      await attempt('whatsapp', 'WhatsApp', 'whatsapp', async () => {
         if (!this.whatsapp?.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
         await this.whatsapp.sendToSelf(`${title}\n\n${run.text}`);
-        run.sent.push('WhatsApp');
-      } catch (err) {
-        run.failed.push(`WhatsApp (${(err as Error).message})`);
-      }
+      });
     }
-    // Other people, chosen (typed) on the control panel: never anyone the user didn't pick there.
+    // Other people, chosen (typed) on the control panel: never anyone the user didn't pick there, and only a real result.
     if (run.ok) {
-      for (const to of j.emailTo) {
-        try {
-          await sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text);
-          run.sent.push(`email to ${to}`);
-        } catch (err) {
-          run.failed.push(`email to ${to} (${(err as Error).message})`);
-        }
-      }
+      for (const to of j.emailTo) await attempt(`email:${to}`, `email to ${to}`, 'email', () => sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text));
       for (const number of j.whatsappTo) {
         const who = this.whatsapp?.allowedPeople.find((a) => a.number === number)?.name ?? number;
-        try {
+        await attempt(`wa:${number}`, `WhatsApp to ${who}`, 'whatsapp', async () => {
           if (!this.whatsapp) throw new Error('WhatsApp isn\'t set up');
           await this.whatsapp.sendToAllowed(number, `${j.name} (from Max)\n\n${run.text}`);
-          run.sent.push(`WhatsApp to ${who}`);
-        } catch (err) {
-          run.failed.push(`WhatsApp to ${who} (${(err as Error).message})`);
-        }
+        });
       }
     }
-    // Spoken and shown only when its vault is open (a work task waits for work mode, like reminders).
-    if ((j.say || manual) && this.modes.readable().includes(j.vault) && this.modes.mode !== 'guest') {
-      const first = run.text.split(/\n/).map((l) => l.trim()).filter(Boolean).slice(0, 2).join('. ').replace(/^- /, '').slice(0, 220);
-      const others = run.sent.filter((x) => / to /.test(x)).map((x) => x.replace(/^email to |^WhatsApp to /, ''));
-      const where = [run.sent.includes('email') ? 'your email' : '', run.sent.includes('WhatsApp') ? 'WhatsApp' : '', others.length ? `sent to ${others.join(', ')}` : ''].filter(Boolean);
-      const text = run.ok
-        ? `Your task "${j.name}" is done. ${first}${first.endsWith('.') ? '' : '.'} The full result is on the control panel${where.length ? ` and in ${where.join(' and ')}` : ''}; ask me for it any time.`
-        : `Your task "${j.name}" didn't work out: ${j.lastError ?? 'nothing found'}. It's on the control panel.`;
-      this.timers.announce(text);
-      this.log.log(`Announced: ${said(text)}`);
-      const id = `job-${j.id}`;
-      showCard(
-        { id, kind: 'notice', icon: '🗓️', title: j.name, subtitle: run.ok ? `${run.seconds}s · ${run.actions} action${run.actions === 1 ? '' : 's'}` : 'Did not work out', body: run.text.slice(0, 1500), actions: [{ id: 'ok', label: 'OK', style: 'primary' }], ttlMs: CARD_MS },
-        { ok: () => dismissCard(id) },
-      );
-    }
+  }
+
+  /** Says how it went (only when its vault is open: a work task waits for work mode), and shows it on the screen. */
+  private announce(j: Job, run: JobRun, manual: boolean): void {
+    if (!(j.say || manual) || !this.modes.readable().includes(j.vault) || this.modes.mode === 'guest') return;
+    const first = run.text.split(/\n/).map((l) => l.trim()).filter(Boolean).slice(0, 2).join('. ').replace(/^- /, '').slice(0, 220);
+    const others = run.sent.filter((x) => / to /.test(x)).map((x) => x.replace(/^email to |^WhatsApp to /, ''));
+    const where = [run.sent.includes('email') ? 'your email' : '', run.sent.includes('WhatsApp') ? 'WhatsApp' : '', others.length ? `sent to ${others.join(', ')}` : ''].filter(Boolean);
+    const retry = j.retryAt ? ` I'll try again at ${new Date(j.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` : '';
+    const notSent = run.problems.filter((p) => p.channel);
+    const text =
+      run.status === 'failed'
+        ? `Your task "${j.name}" didn't work out: ${run.problems[0]?.what ?? 'nothing found'}. ${run.problems[0]?.fix ?? ''}${retry} The details are on the control panel.`
+        : `Your task "${j.name}" is done. ${first}${first.endsWith('.') ? '' : '.'}${where.length ? ` It's in ${where.join(' and ')}.` : ''}${
+            notSent.length ? ` But I couldn't send it by ${notSent.map((p) => p.channel!.replace(/^email.*/, 'email').replace(/^wa.*|^whatsapp$/, 'WhatsApp')).filter((v, i, a) => a.indexOf(v) === i).join(' or ')}: ${notSent[0].what}. ${notSent[0].fix}${retry}` : ''
+          } The full result is on the control panel.`;
+    this.timers.announce(text);
+    this.log.log(`Announced: ${said(text)}`);
+    const id = `job-${j.id}`;
+    showCard(
+      {
+        id,
+        kind: 'notice',
+        icon: run.status === 'ok' ? '🗓️' : '⚠️',
+        title: j.name,
+        subtitle: run.status === 'ok' ? `${run.seconds}s · ${run.actions} action${run.actions === 1 ? '' : 's'}` : run.status === 'partial' ? 'Done, but not everything was sent' : 'Did not work out',
+        body: (run.problems.length ? `${run.problems.map((p) => `${p.what}: ${p.fix}`).join('\n')}\n\n` : '') + run.text.slice(0, 1500),
+        actions: [{ id: 'ok', label: 'OK', style: 'primary' }],
+        ttlMs: CARD_MS,
+      },
+      { ok: () => dismissCard(id) },
+    );
   }
 
   // ---------- Voice ----------
@@ -450,7 +528,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     const jobs = this.visible();
     if (action === 'list') {
       if (!jobs.length) return `No scheduled tasks yet.${this.lockedHint()}`;
-      return jobs.map((j) => `- ${j.name}: ${scheduleText(j)}${j.enabled ? '' : ' (paused)'}; ${j.runs[0] ? `last result ${ago(j.runs[0].at)}${j.runs[0].ok ? '' : ' (failed)'}` : 'not run yet'}${j.lastError ? ` · ${j.lastError}` : ''}`).join('\n') + this.lockedHint();
+      return jobs.map((j) => `- ${j.name}: ${scheduleText(j)}${j.enabled ? '' : ' (paused)'}; ${j.runs[0] ? `last run ${ago(j.runs[0].at)}: ${statusText(j.runs[0])}` : 'not run yet'}${j.runs[0]?.problems.length ? ` (${j.runs[0].problems.map((p) => `${p.what}; fix: ${p.fix}`).join(' / ')})` : ''}${j.retryAt ? `; retrying at ${new Date(j.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}`).join('\n') + this.lockedHint();
     }
     const words = (str(a.name) ?? '').toLowerCase();
     const found = words ? jobs.filter((j) => j.name.toLowerCase().includes(words) || words.includes(j.name.toLowerCase())) : jobs;
@@ -459,7 +537,9 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     const j = found[0];
     switch (action) {
       case 'result':
-        return j.runs[0] ? `${j.name}, ${ago(j.runs[0].at)}${j.runs[0].ok ? '' : ' (failed)'}:\n${j.runs[0].text}\n(Tell the user the gist; the whole text is on the control panel.)` : `${j.name} hasn't run yet (${scheduleText(j)}). Say "run it now" to do it now.`;
+        return j.runs[0]
+          ? `${j.name}, ${ago(j.runs[0].at)}: ${statusText(j.runs[0])}.${j.runs[0].problems.length ? `\nProblems: ${j.runs[0].problems.map((p) => `${p.what}. Fix: ${p.fix}`).join(' ')}` : ''}\n${j.runs[0].text}\n(Tell the user the gist, and any problem with its fix; the whole text is on the control panel.)`
+          : `${j.name} hasn't run yet (${scheduleText(j)}). Say "run it now" to do it now.`;
       case 'run':
         if (this.running.has(j.id)) return `${j.name} is running now.`;
         void this.run(j.id, true);
@@ -524,4 +604,46 @@ function ago(iso: string): string {
   if (min < 60) return `${min} minutes ago`;
   if (min < 36 * 60) return `${Math.round(min / 60)} hours ago`;
   return `${Math.round(min / 1440)} days ago`;
+}
+
+/** "done", "done, but not sent by email", "failed". */
+export function statusText(r: JobRun): string {
+  if (r.status === 'ok') return `done${r.sent.length ? ` and sent by ${r.sent.join(', ')}` : ''}`;
+  if (r.status === 'partial') return `done, but not sent by ${r.failed.map((f) => f.replace(/ \(.*$/, '')).join(', ')}`;
+  return 'failed';
+}
+
+/**
+ * A problem in plain words, with how to fix it and whether a retry may help: the AI model, running out
+ * of time, an empty answer, a failed action, or email/WhatsApp not sending.
+ */
+export function diagnose(kind: 'model' | 'time' | 'empty' | 'action' | 'email' | 'whatsapp', message: string): Problem {
+  const m = message.toLowerCase();
+  if (kind === 'model') {
+    if (/401|403|invalid api key|incorrect api key|unauthori[sz]ed|authentication/.test(m)) return { what: `The AI model refused the key (${message.slice(0, 80)})`, fix: 'Check the provider\'s key in .env (Settings → AI models shows which are set up) and restart Max.', retry: false };
+    if (/429|rate limit|quota|insufficient|balance|credit/.test(m)) return { what: `The AI provider is out of credit or rate-limited (${message.slice(0, 80)})`, fix: 'Top up or wait; or pick another model for this task.', retry: true };
+    if (/404|not found|does not exist|unknown model|no such model/.test(m)) return { what: `The model name isn't known to the provider (${message.slice(0, 80)})`, fix: 'Pick the model from the list in the task\'s settings.', retry: false };
+    if (/used all its room|tokens/.test(m)) return { what: 'The AI model ran out of room before answering', fix: 'Pick a non-thinking model for this task, or ask for less.', retry: false };
+    if (/timeout|timed out|econnreset|network|fetch failed|enotfound|503|502|overloaded/.test(m)) return { what: `The AI provider didn't answer (${message.slice(0, 80)})`, fix: 'Usually temporary: it is retried. If it keeps happening, pick another model.', retry: true };
+    return { what: `The AI model failed (${message.slice(0, 120)})`, fix: 'Press Test next to the model under Settings → AI models; if it fails there too, pick another model.', retry: true };
+  }
+  if (kind === 'time') return { what: `It ran out of time (${message})`, fix: 'Give the task more effort (Thorough), or ask for less in one task.', retry: false };
+  if (kind === 'empty') return { what: 'The AI model gave back nothing', fix: 'Try another model for this task, or reword what to do.', retry: true };
+  if (kind === 'action') {
+    const name = message.split(':')[0];
+    if (/took too long|timed out|timeout/.test(m)) return { what: `The action ${name} took too long`, fix: 'Usually temporary. If it keeps happening, the service behind it is slow or down.', retry: true };
+    if (/not (set up|connected|linked)|needs .* key|add .* to \.env/.test(m)) return { what: `The action ${name} isn't set up (${message.slice(name.length + 1, name.length + 100).trim()})`, fix: 'Set it up under Connections, or reword the task so it doesn\'t need it.', retry: false };
+    return { what: `The action ${name} failed (${message.slice(name.length + 1, name.length + 100).trim()})`, fix: 'The result may be incomplete: check it. If it keeps happening, check that service under Connections.', retry: false };
+  }
+  if (kind === 'email') {
+    if (/no email address/.test(m)) return { what: 'No email address is set', fix: 'Add your address under Health → Plans → Send plans to.', retry: false };
+    if (/no email account/.test(m)) return { what: 'No email account is connected', fix: 'Connect Gmail or Outlook under Connections → Apps.', retry: false };
+    if (/doesn't look like/.test(m)) return { what: message, fix: 'Correct the address in the task\'s settings.', retry: false };
+    if (/unauthori[sz]ed|expired|invalid.*(token|grant)|scope|permission|re-?connect|401|403/.test(m)) return { what: `The email account needs signing in again (${message.slice(0, 100)})`, fix: 'Press Reconnect next to Gmail or Outlook under Connections → Apps.', retry: false };
+    if (/quota|limit|429/.test(m)) return { what: `The email service is limiting sending (${message.slice(0, 100)})`, fix: 'Wait a while; it is retried.', retry: true };
+    return { what: `Email didn't go (${message.slice(0, 140)})`, fix: 'It is retried. If it keeps happening, press Reconnect next to Gmail or Outlook under Connections → Apps.', retry: true };
+  }
+  if (/isn't linked|isn't set up|not linked/.test(m)) return { what: 'WhatsApp isn\'t linked', fix: 'Link a phone under Connections → WhatsApp.', retry: false };
+  if (/allowed list/.test(m)) return { what: message, fix: 'Add them again under Connections → WhatsApp, or remove them from the task.', retry: false };
+  return { what: `WhatsApp didn't send (${message.slice(0, 140)})`, fix: 'It is retried. If WhatsApp shows "not linked" under Connections → WhatsApp, link the phone again.', retry: true };
 }

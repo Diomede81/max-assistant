@@ -880,7 +880,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         : undefined,
       jobs: this.jobs && this.memory.enabled && this.models
         ? {
-            list: this.jobs.jobs.map((x) => ({ ...x, modelText: this.jobs!.modelText(x), scheduleText: scheduleText(x), running: this.jobs!.isRunning(x.id) })),
+            list: this.jobs.jobs.map((x) => ({ ...x, modelText: this.jobs!.modelText(x), scheduleText: scheduleText(x), running: this.jobs!.isRunning(x.id), retryAt: x.retryAt })),
             providers: this.models.providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured, setting: p.setting })),
             defaultModel: this.models.describe('jobs'),
             efforts: Object.entries(EFFORTS).map(([id, e]) => ({ id, label: e.label, help: e.help })),

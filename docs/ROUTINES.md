@@ -108,3 +108,21 @@ Each task keeps its last five results on the control panel. Ask "what did the fl
 books, pays or deletes anything (those stay with you, in conversation, with your "yes"). If Max was
 off at the time, the task runs as soon as he's back, the same day.
 
+### If a task fails
+
+Every run ends in one of three states, shown on the task's card, on Home under *Needs your attention*,
+in Max's announcement and in the log (Settings → Log):
+
+- **✓ Done**: a result was found and everything was sent.
+- **⚠ Done, not fully sent**: the result is there, but an email or WhatsApp didn't go. The card says
+  which one, why, and how to fix it (an email account that needs reconnecting under Connections → Apps, no
+  address set under Health → Plans, WhatsApp not linked…).
+- **✗ Failed**: no result. The card says why (the AI model refused the key, ran out of credit, gave back
+  nothing, the task ran out of time, an action it needed isn't set up) and what to do about it.
+
+When a retry can help (a provider that didn't answer, an email service that was busy), Max tries again
+by himself: after 10 minutes, then after 30 more, then gives up until the next scheduled time. If the
+task worked out but a delivery failed, only that delivery is retried, so nobody gets it twice. Problems
+that need you (a key, an address, a reconnect) aren't retried: fix them and press **Run now**. Ask Max
+"what did the task find?" and he tells you the problem and the fix too.
+

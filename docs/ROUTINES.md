@@ -100,6 +100,7 @@ Saturday".
 | Effort | **Quick** (a look-up, about a minute), **Normal** (a few steps, up to 4 minutes), **Thorough** (research and comparisons, up to 10 minutes) |
 | Model | The model for this task, from any provider you've set up (see [MODELS.md](MODELS.md)); leave it on *Scheduled tasks model* to use the one chosen in Settings → AI models |
 | Result | Spoken and shown on the screen when done; emailed to you (the address from Health → Plans, through your Gmail or Outlook); sent to you on WhatsApp |
+| Also send to | Other people: email addresses (sent from your own account), and WhatsApp contacts from the allowed list (Connections → WhatsApp). Only from the control panel, never by voice, and only when the task worked out |
 | Whose | Personal, Work or Household: a work task is only spoken about in work mode (it still runs and is sent) |
 
 Each task keeps its last five results on the control panel. Ask "what did the flight check find?" or

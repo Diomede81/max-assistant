@@ -11,7 +11,7 @@ import { label, ModesService, VaultName, VAULTS } from '../memory/modes.service'
 import { MemoryService } from '../memory/memory.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { Assignment, ModelsService } from '../models/models.service';
-import { sendSelfEmail, selfEmailTool } from '../mcp/self-email';
+import { sendPersonalEmail, selfEmailTool } from '../mcp/self-email';
 import { daysText, local } from '../routines/routines.service';
 import { dismissCard, showCard } from '../face/screen';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -50,6 +50,9 @@ export interface Job {
   say: boolean;
   email: boolean;
   whatsapp: boolean;
+  /** Other people to send the result to: email addresses, and WhatsApp numbers from the allowed list. Chosen on the control panel only. */
+  emailTo: string[];
+  whatsappTo: string[];
   lastRunDay?: string;
   lastError?: string;
   /** The latest results, newest first. */
@@ -81,6 +84,9 @@ export interface JobInput {
   say?: boolean;
   email?: boolean;
   whatsapp?: boolean;
+  /** Comma-separated addresses (the control panel). */
+  emailTo?: string;
+  whatsappTo?: string[];
 }
 
 interface State {
@@ -127,7 +133,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     this.store = new SealedStore(this.cfg.memory.dir, 'jobs', memorySecret(this.cfg));
     try {
       const s = this.store.load();
-      if (s) this.state = { jobs: (s.jobs ?? []).map((j) => ({ ...j, runs: j.runs ?? [] })) };
+      if (s) this.state = { jobs: (s.jobs ?? []).map((j) => ({ ...j, runs: j.runs ?? [], emailTo: j.emailTo ?? [], whatsappTo: j.whatsappTo ?? [] })) };
     } catch (err) {
       this.log.error(`Could not read the scheduled tasks (${(err as Error).message}); starting without them`);
     }
@@ -185,6 +191,8 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
       say: true,
       email: false,
       whatsapp: false,
+      emailTo: [],
+      whatsappTo: [],
       runs: [],
     };
     if (input.brief !== undefined) j.brief = input.brief.replace(/\s+/g, ' ').trim().slice(0, 2000);
@@ -235,6 +243,18 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     if (input.say !== undefined) j.say = input.say;
     if (input.email !== undefined) j.email = input.email;
     if (input.whatsapp !== undefined) j.whatsapp = input.whatsapp;
+    if (input.emailTo !== undefined) {
+      const list = [...new Set(input.emailTo.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+      const bad = list.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+      if (bad.length) return `These don't look like email addresses: ${bad.join(', ')}.`;
+      j.emailTo = list.slice(0, 10);
+    }
+    if (input.whatsappTo !== undefined) {
+      const people = this.whatsapp?.allowedPeople ?? [];
+      const chosen = input.whatsappTo.filter((n) => people.some((a) => a.number === n));
+      if (chosen.length < input.whatsappTo.length) return 'Only people on the WhatsApp allowed list (Connections → WhatsApp) can be chosen.';
+      j.whatsappTo = [...new Set(chosen)];
+    }
     if (input.enabled !== undefined) j.enabled = input.enabled;
     if (!existing) this.state.jobs.push(j);
     this.persist();
@@ -314,7 +334,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     const title = `${j.name} · ${new Date(run.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
     if (j.email) {
       try {
-        await sendSelfEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text);
+        await sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text);
         run.sent.push('email');
       } catch (err) {
         run.failed.push(`email (${(err as Error).message})`);
@@ -329,10 +349,32 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
         run.failed.push(`WhatsApp (${(err as Error).message})`);
       }
     }
+    // Other people, chosen (typed) on the control panel: never anyone the user didn't pick there.
+    if (run.ok) {
+      for (const to of j.emailTo) {
+        try {
+          await sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text);
+          run.sent.push(`email to ${to}`);
+        } catch (err) {
+          run.failed.push(`email to ${to} (${(err as Error).message})`);
+        }
+      }
+      for (const number of j.whatsappTo) {
+        const who = this.whatsapp?.allowedPeople.find((a) => a.number === number)?.name ?? number;
+        try {
+          if (!this.whatsapp) throw new Error('WhatsApp isn\'t set up');
+          await this.whatsapp.sendToAllowed(number, `${j.name} (from Max)\n\n${run.text}`);
+          run.sent.push(`WhatsApp to ${who}`);
+        } catch (err) {
+          run.failed.push(`WhatsApp to ${who} (${(err as Error).message})`);
+        }
+      }
+    }
     // Spoken and shown only when its vault is open (a work task waits for work mode, like reminders).
     if ((j.say || manual) && this.modes.readable().includes(j.vault) && this.modes.mode !== 'guest') {
       const first = run.text.split(/\n/).map((l) => l.trim()).filter(Boolean).slice(0, 2).join('. ').replace(/^- /, '').slice(0, 220);
-      const where = [run.sent.includes('email') ? 'your email' : '', run.sent.includes('WhatsApp') ? 'WhatsApp' : ''].filter(Boolean);
+      const others = run.sent.filter((x) => / to /.test(x)).map((x) => x.replace(/^email to |^WhatsApp to /, ''));
+      const where = [run.sent.includes('email') ? 'your email' : '', run.sent.includes('WhatsApp') ? 'WhatsApp' : '', others.length ? `sent to ${others.join(', ')}` : ''].filter(Boolean);
       const text = run.ok
         ? `Your task "${j.name}" is done. ${first}${first.endsWith('.') ? '' : '.'} The full result is on the control panel${where.length ? ` and in ${where.join(' and ')}` : ''}; ask me for it any time.`
         : `Your task "${j.name}" didn't work out: ${j.lastError ?? 'nothing found'}. It's on the control panel.`;
@@ -359,7 +401,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
             'health…), and reports back (out loud and on the control panel; by email or WhatsApp to the user if asked). For ' +
             '"every morning at 7, check…", "on the 1st of each month, look up…", "on Friday, find me…". add needs task (what to ' +
             'do, in full), time, and when: days (e.g. [1,2,3,4,5] = weekdays; every day if left out), or date (once), or month_day. ' +
-            'effort: quick (a look-up), normal, thorough (research). Not for to-dos or simple reminders (use todo / set_reminder). ' +
+            'effort: quick (a look-up), normal, thorough (research). Results go to the user; sending them to other people is set on the control panel, not by voice. Not for to-dos or simple reminders (use todo / set_reminder). ' +
             'list shows them with their latest result; result reads one out; run does one now; delete removes it.',
           parameters: {
             type: 'object',
@@ -467,7 +509,7 @@ export function scheduleText(j: Job): string {
 }
 
 export function deliveryText(j: Job): string {
-  const ways = [j.say ? 'spoken' : '', j.email ? 'emailed' : '', j.whatsapp ? 'on WhatsApp' : ''].filter(Boolean);
+  const ways = [j.say ? 'spoken' : '', j.email ? 'emailed' : '', j.whatsapp ? 'on WhatsApp' : '', j.emailTo.length ? `emailed to ${j.emailTo.join(', ')}` : '', j.whatsappTo.length ? `on WhatsApp to ${j.whatsappTo.length} ${j.whatsappTo.length === 1 ? 'person' : 'people'}` : ''].filter(Boolean);
   return ways.length ? ways.join(' and ') : 'kept on the control panel';
 }
 

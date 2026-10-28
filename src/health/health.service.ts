@@ -7,7 +7,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { ModelsService } from '../models/models.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
-import { selfEmailTool, sendSelfEmail } from '../mcp/self-email';
+import { selfEmailTool, sendPersonalEmail } from '../mcp/self-email';
 import { WebService, clean } from '../web/web.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { local } from '../routines/routines.service';
@@ -952,7 +952,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
 
   /** Emails the user's own address (set on the control panel), never anyone else. */
   private async sendEmail(subject: string, body: string): Promise<void> {
-    await sendSelfEmail(this.mcp, this.data.emailTo, subject, body);
+    await sendPersonalEmail(this.mcp, this.data.emailTo, subject, body);
   }
 
   // ---------- Voice ----------

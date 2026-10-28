@@ -251,11 +251,14 @@ memories:
 
 ## Backup
 
+Use the control panel: Settings › Backup downloads one encrypted file with everything Max keeps, or saves
+one into the `backups` folder every day. See [docs/BACKUP.md](BACKUP.md). By hand, the old way still works:
+
 ```bash
-docker compose cp max:/app/data ./max-memory-backup     # encrypted vaults (+ memory.key if generated)
+docker compose cp max:/app/data ./max-memory-backup     # the encrypted vaults (keep memory.key elsewhere)
 ```
 
-Restore by copying the folder back and restarting Max with the same `MEMORY_KEY`.
+Restore by copying the folder back and restarting Max with the same key.
 
 ## Troubleshooting
 

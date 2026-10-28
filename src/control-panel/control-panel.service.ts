@@ -33,6 +33,7 @@ import { local } from '../routines/routines.service';
 import type { PanelHealth } from './health-page';
 import { dismissCard, showCard } from '../face/screen';
 import { LockService } from '../lock/lock.service';
+import { BackupService } from '../backup/backup.service';
 import { RadioService } from '../music/radio.service';
 import { AirPlayService } from '../music/airplay.service';
 import { LIVE_VOICES, LiveVoiceService } from '../realtime/live-voice.service';
@@ -76,6 +77,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
   @Optional() @Inject(AmbientService) private readonly ambient?: AmbientService;
   @Optional() @Inject(LockService) private readonly lock?: LockService;
+  @Optional() @Inject(BackupService) private readonly backup?: BackupService;
   @Optional() @Inject(RadioService) private readonly radio?: RadioService;
   @Optional() @Inject(AirPlayService) private readonly airplay?: AirPlayService;
   @Optional() @Inject(LiveVoiceService) private readonly liveVoice?: LiveVoiceService;
@@ -226,6 +228,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
+    if (url.pathname.startsWith('/backup/') && this.backup) return this.backupRoute(req, res, url);
     if (req.method === 'POST' && url.pathname.startsWith('/updates/') && this.updates) {
       const f = await readForm(req);
       const u = this.updates;
@@ -1013,6 +1016,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         ? { active: this.liveVoice.active, provider: this.liveVoice.provider, voice: this.liveVoice.voice, style: this.liveVoice.style, voices: LIVE_VOICES[this.liveVoice.provider] }
         : undefined,
       lock: this.lock && this.cfg.face.enabled ? { enabled: this.lock.enabled, locked: this.lock.locked, canReset: this.auth.enabled } : undefined,
+      backup: this.backup?.status(),
       screen: this.ambient && this.cfg.face.enabled
         ? { ...this.ambient.settings, photos: this.ambient.photos(), place: this.location?.home?.place || undefined }
         : undefined,
@@ -1239,6 +1243,43 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async backupRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const b = this.backup!;
+    const p = url.pathname;
+    const back = (msg: string, ok: boolean) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#backup`);
+    try {
+      if (req.method === 'GET' && p === '/backup/download') {
+        const { name, data } = b.make();
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': data.length, 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' });
+        res.end(data);
+        return;
+      }
+      if (req.method !== 'POST') return this.redirect(res, '/#backup');
+      if (p === '/backup/restore') {
+        const data = await readBody(req, MAX_BACKUP_BYTES);
+        if (!data) return this.json(res, { error: 'That file is too large (1 GB at most).' });
+        const out = b.restore(data);
+        return this.json(res, out.ok ? { files: out.files, home: out.home } : { error: out.error });
+      }
+      if (p === '/backup/key') return this.json(res, { key: b.secret() });
+      const f = await readForm(req);
+      if (p === '/backup/now') {
+        const msg = b.toFolder();
+        return back(msg, msg.startsWith('Backup saved'));
+      }
+      if (p === '/backup/auto') {
+        const msg = b.setAuto(f.get('auto') === 'yes', f.get('time') ?? undefined, f.get('keep') ?? undefined);
+        return back(msg, !/^(The time|Keep)/.test(msg));
+      }
+      res.writeHead(404).end();
+    } catch (err) {
+      const message = (err as Error).message;
+      this.log.error(`Backup: ${message}`);
+      if (p === '/backup/restore' || p === '/backup/key') return this.json(res, { error: message, message });
+      return back(message, false);
+    }
+  }
+
   private async homeRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const home = this.home!;
     const p = url.pathname;
@@ -1311,6 +1352,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
 const MAX_FORM_BYTES = 16 * 1024;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+const MAX_BACKUP_BYTES = 1024 * 1024 * 1024;
 
 async function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer | undefined> {
   const parts: Buffer[] = [];

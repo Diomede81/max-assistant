@@ -117,6 +117,15 @@ conversation is the AI model, when both use the same one: a provider's rate limi
 tasks that run while you're likely to be talking to Max, pick a different model for **Scheduled tasks**
 (Settings → AI models) or in the task itself.
 
+### Max checks the answer before sending it
+
+Before a result is kept or sent, Max checks it is an answer at all: a model sometimes writes its own
+internal "call these actions" markup as text (it wanted to look something else up when no steps were
+left), or answers with nothing. Max sends such a reply back to the model, up to twice, asking for the
+real answer; if it still doesn't give one, the run fails with the reason and is retried later, and
+the card suggests more effort or another model. Links wrapped by Outlook's "safelinks" (copied from an
+email) are unwrapped before Max opens them.
+
 ### "It says it emailed, but nothing arrived"
 
 An email only counts as sent when the email app positively confirms it; an answer with no error but no

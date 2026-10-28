@@ -33,6 +33,8 @@ export interface WorkResult {
 /** The action the conversation uses to hand a task over. */
 export const TASK_TOOL = 'work_on_task';
 const MAX_STEPS = 10;
+/** How many times a non-answer (internal markup, a request for actions when none are left) is sent back for a real one. */
+const MAX_NUDGES = 2;
 const TOTAL_MS = 90_000;
 const STEP_MS = 45_000;
 /** An action's result, as the task model sees it (a calendar or an inbox can be huge). */
@@ -130,17 +132,29 @@ export class TaskAgentService implements OnModuleInit {
     ];
     this.log.log(`Working on ${opts.label ?? 'a task'} with ${this.models.describeAssignment(this.models.assignment(job, opts.assignment))} (${tools.length} actions, up to ${maxSteps} steps / ${Math.round(totalMs / 1000)}s)`);
     let actions = 0;
+    let nudges = 0;
+    let last = false;
     for (let step = 0; step < maxSteps; step++) {
       const left = totalMs - (Date.now() - started);
       if (left < 5000) break;
       let reply: Awaited<ReturnType<ModelsService['step']>>;
       try {
         // the last step: no more actions, just the answer
-        const last = step === maxSteps - 1 || left < 20_000;
+        last = step === maxSteps - 1 || left < 20_000;
         reply = await this.models.step(job, messages, last ? [] : tools, { maxTokens: opts.written ? 3000 : 1200, timeoutMs: Math.min(STEP_MS, left), assignment: opts.assignment });
       } catch (err) {
         this.log.warn(`${opts.label ?? 'Task'} stopped: ${(err as Error).message}`);
         return { text: '', actions, error: (err as Error).message, failedActions };
+      }
+      // No actions were offered (the last step) but it asked for some anyway: not an answer. Ask again, once or twice.
+      if (!tools.length || (reply.toolCalls.length && last)) {
+        if (reply.toolCalls.length) {
+          nudges++;
+          if (nudges > MAX_NUDGES) return { text: '', actions, error: 'the model kept asking for actions instead of answering', failedActions };
+          messages.push({ role: 'user', content: 'No more actions are available. Give your final answer now, in full, with what you already have.' });
+          step--; // this turn doesn't count
+          continue;
+        }
       }
       const assistant: ChatCompletionMessageParam = reply.toolCalls.length
         ? { role: 'assistant', content: reply.content || null, tool_calls: reply.toolCalls }
@@ -148,6 +162,16 @@ export class TaskAgentService implements OnModuleInit {
       if (reply.reasoning && reply.toolCalls.length) Object.assign(assistant, { reasoning_content: reply.reasoning });
       messages.push(assistant);
       if (!reply.toolCalls.length) {
+        // An answer: but is it one? Internal markup, a bare request for actions or an empty line isn't: ask again, once or twice.
+        const bad = unacceptable(reply.content);
+        if (bad && nudges < MAX_NUDGES) {
+          nudges++;
+          this.log.warn(`${opts.label ?? 'Task'}: the model answered with ${bad}; asking again (${nudges}/${MAX_NUDGES})`);
+          messages.push({ role: 'user', content: `That was ${bad}, not an answer for the user. ${tools.length && !last ? 'Use the actions properly (as tool calls, never written out), or if you have enough, ' : ''}Write the final answer now, in plain words, with what you have found.` });
+          step--;
+          continue;
+        }
+        if (bad) return { text: '', actions, error: `the model answered with ${bad}`, failedActions };
         this.log.log(`${opts.label ?? 'Task'} done in ${Math.round((Date.now() - started) / 1000)}s (${actions} action${actions === 1 ? '' : 's'})`);
         return { text: reply.content.trim(), actions, failedActions };
       }
@@ -217,4 +241,19 @@ export class TaskAgentService implements OnModuleInit {
       .filter(Boolean)
       .join('\n\n');
   }
+}
+
+/**
+ * Why a reply is not an answer for the user, or undefined when it is: a model's internal action
+ * markup written out as text (DeepSeek's DSML, XML-style tool calls, JSON "function" blobs), or
+ * nothing at all. Such text would otherwise be spoken, emailed or sent as the result.
+ */
+export function unacceptable(text: string): string | undefined {
+  const t = text.trim();
+  if (!t) return 'an empty answer';
+  if (/<[｜|]+\s*DSML\s*[｜|]+|<\/?(tool_call|tool_calls|function_calls|function_call|invoke|antml:invoke)\b|\[TOOL_CALLS\]|<\|tool▁call/i.test(t)) return 'internal action markup';
+  if (/^\s*[`{\[].{0,200}"(name|function|tool)"\s*:\s*"[a-z_]+".{0,200}"(arguments|parameters|input)"\s*:/is.test(t) && t.length < 2000) return 'a written-out action request';
+  const words = t.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean);
+  if (words.length < 3) return 'an answer with almost nothing in it';
+  return undefined;
 }

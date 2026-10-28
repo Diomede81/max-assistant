@@ -2,8 +2,8 @@
 
 A **People** area on the control panel (and the `people` action by voice) for the people close to you:
 who they are, when you were last in touch, what they're into and how they're doing, with a nudge when
-it's been too long. Personal: kept encrypted on the box, and only seen in personal mode (never for
-guests or at work).
+it's been too long. Personal: kept encrypted on the box. Max only uses it by voice in personal mode (never for guests or at
+work); the control panel shows it in personal and work mode, never in guest mode.
 
 ## Each person
 

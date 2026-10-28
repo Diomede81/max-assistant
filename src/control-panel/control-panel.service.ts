@@ -968,7 +968,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       journal: this.journal && this.memory.enabled && this.modes.mode !== 'guest' ? this.journalData(this.journal) : undefined,
-      people: this.social?.open && this.memory.enabled
+      people: this.social && this.memory.enabled && this.modes.mode !== 'guest'
         ? {
             list: this.social.people.map((x) => {
               const bday = this.social!.birthdaysSoon(366).find((b) => b.person.id === x.id);
@@ -981,6 +981,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             circles: Object.entries(CIRCLES).map(([id, c]) => ({ id, label: c.label, every: c.every })),
             touches: Object.entries(TOUCHES).map(([id, label]) => ({ id, label })),
             whatsapp: Boolean(this.whatsapp?.canMessageSelf),
+            personal: this.social.open,
           }
         : undefined,
       jobs: this.jobs && this.memory.enabled && this.models

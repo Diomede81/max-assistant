@@ -54,7 +54,7 @@ more websites (ones that need a browser).
    pescatarian, or none), allergies (never used), and other needs or dislikes. The number of people sets the portions.
 3. **Health → Plans → New plan**: "Meal plan", covering "the week ahead", with lunch and dinner ticked (and
    breakfast if you like), recipe websites if you have favourites, the day and time it's made (e.g. Sunday 17:00),
-   and how it's sent.
+   how it's sent, and the time of day for the daily recipes.
 
 Max writes the week's recipes (ingredients with quantities, steps, time, calories and protein each), practical
 for a busy home (weekday dinners within 40 minutes, lunches from the previous dinner's leftovers, ingredients
@@ -66,7 +66,13 @@ made with animal rennet (Parmesan, Pecorino, Grana Padano, Gorgonzola: a vegetar
 is sent back to the AI to fix; anything still wrong is shown on the plan as "Please check".
 
 - **Email**: the whole week, every recipe and the shopping list. **WhatsApp**: the week at a glance and the
-  shopping list, and (if ticked) **each morning that day's recipes**.
+  shopping list, and (if ticked) **each day that day's recipes**, at the time you choose (12:00 unless you
+  change it): one message per meal, the ingredients then the method step by step. "Send today's recipes" on
+  the plan sends them straight away.
+- **Ingredients you can search for**: every ingredient line starts with its quantity and names the product
+  as a UK supermarket sells it ("400 g tin chopped tomatoes", "500 g chicken thigh fillets"); anything vague
+  ("some herbs") is sent back to the AI to fix, like a dietary slip, and the same goes for a method with too
+  few or too thin steps.
 - **Health → This week's meals**: every recipe, and the shopping list to tick off in the shop on your phone.
 - Ask Max: "what's for dinner tonight?" (he puts the recipe on his screen, step by step), "what's for lunch
   tomorrow?", "what's on this week?", "what do I still need to buy?", "add oat milk to the shopping list",

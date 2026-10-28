@@ -18,6 +18,7 @@ import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
 import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
+import { JournalService, MOODS } from '../journal/journal.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
@@ -69,6 +70,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(JobsService) private readonly jobs?: JobsService;
   @Optional() @Inject(SocialService) private readonly social?: SocialService;
+  @Optional() @Inject(JournalService) private readonly journal?: JournalService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
@@ -295,6 +297,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname.startsWith('/routines/') && this.routines) return this.routineAction(req, res, url.pathname.slice('/routines/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/jobs/') && this.jobs) return this.jobAction(req, res, url.pathname.slice('/jobs/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/people/') && this.social) return this.peopleAction(req, res, url.pathname.slice('/people/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/journal/') && this.journal) return this.journalAction(req, res, url.pathname.slice('/journal/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
@@ -425,6 +428,31 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       default:
         res.writeHead(404).end();
     }
+  }
+
+  private journalData(jn: JournalService): PanelData['journal'] {
+    const today = local().date;
+    const dates = Array.from({ length: 14 }, (_, i) => new Date(Date.parse(`${today}T00:00:00Z`) - i * 86400_000).toISOString().slice(0, 10));
+    const all = jn.entries('0000-01-01', today);
+    return {
+      today,
+      days: dates
+        .map((date) => {
+          const entries = jn.day(date);
+          const mood = [...entries].reverse().find((e) => e.mood)?.mood;
+          return { date, label: new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' }), entries: entries.map((e) => ({ id: e.id, at: e.at, text: e.text, source: e.source, mood: e.mood })), mood };
+        })
+        .filter((d) => d.date === today || d.entries.length),
+      reviews: jn.reviews,
+      settings: jn.settings,
+      moods: MOODS,
+      emailReady: Boolean(this.health?.emailTo && this.jobs?.emailReady),
+      whatsappReady: Boolean(this.whatsapp?.canMessageSelf),
+      calendar: jn.calendarAvailable,
+      meetings: Boolean(this.meetings?.enabled),
+      personal: jn.open,
+      counts: { entries: all.length, days: new Set(all.map((e) => e.date)).size },
+    };
   }
 
   private async modelsData(m: ModelsService): Promise<PanelData['models']> {
@@ -584,6 +612,30 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(h.deletePlan(get('id')), true, 'health-plans');
     }
     return back('Unknown action.', false);
+  }
+
+  private async journalAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const jn = this.journal!;
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const back = (msg: string, ok = true, anchor = 'journal') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    switch (action) {
+      case 'add': {
+        const msg = jn.add(get('text'), { date: get('date') || undefined, mood: get('mood') || undefined, source: 'panel' });
+        return back(msg, msg.startsWith('Noted'), get('date') ? `journal-${get('date')}` : 'journal');
+      }
+      case 'delete':
+        return back(jn.remove(get('id')));
+      case 'review': {
+        const period = get('period') === 'month' ? 'month' : 'week';
+        const r = await jn.review(period, true);
+        return back(typeof r === 'string' ? r : `Your ${period}ly review is written.`, typeof r !== 'string', 'journal-reviews');
+      }
+      case 'settings':
+        return back(jn.saveSettings({ reviewDay: get('reviewDay'), reviewTime: get('reviewTime'), eventsTime: get('eventsTime'), monthly: f.get('monthly') === 'yes', email: f.get('email') === 'yes', whatsapp: f.get('whatsapp') === 'yes', captureMeetings: f.get('captureMeetings') === 'yes', captureEvents: f.get('captureEvents') === 'yes' }), true, 'journal-settings');
+      default:
+        res.writeHead(404).end();
+    }
   }
 
   private async peopleAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
@@ -915,6 +967,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             })),
           }
         : undefined,
+      journal: this.journal && this.memory.enabled && this.modes.mode !== 'guest' ? this.journalData(this.journal) : undefined,
       people: this.social?.open && this.memory.enabled
         ? {
             list: this.social.people.map((x) => {

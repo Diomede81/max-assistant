@@ -132,6 +132,9 @@ See [`deploy/max.service`](deploy/max.service).
 - **People**: the people close to you, by circle (family, close friends, friends…): when you last spoke,
   texted or met (by voice, on the dashboard, or from WhatsApp), what they're into, how they're doing, and a
   nudge when it's been too long. See **[docs/PEOPLE.md](docs/PEOPLE.md)**.
+- **Journal**: tell Max what you did during the day; he adds the meetings he attended and your calendar
+  events, and writes a weekly and monthly review of your life (what you did, people, health, work, how it
+  felt, patterns). See **[docs/JOURNAL.md](docs/JOURNAL.md)**.
 - **Scheduled tasks**: anything Max can do, done on his own at a set time (once, on chosen days or
   monthly), with the effort and the AI model you choose: check trains, compare prices, research something,
   read the news on a topic. The result is spoken, kept on the control panel, emailed or sent on WhatsApp.

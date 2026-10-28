@@ -2,6 +2,7 @@
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { jobsSection, PanelJobs } from './jobs-page';
 import { PanelPeople, peopleParts } from './people-page';
+import { journalParts, PanelJournal } from './journal-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { DEVICES_CSS, devicesExtra, devicesParts } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
@@ -75,6 +76,8 @@ export interface PanelData {
   health?: PanelHealth;
   /** People close to the user (personal mode). */
   people?: PanelPeople;
+  /** The journal and Max's reviews. */
+  journal?: PanelJournal;
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
@@ -670,6 +673,7 @@ const AREAS: { id: string; label: string; group: 'day' | 'setup'; about: string 
   { id: 'projects', label: 'Projects', group: 'day', about: 'Each project with its people, tasks and memory.' },
   { id: 'health', label: 'Health', group: 'day', about: 'Exercise, meals, heart, sleep and weight.' },
   { id: 'people', label: 'People', group: 'day', about: "The people close to you: when you were last in touch, what they're into, how they're doing." },
+  { id: 'journal', label: 'Journal', group: 'day', about: 'What you did, day by day, and Max\'s weekly and monthly reviews of your life.' },
   { id: 'devices', label: 'Devices', group: 'day', about: 'Your lights, heating and devices, through Home Assistant on the box.' },
   { id: 'routines', label: 'Routines', group: 'day', about: 'Jobs Max does on a schedule: your news briefing and your own scheduled tasks.' },
   { id: 'max', label: "Max's memory & personality", group: 'setup', about: 'What Max knows about you, what he remembers, and who he is.' },
@@ -813,6 +817,12 @@ ${items.length ? `<ul>${items.map((i) => `<li class="row"><div>${i.text}</div><a
     const toBuy = h.shopping.filter((i) => !i.done).length;
     tiles.push(tile('#health-meals', 'Health', dinner ? `${day?.meals.dinner ? 'Dinner' : 'Lunch'}: ${esc(dinner.name)}` : h.meals ? 'Nothing planned today' : 'No meal plan yet', toBuy ? `${toBuy} item${toBuy === 1 ? '' : 's'} to buy` : 'Shopping list done'));
   }
+  if (d.journal) {
+    const today = d.journal.days.find((x) => x.date === d.journal!.today);
+    const n = today?.entries.length ?? 0;
+    const latest = d.journal.reviews[0];
+    tiles.push(tile('#journal', 'Journal', n ? `${n} thing${n === 1 ? '' : 's'} noted today` : 'Nothing noted yet today', latest ? `Last review: ${latest.period === 'week' ? 'week' : 'month'} to ${latest.to}` : 'Tell Max what you did'));
+  }
   if (d.people) {
     const n = d.people.list.filter((x) => x.overdue > 0).length;
     const next = d.people.list.filter((x) => x.birthdayInDays !== undefined && x.birthdayInDays <= 30).sort((a, b) => a.birthdayInDays! - b.birthdayInDays!)[0];
@@ -955,6 +965,7 @@ ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
     projects: [m && { id: 'projects', label: 'Projects', html: projectsSection(m) }],
     health: d.health ? healthParts(d.health, esc) : [],
     people: d.people ? peopleParts(d.people, esc) : [],
+    journal: d.journal ? journalParts(d.journal, esc) : [],
     devices: d.homeDevices?.enabled ? [...devicesParts(), d.automations && { id: 'automations', label: 'Automations', html: automationsSection(d.automations) }] : [],
     routines: [d.routines && { id: 'routines', label: 'News briefing', html: routinesSection(d.routines, esc) }, d.jobs && { id: 'jobs', label: 'Scheduled tasks', html: jobsSection(d.jobs, esc) }],
     max: [d.about && { id: 'about', label: 'About you', html: aboutSection(d.about) }, m && { id: 'memory', label: 'Memory', html: memorySection(m), one: true }, d.soul && { id: 'soul', label: 'Personality', html: soulSection(d.soul) }],

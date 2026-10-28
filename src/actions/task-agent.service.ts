@@ -30,6 +30,8 @@ export interface WorkResult {
   timedOut?: boolean;
   /** Actions that answered with an error, e.g. 'web_search: Error: timed out' (the first few). */
   failedActions: string[];
+  /** The web pages the task actually read (opened, or brought in by a search), for keeping as its sources. */
+  pages?: string[];
 }
 
 /** The action the conversation uses to hand a task over. */
@@ -129,6 +131,12 @@ export class TaskAgentService implements OnModuleInit {
     const job = opts.job ?? 'tasks';
     const webBudget = opts.webBudget ?? Math.min(24, Math.max(4, maxSteps * 2));
     let webUsed = 0;
+    const pages: string[] = [];
+    const notePages = (name: string, args: Record<string, unknown>, out: string) => {
+      if (/^(Error|Not done|Could not)\b/.test(out)) return;
+      if (name === 'read_webpage' && typeof args.url === 'string') pages.push(args.url);
+      else if (name === 'web_search' && args.read_top === true) for (const m of out.matchAll(/^\d+\. .* - (https?:\/\/\S+)\n\s+.*\n\s+Page text:/gm)) pages.push(m[1]);
+    };
     const blocked = (name: string) => NOT_FOR_TASKS.has(name) || (opts.background && (NOT_IN_BACKGROUND.has(name) || /^(screen_|show_|display_|music_|play_|airplay_)/.test(name))) || this.router.needsConfirmation(name);
     const tools = this.router.tools.filter((t) => t.type === 'function' && !blocked(t.function.name)).slice(0, MAX_TOOLS);
     const messages: ChatCompletionMessageParam[] = [
@@ -192,7 +200,7 @@ export class TaskAgentService implements OnModuleInit {
           continue;
         }
         this.log.log(`${opts.label ?? 'Task'} done in ${Math.round((Date.now() - started) / 1000)}s (${actions} action${actions === 1 ? '' : 's'})`);
-        return { text: unfenced(reply.content), actions, failedActions };
+        return { text: unfenced(reply.content), actions, failedActions, pages: [...new Set(pages)] };
       }
       const results = await Promise.all(
         reply.toolCalls.map(async (c) => {
@@ -220,6 +228,7 @@ export class TaskAgentService implements OnModuleInit {
             new Promise<string>((r) => setTimeout(() => r('Error: this action took too long; carry on without it.'), left).unref()),
           ]);
           if (links) for (const l of linksIn(out)) links.add(l);
+          notePages(name, args, out);
           if (/^(Error|Could not|Not (done|sent|available))\b/i.test(out)) noteFailure(failedActions, name, out);
           return { id: c.id, content: out.length > RESULT_MAX ? `${out.slice(0, RESULT_MAX)}\n…(cut: ask more precisely for the rest)` : out };
         }),
@@ -228,7 +237,7 @@ export class TaskAgentService implements OnModuleInit {
     }
     this.log.warn(`${opts.label ?? 'Task'} ran out of time`);
     const lastText = [...messages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim());
-    return { text: lastText ? String(lastText.content).trim() : '', actions, timedOut: true, failedActions };
+    return { text: lastText ? String(lastText.content).trim() : '', actions, timedOut: true, failedActions, pages: [...new Set(pages)] };
   }
 
   private async instructions(goal: string, written = false, opts: { background?: boolean; webBudget?: number } = {}): Promise<string> {

@@ -998,6 +998,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             circles: Object.entries(CIRCLES).map(([id, c]) => ({ id, label: c.label, every: c.every })),
             touches: Object.entries(TOUCHES).map(([id, label]) => ({ id, label })),
             whatsapp: Boolean(this.whatsapp?.canMessageSelf),
+            chats: this.whatsapp?.knownPeople ?? [],
             personal: this.social.open,
             nudge: this.social.nudge,
             screen: this.cfg.face.enabled,

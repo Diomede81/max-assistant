@@ -331,7 +331,7 @@ export class SocialService implements OnModuleInit {
       const at = new Date(last.at).toISOString();
       const known = this.lastTouch(p, 'texted');
       if (known && known.at >= at) continue;
-      p.touches = [{ at, kind: 'texted' as const, auto: true, note: last.mine ? 'you wrote' : 'they wrote' }, ...p.touches].slice(0, TOUCHES_KEPT);
+      p.touches = [{ at, kind: 'texted' as const, auto: true, note: last.mine === undefined ? undefined : last.mine ? 'you wrote' : 'they wrote' }, ...p.touches].slice(0, TOUCHES_KEPT);
       changed = true;
     }
     if (changed) this.persist();

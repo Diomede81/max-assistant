@@ -540,12 +540,23 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The last message to or from a number, among the chats Max may see (for "last texted" on the People page). */
-  lastContact(number: string): { at: number; mine: boolean } | undefined {
+  lastContact(number: string): { at: number; mine?: boolean } | undefined {
     const n = normaliseNumber(number);
     if (!n) return undefined;
-    const chat = this.chats[`${n}@s.whatsapp.net`] ?? Object.values(this.chats).find((c) => !c.group && c.pn === `${n}@s.whatsapp.net`);
+    const pn = `${n}@s.whatsapp.net`;
+    const chat = this.chats[pn] ?? Object.values(this.chats).find((c) => !c.group && c.pn === pn);
     const last = chat?.msgs.filter((m) => m.from !== 'Max').at(-1);
-    return last ? { at: last.at, mine: last.mine } : undefined;
+    if (last) return { at: last.at, mine: last.mine };
+    // a chat Max may not read: the list still knows when its last message was (nothing else)
+    const k = this.knownOf(pn);
+    return k?.lastAt && !k.group ? { at: k.lastAt } : undefined;
+  }
+
+  /** The people on the chat list (not groups) with a known number, for the People page to pick from. */
+  get knownPeople(): { name: string; number: string }[] {
+    return this.knownList()
+      .filter((k) => !k.group && k.sendId)
+      .map((k) => ({ name: k.name, number: k.sendId! }));
   }
 
   /**

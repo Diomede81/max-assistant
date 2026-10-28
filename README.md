@@ -129,6 +129,9 @@ See [`deploy/max.service`](deploy/max.service).
   you ask "What's the news?". He can also suggest websites for your interests and find their news feeds.
   See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
 
+- **People**: the people close to you, by circle (family, close friends, friends…): when you last spoke,
+  texted or met (by voice, on the dashboard, or from WhatsApp), what they're into, how they're doing, and a
+  nudge when it's been too long. See **[docs/PEOPLE.md](docs/PEOPLE.md)**.
 - **Scheduled tasks**: anything Max can do, done on his own at a set time (once, on chosen days or
   monthly), with the effort and the AI model you choose: check trains, compare prices, research something,
   read the news on a topic. The result is spoken, kept on the control panel, emailed or sent on WhatsApp.

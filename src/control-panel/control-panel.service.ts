@@ -17,6 +17,7 @@ import { localToday, ProjectsService, taskText, repeatText } from '../memory/pro
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
+import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
@@ -67,6 +68,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(JobsService) private readonly jobs?: JobsService;
+  @Optional() @Inject(SocialService) private readonly social?: SocialService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
@@ -292,6 +294,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname.startsWith('/routines/') && this.routines) return this.routineAction(req, res, url.pathname.slice('/routines/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/jobs/') && this.jobs) return this.jobAction(req, res, url.pathname.slice('/jobs/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/people/') && this.social) return this.peopleAction(req, res, url.pathname.slice('/people/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
@@ -581,6 +584,38 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(h.deletePlan(get('id')), true, 'health-plans');
     }
     return back('Unknown action.', false);
+  }
+
+  private async peopleAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const so = this.social!;
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const id = get('id');
+    const back = (msg: string, ok = true, anchor = id ? `person-${id}` : 'people') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    if (action === 'save') {
+      const msg = so.save({ name: get('name'), circle: get('circle'), relation: get('relation'), every: get('every'), phone: get('phone'), email: get('email'), birthday: get('birthday'), ...(id ? {} : { interests: get('interests') }) }, id || undefined);
+      const ok = /^(Added|Updated)/.test(msg);
+      const created = !id && ok ? so.people[so.people.length - 1] : undefined;
+      return back(msg, ok, created ? `person-${created.id}` : id ? `person-${id}` : 'person-new');
+    }
+    const p = so.byId(id);
+    if (!p) return back('That person is no longer on the list.', false, 'people');
+    switch (action) {
+      case 'log':
+        return back(so.touch(p, get('kind') || 'spoke', get('text') || undefined, get('date') || undefined));
+      case 'news':
+        return back(so.addUpdate(p, get('text')));
+      case 'interests':
+        return back(so.addInterests(p, get('text')));
+      case 'update-remove':
+        so.removeUpdate(p, get('at'));
+        return back('Removed.');
+      case 'delete':
+        if (get('confirm') !== 'yes') return back('Tick the box to confirm.', false);
+        return back(so.remove(p.id), true, 'people');
+      default:
+        res.writeHead(404).end();
+    }
   }
 
   private async jobAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
@@ -878,6 +913,21 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               briefing: this.routines!.briefings[x.id],
               suggestions: this.routines!.suggestions(x.id),
             })),
+          }
+        : undefined,
+      people: this.social?.open && this.memory.enabled
+        ? {
+            list: this.social.people.map((x) => {
+              const bday = this.social!.birthdaysSoon(366).find((b) => b.person.id === x.id);
+              return {
+                id: x.id, name: x.name, circle: x.circle, circleLabel: CIRCLES[x.circle]?.label ?? x.circle, relation: x.relation, every: this.social!.every(x), everySet: x.every !== undefined,
+                phone: x.phone, email: x.email, birthday: x.birthday, birthdayInDays: bday?.inDays, interests: x.interests, updates: x.updates,
+                touches: x.touches.map((t) => ({ ...t, kindLabel: TOUCHES[t.kind] ?? t.kind })), daysSince: this.social!.daysSince(x), overdue: this.social!.overdueDays(x),
+              };
+            }),
+            circles: Object.entries(CIRCLES).map(([id, c]) => ({ id, label: c.label, every: c.every })),
+            touches: Object.entries(TOUCHES).map(([id, label]) => ({ id, label })),
+            whatsapp: Boolean(this.whatsapp?.canMessageSelf),
           }
         : undefined,
       jobs: this.jobs && this.memory.enabled && this.models

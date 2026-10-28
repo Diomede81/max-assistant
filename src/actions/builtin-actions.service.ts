@@ -8,6 +8,7 @@ import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { ProjectsService } from '../memory/projects.service';
 import { TodoItem, TodoService } from '../memory/todo.service';
+import { SocialService } from '../social/social.service';
 import { TodoTicks } from '../face/todo-ticks';
 import { RoutinesService } from '../routines/routines.service';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -34,6 +35,7 @@ export class BuiltinActionsService implements OnModuleInit {
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   /** News briefings and other scheduled routines (optional). */
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
+  @Optional() @Inject(SocialService) private readonly social?: SocialService;
   private readonly handlers: Record<string, Handler>;
   readonly tools: ChatCompletionTool[];
 
@@ -459,6 +461,7 @@ export class BuiltinActionsService implements OnModuleInit {
       reminders.length ? `Reminders still to come today:\n${reminders.join('\n')}` : 'No more reminders today.',
       `To-dos:\n${this.todos.dayBriefing()}`,
       this.routines?.pendingLine() ?? '',
+      this.social?.dayLine() ? `People: ${this.social.dayLine()}` : '',
       "Calendar: not included here. Get today's events from the calendar app if one is connected; if none is, don't mention the calendar.",
     ]
       .filter(Boolean)

@@ -1,6 +1,7 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { jobsSection, PanelJobs } from './jobs-page';
+import { PanelPeople, peopleParts } from './people-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { DEVICES_CSS, devicesExtra, devicesParts } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
@@ -72,6 +73,8 @@ export interface PanelData {
   trains?: { departures: boolean; journeys: boolean; home?: { crs: string; name: string } };
   whatsapp?: WhatsAppStatus;
   health?: PanelHealth;
+  /** People close to the user (personal mode). */
+  people?: PanelPeople;
   /** Devices signed in to this panel (Settings > Security). */
   devices?: { id: string; label: string; created: number; lastUsed: number; expires: number; current: boolean }[];
   location?: { place: string; postcode?: string; country: string; countries: Record<string, string> };
@@ -666,6 +669,7 @@ const AREAS: { id: string; label: string; group: 'day' | 'setup'; about: string 
   { id: 'myday', label: 'My Day', group: 'day', about: 'Your to-do list and your meetings.' },
   { id: 'projects', label: 'Projects', group: 'day', about: 'Each project with its people, tasks and memory.' },
   { id: 'health', label: 'Health', group: 'day', about: 'Exercise, meals, heart, sleep and weight.' },
+  { id: 'people', label: 'People', group: 'day', about: "The people close to you: when you were last in touch, what they're into, how they're doing." },
   { id: 'devices', label: 'Devices', group: 'day', about: 'Your lights, heating and devices, through Home Assistant on the box.' },
   { id: 'routines', label: 'Routines', group: 'day', about: 'Jobs Max does on a schedule: your news briefing and your own scheduled tasks.' },
   { id: 'max', label: "Max's memory & personality", group: 'setup', about: 'What Max knows about you, what he remembers, and who he is.' },
@@ -764,6 +768,11 @@ function attentionItems(d: PanelData): Attention[] {
     const p = r.problems[0];
     out.push({ area: 'routines', href: `#job-${esc(j.id)}`, where: 'Routines › Scheduled tasks', text: `<b>${esc(j.name)} ${r.status === 'failed' ? 'failed' : 'was done but not fully sent'}</b>${p ? ` · ${esc(p.what)}. <i>${esc(p.fix)}</i>` : ''}${j.retryAt ? ` · retrying at ${esc(new Date(j.retryAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}` : ''}` });
   }
+  for (const x of d.people?.list ?? []) {
+    if (x.birthdayInDays !== undefined && x.birthdayInDays <= 3) out.push({ area: 'people', href: `#person-${esc(x.id)}`, where: 'People', text: `<b>${esc(x.name)}'s birthday ${x.birthdayInDays === 0 ? 'is today' : x.birthdayInDays === 1 ? 'is tomorrow' : `is in ${x.birthdayInDays} days`}</b>${x.interests.length ? ` · into ${esc(x.interests.slice(0, 3).join(', '))}` : ''}` });
+  }
+  const due = (d.people?.list ?? []).filter((x) => x.overdue > 0).sort((a, b) => b.overdue - a.overdue);
+  if (due.length) out.push({ area: 'people', href: '#people-due', where: 'People', text: `<b>Worth catching up with ${esc(due.slice(0, 3).map((x) => x.name).join(', '))}${due.length > 3 ? ` and ${due.length - 3} more` : ''}</b> · ${esc(due[0].name)}: ${due[0].daysSince === undefined ? 'not in touch yet' : `${due[0].daysSince} days`}` });
   if (d.location && !d.location.place) out.push({ area: 'settings', href: '#location', where: 'Settings › Home location', text: '<b>Home location not set</b> · for local answers, trains and the weather' });
   if (d.updates?.onBox && d.updates.available?.behind && !d.updates.auto.auto) out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>An update is ready</b> · ${d.updates.available.behind} change${d.updates.available.behind === 1 ? '' : 's'} since your version` });
   if (d.updates?.state?.state === 'failed') out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>The last update failed</b> · ${esc(d.updates.state.message)}` });
@@ -803,6 +812,11 @@ ${items.length ? `<ul>${items.map((i) => `<li class="row"><div>${i.text}</div><a
     const dinner = day?.meals.dinner ?? day?.meals.lunch;
     const toBuy = h.shopping.filter((i) => !i.done).length;
     tiles.push(tile('#health-meals', 'Health', dinner ? `${day?.meals.dinner ? 'Dinner' : 'Lunch'}: ${esc(dinner.name)}` : h.meals ? 'Nothing planned today' : 'No meal plan yet', toBuy ? `${toBuy} item${toBuy === 1 ? '' : 's'} to buy` : 'Shopping list done'));
+  }
+  if (d.people) {
+    const n = d.people.list.filter((x) => x.overdue > 0).length;
+    const next = d.people.list.filter((x) => x.birthdayInDays !== undefined && x.birthdayInDays <= 30).sort((a, b) => a.birthdayInDays! - b.birthdayInDays!)[0];
+    tiles.push(tile('#people', 'People', n ? `${n} to catch up with` : 'All in touch', next ? `${esc(next.name)}'s birthday ${next.birthdayInDays === 0 ? 'today' : `in ${next.birthdayInDays} days`}` : `${d.people.list.length} ${d.people.list.length === 1 ? 'person' : 'people'} close to you`));
   }
   if (d.music) {
     const a = d.music.airplay;
@@ -940,6 +954,7 @@ ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
     myday: [m && { id: 'todo', label: 'To-do list', html: myDaySection(m) }, d.meetings && { id: 'meetings', label: 'Meetings', html: meetingsSection(d.meetings) }],
     projects: [m && { id: 'projects', label: 'Projects', html: projectsSection(m) }],
     health: d.health ? healthParts(d.health, esc) : [],
+    people: d.people ? peopleParts(d.people, esc) : [],
     devices: d.homeDevices?.enabled ? [...devicesParts(), d.automations && { id: 'automations', label: 'Automations', html: automationsSection(d.automations) }] : [],
     routines: [d.routines && { id: 'routines', label: 'News briefing', html: routinesSection(d.routines, esc) }, d.jobs && { id: 'jobs', label: 'Scheduled tasks', html: jobsSection(d.jobs, esc) }],
     max: [d.about && { id: 'about', label: 'About you', html: aboutSection(d.about) }, m && { id: 'memory', label: 'Memory', html: memorySection(m), one: true }, d.soul && { id: 'soul', label: 'Personality', html: soulSection(d.soul) }],

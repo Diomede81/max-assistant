@@ -451,6 +451,15 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     return this.allowed.map((a) => ({ name: a.name, number: a.number }));
   }
 
+  /** The last message to or from a number, among the chats Max may see (for "last texted" on the People page). */
+  lastContact(number: string): { at: number; mine: boolean } | undefined {
+    const n = normaliseNumber(number);
+    if (!n) return undefined;
+    const chat = this.chats[`${n}@s.whatsapp.net`] ?? Object.values(this.chats).find((c) => !c.group && c.pn === `${n}@s.whatsapp.net`);
+    const last = chat?.msgs.filter((m) => m.from !== 'Max').at(-1);
+    return last ? { at: last.at, mine: last.mine } : undefined;
+  }
+
   /**
    * A message to someone on the allowed list, chosen by number on the control panel (e.g. a scheduled
    * task's result for Magda). Never to anyone off the list. Returns their name.

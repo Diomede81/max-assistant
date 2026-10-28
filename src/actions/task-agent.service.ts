@@ -4,7 +4,7 @@ import { Assignment, ModelsService, Task } from '../models/models.service';
 import { MemoryService } from '../memory/memory.service';
 import { LocationService } from '../location/location.service';
 import { describeNow } from './clock';
-import { ToolRouterService } from './tool-router.service';
+import { hostsIn, linkRule, linksIn, ToolRouterService } from './tool-router.service';
 
 /** How a task is worked: for the conversation (defaults) or a scheduled task. */
 export interface WorkOptions {
@@ -115,6 +115,9 @@ export class TaskAgentService implements OnModuleInit {
     const goal = task.trim();
     if (!goal) return { text: '', actions: 0, error: 'no task given', failedActions: [] };
     const failedActions: string[] = [];
+    // In the background, the task keeps its own list of links it may open: those in the brief, and those its actions returned.
+    const links = opts.background ? new Set(linksIn(goal)) : undefined;
+    const allow = links ? linkRule(links, new Set(hostsIn(goal))) : undefined;
     const started = Date.now();
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
     const totalMs = opts.totalMs ?? TOTAL_MS;
@@ -165,9 +168,10 @@ export class TaskAgentService implements OnModuleInit {
           // within the task's own time: an action that hangs doesn't hold the whole task
           const left = Math.max(5000, totalMs - (Date.now() - started));
           const out = await Promise.race([
-            this.router.call(name, args, { background: opts.background }).catch((err) => `Error: ${(err as Error).message}`),
+            this.router.call(name, args, { background: opts.background, allow }).catch((err) => `Error: ${(err as Error).message}`),
             new Promise<string>((r) => setTimeout(() => r('Error: this action took too long; carry on without it.'), left).unref()),
           ]);
+          if (links) for (const l of linksIn(out)) links.add(l);
           if (/^(Error|Could not|Not (done|sent|available))\b/i.test(out) && failedActions.length < 5) failedActions.push(`${name}: ${out.slice(0, 120)}`);
           return { id: c.id, content: out.length > RESULT_MAX ? `${out.slice(0, RESULT_MAX)}\n…(cut: ask more precisely for the rest)` : out };
         }),

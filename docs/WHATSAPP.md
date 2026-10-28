@@ -20,7 +20,9 @@ limited to the people you allow, and every message needs your spoken "yes".
 1. Control panel → **☰ Menu → Connections → WhatsApp** → **Link a phone**.
 2. On your phone: **WhatsApp → Settings → Linked devices → Link a device**, and scan the code.
 3. Under **Your chats** the panel lists your chats and groups as messages arrive (names only, never
-   their messages; press **Refresh groups** for groups nobody has written in yet). Tick **See** on a chat
+   their messages; press **Refresh groups and names** for groups nobody has written in yet, and to ask the
+   phone for your contacts' names again). Names come from your phone's contacts, else your People list, else
+   what the person calls themselves (sometimes an initial): rename a chat on the panel if you like. Tick **See** on a chat
    to let Max read it, **Send** to let him send there. People and groups alike.
 
 ## Chat with Max on WhatsApp

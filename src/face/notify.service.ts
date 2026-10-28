@@ -15,6 +15,7 @@ import { FaceService } from './face.service';
 import { Card, CardHandlers, CardLine } from './screen';
 import { TodoTicks } from './todo-ticks';
 import { LockService } from '../lock/lock.service';
+import { CIRCLES, Person, SocialService } from '../social/social.service';
 
 const TICK_MS = 15_000;
 const TODO_MS = 60_000;
@@ -61,6 +62,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly routines?: RoutinesService,
     @Optional() private readonly timerService?: TimerService,
     @Optional() private readonly lock?: LockService,
+    @Optional() private readonly social?: SocialService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'notifications');
   }
@@ -75,6 +77,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     this.routines?.on('ready', (r: Routine, b: Briefing) => this.briefingReady(r, b));
     this.timers.push(setInterval(() => this.deliver(), TICK_MS));
     this.timers.push(setInterval(() => this.checkTodos(), TODO_MS));
+    this.timers.push(setInterval(() => this.checkPeople(), TODO_MS));
     this.timers.push(setInterval(() => void this.checkEmail(), EMAIL_MS));
     setTimeout(() => void this.checkEmail(), 45_000);
   }
@@ -202,6 +205,44 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
         },
       },
     );
+  }
+
+  // ---------- People to catch up with ----------
+
+  /**
+   * Once a day at the chosen time (People › Reminders): who it has been too long with, said out loud and
+   * shown on the screen, each with a button for "we were in touch" and Later for a few days.
+   */
+  checkPeople(): void {
+    const so = this.social;
+    if (!so || this.guest || this.lock?.locked || !so.nudgeDue()) return;
+    so.nudged();
+    const list = so.nudgeList();
+    if (!list.length) return;
+    const n = so.nudge;
+    this.log.log(`Catch-up reminder: ${list.map((p) => p.name).join(', ')}`);
+    if (n.speak) this.timerService?.announce(so.nudgeText(list));
+    if (n.screen) this.peopleCard(list.slice(0, 8));
+  }
+
+  private peopleCard(list: Person[]): void {
+    const so = this.social!;
+    const id = 'notify-people';
+    const done = new Set<string>();
+    const draw = (first: boolean) => {
+      const lines: CardLine[] = list.map((p) => {
+        const days = so.daysSince(p);
+        if (done.has(p.id)) return { text: p.name, sub: 'in touch today', tag: 'done' as const };
+        return { text: p.name, sub: `${days === undefined ? 'not in touch yet' : `${days} days`} · ${CIRCLES[p.circle]?.label.toLowerCase() ?? p.circle}${p.updates[0] ? ` · ${p.updates[0].text}` : ''}`, tag: 'reminder' as const, action: { id: `touch-${p.id}`, label: 'In touch' } };
+      });
+      const left = list.filter((p) => !done.has(p.id));
+      const card: Card = { id, kind: 'list', icon: '💬', title: 'Catch up', subtitle: left.length ? `${left.length} ${left.length === 1 ? 'person' : 'people'} it's been a while with` : 'All caught up 🎉', lines, actions: [{ id: 'later', label: 'Later' }, { id: 'ok', label: 'OK', style: 'primary' }], ttlMs: NOTE_MS };
+      const handlers: CardHandlers = { ok: () => this.face.dismissCard(id), later: () => { for (const p of left) so.snooze(p); this.face.dismissCard(id); } };
+      for (const p of list) handlers[`touch-${p.id}`] = () => { if (!done.has(p.id)) { done.add(p.id); so.touch(p, 'spoke', undefined, undefined); } draw(false); };
+      if (first) this.notify(card, handlers);
+      else this.face.showCard(card, handlers);
+    };
+    draw(true);
   }
 
   // ---------- Important email ----------

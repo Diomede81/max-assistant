@@ -7,7 +7,8 @@ import { ModesService } from '../memory/modes.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { normaliseNumber } from '../whatsapp/contacts';
-import { localToday } from '../memory/projects.service';
+import { addDays, localToday } from '../memory/projects.service';
+import { local } from '../routines/routines.service';
 
 /** How close someone is, with how often you'd want to be in touch (days) by default. */
 export const CIRCLES = {
@@ -49,11 +50,27 @@ export interface Person {
   updates: { at: string; text: string }[];
   touches: Touch[];
   createdAt: string;
+  /** "Later" on a nudge: no reminder about them before this day (YYYY-MM-DD). */
+  snoozedUntil?: string;
+}
+
+/** The daily nudge about overdue catch-ups: out loud, on the screen, at this time. */
+export interface NudgeSettings {
+  speak: boolean;
+  screen: boolean;
+  time: string;
+  /** "Later" puts a person off for this many days. */
+  laterDays: number;
 }
 
 interface State {
   people: Person[];
+  nudge?: Partial<NudgeSettings>;
+  /** The day the nudge last went out (once a day). */
+  nudgedOn?: string;
 }
+
+const NUDGE_DEFAULTS: NudgeSettings = { speak: true, screen: true, time: '18:00', laterDays: 3 };
 
 const TOUCHES_KEPT = 40;
 const UPDATES_KEPT = 20;
@@ -86,7 +103,7 @@ export class SocialService implements OnModuleInit {
     this.store = new SealedStore(this.cfg.memory.dir, 'people', memorySecret(this.cfg));
     try {
       const s = this.store.load();
-      if (s) this.state = { people: (s.people ?? []).map((p) => ({ ...p, interests: p.interests ?? [], updates: p.updates ?? [], touches: p.touches ?? [] })) };
+      if (s) this.state = { ...s, people: (s.people ?? []).map((p) => ({ ...p, interests: p.interests ?? [], updates: p.updates ?? [], touches: p.touches ?? [] })) };
     } catch (err) {
       this.log.error(`Could not read the people (${(err as Error).message}); starting without them`);
     }
@@ -128,6 +145,58 @@ export class SocialService implements OnModuleInit {
   /** The people it's been too long with, most overdue first. */
   dueForCatchUp(): Person[] {
     return this.people.filter((p) => this.overdueDays(p) > 0).sort((a, b) => this.overdueDays(b) - this.overdueDays(a));
+  }
+
+  // ---------- The daily nudge ----------
+
+  get nudge(): NudgeSettings {
+    return { ...NUDGE_DEFAULTS, ...(this.state.nudge ?? {}) };
+  }
+
+  saveNudge(input: { speak: boolean; screen: boolean; time?: string; laterDays?: string | number }): string {
+    if (input.time !== undefined && !/^\d{2}:\d{2}$/.test(input.time)) return 'The time should look like 18:00.';
+    const later = input.laterDays === undefined || input.laterDays === '' ? this.nudge.laterDays : Number(input.laterDays);
+    if (!Number.isInteger(later) || later < 1 || later > 30) return '"Later" should put someone off by 1 to 30 days.';
+    this.state.nudge = { speak: input.speak, screen: input.screen, time: input.time ?? this.nudge.time, laterDays: later };
+    this.persist();
+    const n = this.nudge;
+    return !n.speak && !n.screen ? 'Reminders are off: Max only mentions overdue catch-ups when you ask.' : `Max reminds you at ${n.time}${n.speak && n.screen ? ', out loud and on the screen' : n.speak ? ', out loud' : ', on the screen'}.`;
+  }
+
+  /** The overdue people to remind about now: not put off with "Later". */
+  nudgeList(): Person[] {
+    const today = localToday();
+    return this.dueForCatchUp().filter((p) => !p.snoozedUntil || p.snoozedUntil <= today);
+  }
+
+  /** Whether the daily nudge is due now (its time has come today, and it hasn't gone out yet). */
+  nudgeDue(now = new Date()): boolean {
+    const n = this.nudge;
+    if (!this.open || (!n.speak && !n.screen)) return false;
+    const { date, time } = local(now);
+    return time === n.time && this.state.nudgedOn !== date;
+  }
+
+  /** Marks today's nudge as done (whatever was shown or said). */
+  nudged(): void {
+    this.state.nudgedOn = localToday();
+    this.persist();
+  }
+
+  /** What Max says: who, how long, and what they were last up to. */
+  nudgeText(list = this.nudgeList()): string {
+    if (!list.length) return '';
+    const one = (p: Person) => `${this.daysSince(p) === undefined ? 'you haven\'t been in touch with' : `${this.daysSince(p)} days since you ${TOUCHES[this.lastTouch(p)!.kind].toLowerCase()}`} ${p.name}`;
+    const top = list.slice(0, 3);
+    const more = list.length - top.length;
+    return `It's been a while: ${top.map(one).join(', ')}${more ? `, and ${more} more` : ''}. ${top[0].updates[0] ? `Last you heard from ${top[0].name}: ${top[0].updates[0].text.replace(/\.$/, '')}. ` : ''}Worth a ${top[0].phone ? 'message or a ' : ''}call?`;
+  }
+
+  /** "Later": no reminder about them for a few days (the setting), or until a given day. */
+  snooze(p: Person, days = this.nudge.laterDays): string {
+    p.snoozedUntil = addDays(localToday(), days);
+    this.persist();
+    return `OK, nothing about ${p.name} for ${days} day${days === 1 ? '' : 's'}.`;
   }
 
   /** Birthdays in the next `days` days (today first). */
@@ -319,11 +388,13 @@ export class SocialService implements OnModuleInit {
             'something about a person without a contact ("Marco got a new job"). interests: what they are into. who: ' +
             'everything about one person (before suggesting a gift, a topic, a catch-up). catch_up: who it has been too long ' +
             'with, and birthdays coming. add: a new person (name, circle: family, close friend, friend, colleague, acquaintance; ' +
-            'relation such as "my sister"). update: change circle, relation, how often to keep in touch (every_days), phone, email, birthday. remove.',
+            'relation such as "my sister"). update: change circle, relation, how often to keep in touch (every_days), phone, email, birthday. remove. ' +
+            'later: stop reminding about someone for a few days ("remind me about Marco next week": days).',
           parameters: {
             type: 'object',
             properties: {
-              action: { type: 'string', enum: ['log', 'news', 'interests', 'who', 'catch_up', 'add', 'update', 'remove'] },
+              action: { type: 'string', enum: ['log', 'news', 'interests', 'who', 'catch_up', 'add', 'update', 'remove', 'later'] },
+              days: { type: 'integer', description: 'For later: how many days (default: the setting)' },
               name: { type: 'string', description: 'Who (name or relation, e.g. "Mum")' },
               kind: { type: 'string', enum: ['spoke', 'called', 'texted', 'met', 'emailed'], description: 'For log: how' },
               date: { type: 'string', description: 'For log: YYYY-MM-DD if not today' },
@@ -381,6 +452,8 @@ export class SocialService implements OnModuleInit {
         return this.save({ circle: str(a.circle), relation: str(a.relation), every: typeof a.every_days === 'number' ? a.every_days : undefined, phone: str(a.phone), email: str(a.email), birthday: str(a.birthday) }, p.id);
       case 'remove':
         return this.remove(p.id);
+      case 'later':
+        return this.snooze(p, typeof a.days === 'number' && a.days > 0 ? Math.min(30, a.days) : undefined);
       default:
         return `Unknown action "${action}".`;
     }

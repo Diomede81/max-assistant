@@ -108,6 +108,15 @@ Each task keeps its last five results on the control panel. Ask "what did the fl
 books, pays or deletes anything (those stay with you, in conversation, with your "yes"). If Max was
 off at the time, the task runs as soon as he's back, the same day.
 
+### Tasks run in the background
+
+A scheduled task runs alongside everything else: you can keep talking to Max while it works. It never
+makes his face look busy, never puts anything on his screen, and leaves the music and the house alone;
+you only hear from it when it's done (or on the control panel). The one thing a task shares with the
+conversation is the AI model, when both use the same one: a provider's rate limit is per key, so for
+tasks that run while you're likely to be talking to Max, pick a different model for **Scheduled tasks**
+(Settings → AI models) or in the task itself.
+
 ### If a task fails
 
 Every run ends in one of three states, shown on the task's card, on Home under *Needs your attention*,

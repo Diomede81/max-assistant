@@ -330,7 +330,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     this.persist();
     try {
       const effort = EFFORTS[j.effort] ?? EFFORTS.normal;
-      const r = await agent.work(j.brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, written: true, label: `scheduled task "${j.name}"` });
+      const r = await agent.work(j.brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, written: true, background: true, label: `scheduled task "${j.name}"` });
       const run: JobRun = {
         at: new Date().toISOString(),
         seconds: Math.round((Date.now() - started) / 1000),

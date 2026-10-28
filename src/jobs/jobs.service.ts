@@ -13,6 +13,7 @@ import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { Assignment, ModelsService } from '../models/models.service';
 import { looksLikeHtml, sendPersonalEmail, selfEmailTool } from '../mcp/self-email';
 import { htmlToText } from '../mcp/compact';
+import { parsePiece, toEmailHtml, toWhatsApp } from './render';
 import { daysText, local } from '../routines/routines.service';
 import { dismissCard, showCard } from '../face/screen';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -422,14 +423,15 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
         this.log.warn(`"${j.name}": not sent by ${label}: ${(err as Error).message}`);
       }
     };
-    // A result written as HTML (the brief asked for a nice email) goes as HTML by email; everywhere else as plain text.
-    const html = looksLikeHtml(run.text);
-    const plain = html ? htmlToText(run.text) : run.text;
-    if (j.email) await attempt('email', 'email', 'email', () => sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text, html));
+    // The result is plain text in a fixed shape; Max lays it out for each place himself (the AI never decides how it looks).
+    const piece = parsePiece(looksLikeHtml(run.text) ? htmlToText(run.text) : run.text);
+    const plain = toWhatsApp(piece);
+    const html = toEmailHtml(piece, `Sent by Max · ${j.name} · ${title.split(' · ')[1] ?? ''}`.replace(/ · $/, ''));
+    if (j.email) await attempt('email', 'email', 'email', () => sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, html, true));
     if (j.whatsapp) {
       await attempt('whatsapp', 'WhatsApp', 'whatsapp', async () => {
         if (!this.whatsapp?.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
-        await this.whatsapp.sendToSelf(`${title}\n\n${plain}`);
+        await this.whatsapp.sendToSelf(plain);
       });
     }
     // Other people, chosen (typed) on the control panel: never anyone the user didn't pick there, and only a real result.
@@ -437,12 +439,12 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
       run.problems.push({ what: `Not sent to ${[...j.emailTo, ...j.whatsappTo.map((n) => this.whatsapp?.allowedPeople.find((a) => a.number === n)?.name ?? n)].join(', ')} because the task didn't finish properly`, fix: 'Other people only get a result that worked out. Once the task runs cleanly (✓ Done), they receive it.', retry: false });
     }
     if (run.ok) {
-      for (const to of j.emailTo) await attempt(`email:${to}`, `email to ${to}`, 'email', () => sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text, html));
+      for (const to of j.emailTo) await attempt(`email:${to}`, `email to ${to}`, 'email', () => sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, html, true));
       for (const number of j.whatsappTo) {
         const who = this.whatsapp?.allowedPeople.find((a) => a.number === number)?.name ?? number;
         await attempt(`wa:${number}`, `WhatsApp to ${who}`, 'whatsapp', async () => {
           if (!this.whatsapp) throw new Error('WhatsApp isn\'t set up');
-          await this.whatsapp.sendToAllowed(number, `${j.name} (from Max)\n\n${plain}`);
+          await this.whatsapp.sendToAllowed(number, plain);
         });
       }
     }

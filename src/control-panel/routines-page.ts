@@ -139,7 +139,7 @@ export const ROUTINES_CSS =
   '.votes{display:flex;gap:6px;margin-top:4px}.vote{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;cursor:pointer;font-size:14px;opacity:.6}.vote.on,.vote:hover{opacity:1;border-color:var(--accent)}' +
   '.suggest li{border-top:1px solid var(--line);padding:10px 0}.suggest label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.suggest label>span{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.suggest input{margin-top:4px}' +
   '.routine label{display:block;margin:10px 0 4px;font-weight:600}.routine label input:not([type=checkbox]),.routine label textarea{display:block;width:100%;margin-top:4px;font-weight:400}' +
-  '.routine input[name=name],.routine input[name=avoid]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}' +
+  '.routine input[name=name],.routine input[name=avoid],.routine input[name=emailTo]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}' +
   '.routine label.inline{display:flex;align-items:center;gap:8px;margin:0}.routine label.inline input,.routine label.inline select{display:inline-block;width:auto;margin:0}' +
   '.routine label.check,.routine label.day{font-weight:400;display:inline-flex;gap:6px;align-items:center;margin:8px 12px 0 0}.days{margin:8px 0}' +
   '.news{padding-left:20px;margin:8px 0}.news li{margin:0 0 12px}.news a{text-decoration:none}.news a:hover{text-decoration:underline}';

@@ -1221,6 +1221,7 @@ function whatsappSection(w: WhatsAppStatus): string {
 <div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web, but only sees your own chat and the chats you allow below, and keeps their last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
 ${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
 ${w.received ? receivedRow(w.received) : ''}
+${w.trace.length ? `<details><summary class="meta">What happened to the last ${w.trace.length} messages (for when a chat shows nothing)</summary><ul>${w.trace.map((t) => `<li class="row"><div><div class="meta">${esc(new Date(t.at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }))} · <b>${esc(t.chat)}</b> · came as ${esc(t.via)} · ${esc(t.what)}</div></div></li>`).join('')}</ul><p class="meta">"Dropped: not on the See list" for a chat you ticked means the ids differ: untick and tick it again from the list, and tell me what this shows.</p></details>` : ''}
 ${link}</div></li>
 ${readableRow(w)}</ul>
 <p class="meta">This uses WhatsApp's linked-devices feature through unofficial software (not a WhatsApp product). WhatsApp unlinks devices when the phone has been offline for about 14 days: link again then. You can also unlink Max from the phone (Linked devices).</p>

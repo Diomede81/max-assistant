@@ -75,6 +75,8 @@ export interface WhatsAppStatus {
   note?: string;
   /** What Max has received since he started (for the panel: "is anything arriving?"). */
   received?: { messages: number; unreadable: number; ignored: number; lastAt?: number; chats: number; kept: number; recent: { name: string; messages: number; lastAt: number }[] };
+  /** What happened to the last messages that arrived (ids partly hidden, never any text): for finding out why a chat shows nothing. */
+  trace: { at: number; chat: string; via: string; what: string }[];
 }
 
 const KEEP_DAYS = 7;
@@ -220,10 +222,20 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       known: this.knownList(),
       note: this.note,
       received: this.state === 'connected' || this.authLinked ? this.receivedSummary() : undefined,
+      trace: [...this.trace].reverse(),
     };
   }
 
   private stats = { messages: 0, unreadable: 0, ignored: 0, lastAt: 0 };
+  /** The last messages and what became of them (in memory only). */
+  private trace: WhatsAppStatus['trace'] = [];
+  private droppedLogged = new Map<string, number>();
+
+  private traced(raw: string, alt: string | undefined, what: string, at = Date.now()): void {
+    const chat = this.knownOf(raw)?.name;
+    this.trace.push({ at, chat: chat && !/^(Someone|A group|\+\d[\d ]*)$/.test(chat) ? chat : '(no name yet)', via: [raw, alt].filter(Boolean).map((x) => maskId(x!)).join(' = '), what });
+    if (this.trace.length > 40) this.trace.shift();
+  }
   private unreadableLogged = 0;
 
   private receivedSummary(): NonNullable<WhatsAppStatus['received']> {
@@ -659,6 +671,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const allowed = bestMatch(this.allowed, (a) => a.name, query).match;
     const mine = allowed && this.chats[jidOf(allowed)];
     if (mine) return { chat: mine };
+    // the name on the See list ("Magda"): that chat, by any of its ids
+    const listed = bestMatch(this.readable, (r) => r.name, query).match;
+    const seen = listed && (this.chats[listed.id] ?? all.find((c) => listed.ids.some((id) => id === c.pn || this.chats[id] === c)));
+    if (seen) return { chat: seen };
+    if (listed) return { say: `No messages from ${listed.name} have reached Max yet (he only keeps new messages from when the chat was allowed; the WhatsApp page on the control panel shows what has arrived).` };
     // by the chat's name (saved on the phone, or the person's own), or the list name's
     for (const q of allowed ? [query, allowed.name] : [query]) {
       const r = bestMatch(all, (c) => c.name, q);
@@ -834,6 +851,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           // a message WhatsApp's encryption couldn't open: counted, and its reason logged (no content)
           if (m.messageStubType === B.proto.WebMessageInfo.StubType.CIPHERTEXT) {
             this.stats.unreadable++;
+            this.traced(bare(m.key.remoteJid), m.key.remoteJidAlt ? bare(m.key.remoteJidAlt) : undefined, "couldn't be decrypted");
             if (Date.now() - this.unreadableLogged > 10 * 60_000) {
               this.unreadableLogged = Date.now();
               this.log.warn(`WhatsApp: a message couldn't be decrypted (${String(m.messageStubParameters?.[0] ?? 'no reason').slice(0, 100)}); ${this.stats.unreadable} so far`);
@@ -988,12 +1006,15 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const B = this.lib!;
     const raw = m.key.remoteJid ? bare(m.key.remoteJid) : '';
     if (!raw || raw === 'status@broadcast' || raw.endsWith('@newsletter') || raw.endsWith('@broadcast')) return false;
+    const alt = m.key.remoteJidAlt ? bare(m.key.remoteJidAlt) : undefined;
     const text = messageText(B, m);
-    if (!text) return false;
+    if (!text) {
+      if (!old && !m.messageStubType) this.traced(raw, alt, 'no text (a reaction, a deleted message, a system notice)');
+      return false;
+    }
     const at = Number(m.messageTimestamp ?? 0) * 1000 || Date.now();
     if (Date.now() - at > KEEP_DAYS * 86_400_000) return false;
     const group = raw.endsWith('@g.us');
-    const alt = m.key.remoteJidAlt ? bare(m.key.remoteJidAlt) : undefined;
     if (raw.endsWith('@lid') && alt) this.learn(raw, alt);
     else if (raw.endsWith('@s.whatsapp.net') && alt?.endsWith('@lid')) this.learn(alt, raw);
     // the chat goes on the panel's list (name and id only), whether or not Max may see it
@@ -1001,9 +1022,18 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const key = raw === this.selfLid && this.selfKey ? this.selfKey : this.chatKey(raw);
     // the sandbox: only your own chat and the chats you allowed, by any of their ids (the rest is dropped here, never kept)
     if (!this.visible(raw, alt, key)) {
-      if (!old) this.stats.ignored++;
+      if (!old) {
+        this.stats.ignored++;
+        this.traced(raw, alt, 'dropped: not on the See list', at);
+        // once in a while per chat, so the log shows what Max is dropping (ids only)
+        if (Date.now() - (this.droppedLogged.get(key) ?? 0) > 10 * 60_000) {
+          this.droppedLogged.set(key, Date.now());
+          this.log.log(`WhatsApp: dropped a message from ${maskId(raw)}${alt ? ` (= ${maskId(alt)})` : ''}: not on the See list (${this.readable.map((r) => `${r.name}: ${r.ids.map(maskId).join('/')}`).join('; ') || 'empty'})`);
+        }
+      }
       return false;
     }
+    if (!old) this.traced(raw, alt, `kept (${key === this.selfKey ? 'your own chat' : this.readable.find((r) => r.ids.includes(key) || r.ids.includes(raw) || (alt ? r.ids.includes(alt) : false))?.name ?? 'on the list'})`, at);
     const pn = key.endsWith('@s.whatsapp.net') ? key : undefined;
     let chat = this.chats[key];
     if (!chat) {
@@ -1136,6 +1166,12 @@ export function pieces(text: string, max = 3500): string[] {
   }
   if (rest) out.push(rest);
   return out.length > 1 ? out.map((p, i) => `${p}\n(${i + 1}/${out.length})`) : out;
+=======
+/** An id with most of its digits hidden, for the log and the panel ("…0123 (number)", "…4567 (hidden id)", "…abc (group)"). */
+export function maskId(jid: string): string {
+  const [user, host] = bare(jid).split('@');
+  const kind = host === 'g.us' ? 'group' : host === 'lid' ? 'hidden id' : 'number';
+  return `…${user.slice(-4)} (${kind})`;
 }
 
 /** An id without the device part ("447700900123:5@s.whatsapp.net" → "447700900123@s.whatsapp.net"). */

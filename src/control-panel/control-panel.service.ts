@@ -143,7 +143,14 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const { port, host, publicUrl } = this.cfg.controlPanel;
     this.server = createServer((req, res) => {
       this.handle(req, res).catch((err) => {
-        this.log.error((err as Error).message);
+        this.log.error(`${req.method} ${req.url}: ${(err as Error).stack ?? (err as Error).message}`);
+        if (res.headersSent) return res.end();
+        // Drawing the page itself failed: say so on a plain page rather than redirecting to the page again (a loop).
+        const url = req.url ?? '/';
+        if (req.method !== 'POST' || /[?&]error=/.test(url)) {
+          res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          return res.end(`<!doctype html><meta charset="utf-8"><title>Max</title><body style="font:15px system-ui;padding:24px;max-width:640px"><h1 style="font-size:20px">This page couldn't be drawn</h1><p>${escapeHtml((err as Error).message)}</p><p>The log (Settings → Log, or <code>docker compose logs max</code> on the box) has the details. <a href="/">Try again</a></p></body>`);
+        }
         this.redirect(res, `/?error=${encodeURIComponent((err as Error).message)}`);
       });
     });
@@ -1355,4 +1362,8 @@ function hostAllowed(header: string | undefined, extra: Set<string>): boolean {
   if (!h) return false;
   if (h === 'localhost' || h.endsWith('.local') || !h.includes('.') || extra.has(h)) return true;
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

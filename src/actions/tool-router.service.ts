@@ -271,9 +271,15 @@ export class ToolRouterService {
   readonly activity = new EventEmitter();
   private activityId = 0;
 
-  async call(name: string, args: Record<string, unknown>): Promise<string> {
+  /**
+   * Runs an action. `background`: for a scheduled task working on its own: the action runs quietly,
+   * without making the face look busy, showing its results on the screen or touching what the
+   * conversation remembers (links), so Max stays free to talk.
+   */
+  async call(name: string, args: Record<string, unknown>, opts: { background?: boolean } = {}): Promise<string> {
     // Belt and braces: nothing runs while the start-up code hasn't been entered.
     if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
+    if (opts.background) return this.timed(name, args);
     const what = describeActivity(name);
     if (!what) return this.rememberLinks(await this.timed(name, args));
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };

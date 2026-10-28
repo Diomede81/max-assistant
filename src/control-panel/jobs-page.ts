@@ -1,3 +1,5 @@
+import { htmlToText } from '../mcp/compact';
+import { looksLikeHtml } from '../mcp/self-email';
 /** Routines → Scheduled tasks: tasks Max does on his own at set times, with the effort and model you choose. */
 export interface PanelJobs {
   list: PanelJob[];
@@ -40,6 +42,8 @@ export interface PanelJob {
 }
 
 type Esc = (s: unknown) => string;
+/** A result written as HTML (for a nice email) is shown here as text. */
+const shown = (text: string) => (looksLikeHtml(text) ? htmlToText(text) : text);
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const LIST = { personal: 'Personal (personal mode)', work: 'Work (work mode)', household: 'Household (every mode)' } as Record<string, string>;
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -65,7 +69,7 @@ function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
     : '';
   const latest = r
     ? `<p class="meta">${badge(r.status)} ${retry} ${esc(when(r.at))}${r.attempt > 1 ? ` · attempt ${r.attempt}` : ''} · ${r.seconds}s · ${r.actions} action${r.actions === 1 ? '' : 's'}${r.sent.length ? ` · sent by ${esc(r.sent.join(', '))}` : ''}${r.failed.length ? ` · <span class="warntext">not sent: ${esc(r.failed.map((f) => f.replace(/ \(.*$/, '')).join(', '))}</span>` : ''}</p>${problems}
-<pre class="hplan">${esc(r.text)}</pre>${x.runs.length > 1 ? `<details><summary class="meta">Earlier results (${x.runs.length - 1})</summary>${x.runs.slice(1).map((e) => `<p class="meta">${badge(e.status)} ${esc(when(e.at))}${e.problems.length ? ` · ${esc(e.problems.map((p) => p.what).join('; '))}` : ''}</p><pre class="hplan">${esc(e.text)}</pre>`).join('')}</details>` : ''}`
+<pre class="hplan">${esc(shown(r.text))}</pre>${x.runs.length > 1 ? `<details><summary class="meta">Earlier results (${x.runs.length - 1})</summary>${x.runs.slice(1).map((e) => `<p class="meta">${badge(e.status)} ${esc(when(e.at))}${e.problems.length ? ` · ${esc(e.problems.map((p) => p.what).join('; '))}` : ''}</p><pre class="hplan">${esc(shown(e.text))}</pre>`).join('')}</details>` : ''}`
     : '<p class="empty">Not run yet: it runs at the next scheduled time, or press Run now.</p>';
   return `<section id="job-${esc(x.id)}"><h2>${esc(x.name)} ${status}</h2>
 <p class="meta">${esc(x.scheduleText)} · ${esc(x.effort)} effort · ${esc(x.modelText)} · result ${esc(to)} · ${esc(LIST[x.vault]?.split(' (')[0] ?? x.vault)}</p>
@@ -73,7 +77,7 @@ function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
 ${x.running ? '<span data-wait></span>' : ''}${latest}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/jobs/run"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn" type="submit" ${x.running ? 'disabled' : ''}>Run now</button></form>
-<form method="post" action="/jobs/toggle"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">${x.enabled ? 'Pause' : 'Resume'}</button></form></div>
+<form method="post" action="/jobs/toggle"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">${x.enabled ? 'Pause' : 'Resume'}</button></form>${x.email || x.emailTo.length ? `<form method="post" action="/jobs/test-email"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit" title="Sends a short test to you and the task's other addresses, and shows what the email app answered">Send a test email</button></form>` : ''}</div>
 <details><summary class="meta">Settings</summary>${jobForm(x, j, esc)}
 <form class="addfact danger" method="post" action="/jobs/delete"><input type="hidden" name="id" value="${esc(x.id)}"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this task</label><button class="btn secondary" type="submit">Delete</button></form></details>
 </section>`;

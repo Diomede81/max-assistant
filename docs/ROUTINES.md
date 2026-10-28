@@ -117,6 +117,16 @@ conversation is the AI model, when both use the same one: a provider's rate limi
 tasks that run while you're likely to be talking to Max, pick a different model for **Scheduled tasks**
 (Settings → AI models) or in the task itself.
 
+### "It says it emailed, but nothing arrived"
+
+An email only counts as sent when the email app positively confirms it; an answer with no error but no
+confirmation is recorded as *not confirmed*, with what the app said, and retried. Press **Send a test
+email** on the task: Max sends a short test to you and to the task's other addresses straight away and
+shows, for each, whether the app confirmed it and exactly what it answered. If the test arrives, the
+app answers in a way Max doesn't recognise yet; if it doesn't, check the spam folder, then press
+**Reconnect** next to Gmail or Outlook under Connections → Apps. The log (Settings → Log) keeps the
+same answers.
+
 ### If a task fails
 
 Every run ends in one of three states, shown on the task's card, on Home under *Needs your attention*,

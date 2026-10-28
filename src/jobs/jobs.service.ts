@@ -11,7 +11,8 @@ import { label, ModesService, VaultName, VAULTS } from '../memory/modes.service'
 import { MemoryService } from '../memory/memory.service';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { Assignment, ModelsService } from '../models/models.service';
-import { sendPersonalEmail, selfEmailTool } from '../mcp/self-email';
+import { looksLikeHtml, sendPersonalEmail, selfEmailTool } from '../mcp/self-email';
+import { htmlToText } from '../mcp/compact';
 import { daysText, local } from '../routines/routines.service';
 import { dismissCard, showCard } from '../face/screen';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -405,30 +406,43 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     const attempt = async (channel: string, label: string, kind: 'email' | 'whatsapp', send: () => Promise<unknown>) => {
       if (!want(channel)) return;
       try {
-        await send();
+        const r = (await send()) as { confirmed?: boolean; said?: string; via?: string } | undefined;
+        if (r && r.confirmed === false) {
+          // the app returned no error but didn't confirm either: not counted as sent, and the user sees what it said
+          run.failed.push(`${label} (not confirmed by ${r.via ?? 'the app'})`);
+          run.problems.push({ what: `The email to ${label.replace(/^email( to )?/, '') || 'you'} wasn't confirmed by ${r.via ?? 'the email app'}: it answered "${r.said ?? ''}"`, fix: 'Press "Send a test email" on the task to see the full answer. If the test arrives, the app answers in a way Max doesn\'t recognise yet: send me that answer. If not, press Reconnect next to Gmail or Outlook under Connections → Apps.', retry: true, channel });
+          this.log.warn(`"${j.name}": ${label} not confirmed by ${r.via}: ${r.said}`);
+          return;
+        }
         run.sent.push(label);
-        this.log.log(`"${j.name}": sent by ${label}`);
+        this.log.log(`"${j.name}": sent by ${label}${r?.via ? ` (${r.via}: ${r.said})` : ''}`);
       } catch (err) {
         run.failed.push(`${label} (${(err as Error).message})`);
         run.problems.push({ ...diagnose(kind, (err as Error).message), channel });
         this.log.warn(`"${j.name}": not sent by ${label}: ${(err as Error).message}`);
       }
     };
-    if (j.email) await attempt('email', 'email', 'email', () => sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text));
+    // A result written as HTML (the brief asked for a nice email) goes as HTML by email; everywhere else as plain text.
+    const html = looksLikeHtml(run.text);
+    const plain = html ? htmlToText(run.text) : run.text;
+    if (j.email) await attempt('email', 'email', 'email', () => sendPersonalEmail(this.mcp, this.health?.emailTo, `Max: ${title}`, run.text, html));
     if (j.whatsapp) {
       await attempt('whatsapp', 'WhatsApp', 'whatsapp', async () => {
         if (!this.whatsapp?.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
-        await this.whatsapp.sendToSelf(`${title}\n\n${run.text}`);
+        await this.whatsapp.sendToSelf(`${title}\n\n${plain}`);
       });
     }
     // Other people, chosen (typed) on the control panel: never anyone the user didn't pick there, and only a real result.
+    if (!run.ok && (j.emailTo.length || j.whatsappTo.length) && !only) {
+      run.problems.push({ what: `Not sent to ${[...j.emailTo, ...j.whatsappTo.map((n) => this.whatsapp?.allowedPeople.find((a) => a.number === n)?.name ?? n)].join(', ')} because the task didn't finish properly`, fix: 'Other people only get a result that worked out. Once the task runs cleanly (✓ Done), they receive it.', retry: false });
+    }
     if (run.ok) {
-      for (const to of j.emailTo) await attempt(`email:${to}`, `email to ${to}`, 'email', () => sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text));
+      for (const to of j.emailTo) await attempt(`email:${to}`, `email to ${to}`, 'email', () => sendPersonalEmail(this.mcp, to, `${j.name} (from Max) · ${title.split(' · ')[1]}`, run.text, html));
       for (const number of j.whatsappTo) {
         const who = this.whatsapp?.allowedPeople.find((a) => a.number === number)?.name ?? number;
         await attempt(`wa:${number}`, `WhatsApp to ${who}`, 'whatsapp', async () => {
           if (!this.whatsapp) throw new Error('WhatsApp isn\'t set up');
-          await this.whatsapp.sendToAllowed(number, `${j.name} (from Max)\n\n${run.text}`);
+          await this.whatsapp.sendToAllowed(number, `${j.name} (from Max)\n\n${plain}`);
         });
       }
     }
@@ -458,12 +472,35 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
         icon: run.status === 'ok' ? '🗓️' : '⚠️',
         title: j.name,
         subtitle: run.status === 'ok' ? `${run.seconds}s · ${run.actions} action${run.actions === 1 ? '' : 's'}` : run.status === 'partial' ? 'Done, but not everything was sent' : 'Did not work out',
-        body: (run.problems.length ? `${run.problems.map((p) => `${p.what}: ${p.fix}`).join('\n')}\n\n` : '') + run.text.slice(0, 1500),
+        body: (run.problems.length ? `${run.problems.map((p) => `${p.what}: ${p.fix}`).join('\n')}\n\n` : '') + (looksLikeHtml(run.text) ? htmlToText(run.text) : run.text).slice(0, 1500),
         actions: [{ id: 'ok', label: 'OK', style: 'primary' }],
         ttlMs: CARD_MS,
       },
       { ok: () => dismissCard(id) },
     );
+  }
+
+  /**
+   * A short test email to the user and the task's other addresses, now, with what the email app
+   * answered for each: the quickest way to see why an email "was sent" but never arrived.
+   */
+  async testEmail(id: string): Promise<string> {
+    const j = this.state.jobs.find((x) => x.id === id);
+    if (!j) return 'That scheduled task no longer exists.';
+    const targets = [...(this.health?.emailTo ? [this.health.emailTo] : []), ...j.emailTo];
+    if (!targets.length) return 'No addresses to test: set yours under Health → Plans, or add some in the task\'s settings.';
+    const lines: string[] = [];
+    for (const to of targets) {
+      try {
+        const r = await sendPersonalEmail(this.mcp, to, `Max: test email for "${j.name}"`, `This is a test from Max's scheduled task "${j.name}", sent ${new Date().toLocaleString('en-GB')}. If you can read this, email delivery works.`);
+        lines.push(`${to}: ${r.confirmed ? 'sent' : 'NOT confirmed'} by ${r.via}; it answered: ${r.said}`);
+        this.log.log(`Test email to ${to}: ${r.confirmed ? 'sent' : 'not confirmed'} (${r.via}: ${r.said})`);
+      } catch (err) {
+        lines.push(`${to}: failed: ${(err as Error).message}`);
+        this.log.warn(`Test email to ${to} failed: ${(err as Error).message}`);
+      }
+    }
+    return `Test emails: ${lines.join(' · ')}`;
   }
 
   // ---------- Voice ----------

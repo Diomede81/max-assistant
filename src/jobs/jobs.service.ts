@@ -61,6 +61,8 @@ export interface Job {
   retryAt?: number;
   /** The latest results, newest first. */
   runs: JobRun[];
+  /** Pages you kept from earlier runs (the control panel): read first next time, and allowed like links in the brief. */
+  sources?: string[];
 }
 
 export interface JobRun {
@@ -78,6 +80,8 @@ export interface JobRun {
   problems: Problem[];
   /** 1 for the scheduled run, 2 and 3 for the retries. */
   attempt: number;
+  /** The pages this run read, for keeping as sources. */
+  pages?: string[];
 }
 
 /** Something that went wrong in a run: what, how to fix it, and whether trying again may help. */
@@ -196,6 +200,16 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
   // ---------- Changing ----------
 
   /** Creates or updates a task from the control panel or by voice. Returns a message. */
+  /** Keeps pages from a run as the task's sources (or forgets them all): chosen on the control panel. */
+  setSources(id: string, urls: string[]): string {
+    const j = this.state.jobs.find((x) => x.id === id);
+    if (!j) return 'That task is no longer there.';
+    const clean = [...new Set(urls.map((u) => u.trim()).filter((u) => /^https?:\/\/\S+$/.test(u)))].slice(0, 20);
+    j.sources = clean.length ? clean : undefined;
+    this.persist();
+    return clean.length ? `${j.name} now reads ${clean.length} kept page${clean.length === 1 ? '' : 's'} first.` : `${j.name} will search afresh next time.`;
+  }
+
   save(input: JobInput, id?: string): string {
     const existing = id ? this.state.jobs.find((j) => j.id === id) : undefined;
     if (id && !existing) return 'That scheduled task no longer exists.';
@@ -332,7 +346,9 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     this.persist();
     try {
       const effort = EFFORTS[j.effort] ?? EFFORTS.normal;
-      const r = await agent.work(j.brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, webBudget: effort.web, written: true, background: true, label: `scheduled task "${j.name}"` });
+      const sources = (j.sources ?? []).filter(Boolean);
+      const brief = sources.length ? `${j.brief}\n\nPages to read first (kept from earlier runs; search only for what they don't cover):\n${sources.map((u) => `- ${u}`).join('\n')}` : j.brief;
+      const r = await agent.work(brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, webBudget: effort.web, written: true, background: true, label: `scheduled task "${j.name}"` });
       const run: JobRun = {
         at: new Date().toISOString(),
         seconds: Math.round((Date.now() - started) / 1000),
@@ -344,6 +360,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
         failed: [],
         problems: [],
         attempt,
+        pages: r.pages,
       };
       if (r.error) run.problems.push(diagnose('model', r.error));
       else if (r.timedOut) run.problems.push(diagnose('time', `${effort.label.toLowerCase()} effort, ${Math.round(effort.totalMs / 60000)} min`));

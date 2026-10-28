@@ -738,6 +738,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         const created = !id && ok ? js.jobs[js.jobs.length - 1] : undefined;
         return back(msg, ok, created ? `job-${created.id}` : id ? `job-${id}` : 'job-new');
       }
+      case 'sources':
+        return back(js.setSources(job!.id, f.getAll('url')));
       case 'test-email':
         return back(await js.testEmail(job!.id));
       case 'run':

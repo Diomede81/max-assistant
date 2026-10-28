@@ -38,7 +38,8 @@ export interface PanelJob {
   running: boolean;
   lastError?: string;
   retryAt?: number;
-  runs: { at: string; seconds: number; ok: boolean; status: 'ok' | 'partial' | 'failed'; text: string; actions: number; sent: string[]; failed: string[]; problems: { what: string; fix: string; retry: boolean }[]; attempt: number }[];
+  runs: { at: string; seconds: number; ok: boolean; status: 'ok' | 'partial' | 'failed'; text: string; actions: number; sent: string[]; failed: string[]; problems: { what: string; fix: string; retry: boolean }[]; attempt: number; pages?: string[] }[];
+  sources?: string[];
 }
 
 type Esc = (s: unknown) => string;
@@ -55,6 +56,23 @@ export function jobsSection(j: PanelJobs, esc: Esc): string {
 ${j.list.length ? '' : '<p class="empty">No scheduled tasks yet: create your first below.</p>'}</section>
 ${cards}
 <section id="job-new"><h2>New scheduled task</h2>${jobForm(undefined, j, esc)}</section>`;
+}
+
+/** The pages the task reads first (kept by you), and the pages the last run used, each with a tick to keep it. */
+function sourcesBlock(x: PanelJob, esc: Esc): string {
+  const host = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+  const kept = x.sources ?? [];
+  const used = (x.runs[0]?.pages ?? []).filter((u) => !kept.includes(u));
+  if (!kept.length && !used.length) return '';
+  const keptList = kept.length
+    ? `<p class="meta"><b>Reads first:</b> ${kept.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(host(u))}</a>`).join(' · ')}</p>
+<form class="addfact" method="post" action="/jobs/sources"><input type="hidden" name="id" value="${esc(x.id)}">${kept.map((u) => `<label class="check"><input type="checkbox" name="url" value="${esc(u)}" checked> ${esc(host(u))}</label>`).join('')}<button class="btn secondary small" type="submit">Keep only the ticked</button></form>`
+    : '';
+  const usedList = used.length
+    ? `<form class="addfact wrap" method="post" action="/jobs/sources"><input type="hidden" name="id" value="${esc(x.id)}">${kept.map((u) => `<input type="hidden" name="url" value="${esc(u)}">`).join('')}<span class="meta"><b>Pages the last run used:</b></span>${used.map((u) => `<label class="check"><input type="checkbox" name="url" value="${esc(u)}"> <a href="${esc(u)}" target="_blank" rel="noopener">${esc(host(u))}</a></label>`).join('')}<button class="btn secondary small" type="submit">Keep the ticked as its pages</button></form>
+<p class="meta">Kept pages are read first next time (and may be opened like links in the brief); the task still searches for what they don't cover. Untick them all to search afresh.</p>`
+    : '';
+  return `<div class="sources">${keptList}${usedList}</div>`;
 }
 
 function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
@@ -74,6 +92,7 @@ function jobCard(x: PanelJob, j: PanelJobs, esc: Esc): string {
   return `<section id="job-${esc(x.id)}"><h2>${esc(x.name)} ${status}</h2>
 <p class="meta">${esc(x.scheduleText)} · ${esc(x.effort)} effort · ${esc(x.modelText)} · result ${esc(to)} · ${esc(LIST[x.vault]?.split(' (')[0] ?? x.vault)}</p>
 <p>${esc(x.brief)}</p>
+${sourcesBlock(x, esc)}
 ${x.running ? '<span data-wait></span>' : ''}${latest}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/jobs/run"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn" type="submit" ${x.running ? 'disabled' : ''}>Run now</button></form>

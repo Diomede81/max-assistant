@@ -14,9 +14,12 @@ can type an entry, pick a mood, and add to earlier days.
 
 ## What Max adds by himself
 
-- **Meetings he attended** for you (Meetings): title, how long, and the gist once he has it.
-- **Your calendar events**, read each evening (default 21:00) from the connected calendar app, in the
-  background, one line per event. Needs a calendar under Connections → Apps.
+- **Your calendar events, personal and work**, read each evening (default 21:00) straight from every
+  connected calendar (Connections → Apps: the personal set and the work set), one line per event, work
+  ones marked "Work event". Read whatever mode Max is in at that hour: the work calendar is read even
+  though work mode is over by the evening. Nothing is left to the AI to find: Max calls the calendar's own
+  "view a day" action, and the AI only tidies the answer into lines.
+- **Meetings he joined** for you (Meetings): title, how long, and the gist once he has it.
 
 Both can be switched off under Journal → Settings.
 

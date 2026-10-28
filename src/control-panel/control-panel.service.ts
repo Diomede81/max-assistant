@@ -619,6 +619,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             whatsapp: f.get('whatsapp') === 'yes',
             meals: f.getAll('meals') as MealName[],
             daily: f.get('daily') === 'yes',
+            dailyTime: get('dailyTime') || undefined,
             ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
           },
           id || undefined,
@@ -633,6 +634,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       }
       case 'plan-toggle':
         return back(h.togglePlan(get('id')), true, `plan-${get('id')}`);
+      case 'plan-today':
+        return back(await h.sendToday(get('id')), true, `plan-${get('id')}`);
       case 'plan-delete':
         if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, `plan-${get('id')}`);
         return back(h.deletePlan(get('id')), true, 'health-plans');

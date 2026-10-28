@@ -225,6 +225,37 @@ export function recipeText(meal: string, r: Recipe): string {
     .join('\n');
 }
 
+/** A recipe as a WhatsApp message: bold name, the ingredients, then the steps numbered one per line. */
+export function recipeWhatsApp(meal: string, r: Recipe): string {
+  return [
+    `*${meal}: ${r.name}*`,
+    [r.minutes ? `${r.minutes} min` : '', `serves ${r.servings}`, r.kcal ? `${r.kcal} kcal each` : '', r.protein ? `${r.protein} g protein` : ''].filter(Boolean).join(' · '),
+    '',
+    '*Ingredients*',
+    ...r.ingredients.map((i) => `• ${i}`),
+    '',
+    '*Method*',
+    ...r.steps.map((st, i) => `${i + 1}. ${st}`),
+    r.tip ? `\n_Tip: ${r.tip}_` : '',
+  ]
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Ingredients a supermarket search would understand (a quantity first, a product name), and steps worth
+ * following (enough of them, not one-word): what's off is sent back to the model to fix.
+ */
+export function checkFormat(r: Recipe): string[] {
+  const out: string[] = [];
+  const vague = r.ingredients.filter((i) => !/^\s*(\d|½|¼|¾|a |an |one |two |three |half |pinch|handful|bunch|splash|drizzle|juice of|zest of)/i.test(i) || /\b(some|of choice|to taste|as needed|your favourite|any)\b/i.test(i));
+  if (vague.length) out.push(`${r.name}: ingredient${vague.length === 1 ? '' : 's'} without a clear quantity or product: ${vague.slice(0, 3).map((v) => `"${v}"`).join(', ')}`);
+  if (r.steps.length < 3) out.push(`${r.name}: only ${r.steps.length} step${r.steps.length === 1 ? '' : 's'}: write the method out, one action per step`);
+  else if (r.steps.filter((st) => st.split(/\s+/).length < 3).length > 1) out.push(`${r.name}: some steps are too short to follow`);
+  return out;
+}
+
 export function dayText(d: MealDay): string {
   return MEALS.filter((m) => d.meals[m])
     .map((m) => recipeText(cap(m), d.meals[m]!))
@@ -261,4 +292,4 @@ export function emailText(p: MealPlan, items: ShopItem[]): string {
     .join('\n\n');
 }
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -97,6 +97,7 @@ export interface PanelHealthPlan {
   latest?: { at: string; text: string; sent: string[]; failed: string[]; used?: { url: string; title: string }[] };
   meals?: string[];
   daily?: boolean;
+  dailyTime?: string;
 }
 
 type Esc = (s: unknown) => string;
@@ -244,7 +245,7 @@ function planCard(p: PanelHealthPlan, esc: Esc): string {
 ${p.lastError && !p.running ? `<p class="hint">Last time: ${esc(p.lastError)}</p>` : ''}
 ${p.running ? '<span data-wait></span>' : ''}${latest}
 <div class="acts" style="margin-top:12px">
-<form method="post" action="/health/plan-run"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn" type="submit" ${p.running ? 'disabled' : ''}>Make now</button></form>
+<form method="post" action="/health/plan-run"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn" type="submit" ${p.running ? 'disabled' : ''}>Make now</button></form>${p.part === 'diet' && p.span === 'week' && p.daily ? `<form method="post" action="/health/plan-today"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">Send today's recipes</button></form>` : ''}
 <form method="post" action="/health/plan-toggle"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">${p.enabled ? 'Pause' : 'Resume'}</button></form></div>
 <details><summary class="meta">Settings</summary>${planForm(p, esc)}
 <form class="addfact danger" method="post" action="/health/plan-delete"><input type="hidden" name="id" value="${esc(p.id)}"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this plan</label><button class="btn secondary" type="submit">Delete</button></form></details>
@@ -338,7 +339,7 @@ function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
 <label class="check"><input type="checkbox" name="email" value="yes" ${p?.email ?? true ? 'checked' : ''}> Email it to me</label>
 <label class="check"><input type="checkbox" name="whatsapp" value="yes" ${p?.whatsapp ? 'checked' : ''}> WhatsApp it to me</label></div>
 <div class="addfact wrap"><span class="meta">For a weekly meal plan:</span>${['breakfast', 'lunch', 'dinner'].map((m) => `<label class="check"><input type="checkbox" name="meals" value="${m}" ${(p?.meals?.length ? p.meals : ['lunch', 'dinner']).includes(m) ? 'checked' : ''}> ${m.charAt(0).toUpperCase() + m.slice(1)}</label>`).join('')}
-<label class="check"><input type="checkbox" name="daily" value="yes" ${p?.daily ?? true ? 'checked' : ''}> Each morning, WhatsApp me that day's recipes</label></div>
+<label class="check"><input type="checkbox" name="daily" value="yes" ${p?.daily ?? true ? 'checked' : ''}> Each day, WhatsApp me that day's recipes step by step at</label><input type="time" name="dailyTime" value="${esc(p?.dailyTime ?? '12:00')}"></div>
 <div class="days">${DAY.map((d, i) => `<label class="day"><input type="checkbox" name="days" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <p class="meta">Days: when it's made and sent. For a weekly plan, the first day ticked (e.g. Sunday evening or Monday morning).</p>
 ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${p.enabled ? 'checked' : ''}> On</label>` : ''}

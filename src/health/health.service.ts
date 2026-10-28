@@ -15,7 +15,7 @@ import { pageLinks, pageText } from '../routines/sources';
 import { GROCERS, GrocerId, money, packsNeeded, pence, Product, productsFrom, searchWords } from './grocers';
 import { describeNow } from '../actions/clock';
 import {
-  addDays, checkRecipe, ingredientsOf, dayText, DIETS, Eater, emailText, Goal, GOALS, MealName, MealPlan, MEALS, overview, parsePlan, recipeText, ShopItem, shoppingText, targets,
+  addDays, cap, checkFormat, checkRecipe, ingredientsOf, dayText, DIETS, Eater, emailText, Goal, GOALS, MealDay, MealName, MealPlan, MEALS, overview, parsePlan, recipeText, recipeWhatsApp, ShopItem, shoppingText, targets,
 } from './meals';
 
 /** The parts of the Health section: what each one tracks. */
@@ -58,8 +58,9 @@ export interface Plan {
   whatsapp: boolean;
   /** Meal plans: which meals (default lunch and dinner). */
   meals?: MealName[];
-  /** A weekly meal plan: also send each day's recipes in the morning (WhatsApp), at the plan's time. */
+  /** A weekly meal plan: also send each day's recipes on WhatsApp, step by step, at `dailyTime` (default 12:00). */
   daily?: boolean;
+  dailyTime?: string;
   lastDailyDay?: string;
   enabled: boolean;
   lastRunDay?: string;
@@ -633,6 +634,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       whatsapp: Boolean(input.whatsapp),
       meals: part === 'diet' ? (input.meals ?? []).filter((m) => MEALS.includes(m)).sort((a, b) => MEALS.indexOf(a) - MEALS.indexOf(b)) : undefined,
       daily: part === 'diet' && span === 'week' ? Boolean(input.daily) : undefined,
+      dailyTime: part === 'diet' && span === 'week' ? (/^\d{2}:\d{2}$/.test(input.dailyTime ?? '') ? input.dailyTime : existing?.dailyTime ?? '12:00') : undefined,
       enabled: input.enabled ?? existing?.enabled ?? true,
     };
     if (existing && existing.time !== plan.time) plan.lastRunDay = undefined;
@@ -673,21 +675,46 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     const now = local();
     // a weekly meal plan's recipes for the day, each morning
     for (const p of this.data.plans) {
-      if (!p.enabled || !p.daily || p.part !== 'diet' || p.span !== 'week' || p.lastDailyDay === now.date || now.time < p.time || this.running.has(p.id)) continue;
+      if (!p.enabled || !p.daily || p.part !== 'diet' || p.span !== 'week' || p.lastDailyDay === now.date || now.time < (p.dailyTime ?? '12:00') || this.running.has(p.id)) continue;
       const day = this.data.meals?.planId === p.id ? this.data.meals.days.find((d) => d.date === now.date) : undefined;
       if (!day) continue;
       p.lastDailyDay = now.date;
       this.save();
-      void this.whatsapp
-        ?.sendToSelf(`Today's meals (${day.day})\n\n${dayText(day)}`)
-        .then(() => this.log.log(`${p.name}: today's recipes sent`))
-        .catch((err) => this.log.warn(`${p.name}: today's recipes not sent (${(err as Error).message})`));
+      void this.sendDay(p, day);
     }
     for (const p of this.data.plans) {
       if (!p.enabled || this.running.has(p.id) || p.lastRunDay === now.date) continue;
       if (!p.days.includes(now.weekday) || now.time < p.time) continue;
       void this.run(p.id);
     }
+  }
+
+  /** Today's recipes on WhatsApp: one message per meal, ingredients then numbered steps (long ones arrive in parts). */
+  private async sendDay(p: Plan, day: MealDay): Promise<void> {
+    if (!this.whatsapp) return;
+    try {
+      const names = MEALS.filter((m) => day.meals[m]).map((m) => `${m}: ${day.meals[m]!.name}`);
+      await this.whatsapp.sendToSelf(`*Today's meals* (${day.day})\n${names.map((n) => `• ${n}`).join('\n')}`);
+      for (const m of MEALS) {
+        const r = day.meals[m];
+        if (r) await this.whatsapp.sendToSelf(recipeWhatsApp(cap(m), r));
+      }
+      this.log.log(`${p.name}: today's recipes sent (${names.length} meal${names.length === 1 ? '' : 's'})`);
+    } catch (err) {
+      this.log.warn(`${p.name}: today's recipes not sent (${(err as Error).message})`);
+    }
+  }
+
+  /** Sends today's recipes now (the control panel's "Send today's recipes" button). */
+  async sendToday(id: string): Promise<string> {
+    const p = this.data.plans.find((x) => x.id === id);
+    if (!p) return 'That plan no longer exists.';
+    const today = local().date;
+    const day = this.data.meals?.planId === p.id ? this.data.meals.days.find((d) => d.date === today) : undefined;
+    if (!day) return 'No meals planned for today in this plan: make the plan first (Make it now).';
+    if (!this.whatsapp?.canMessageSelf) return 'WhatsApp isn\'t linked.';
+    await this.sendDay(p, day);
+    return 'Today\'s recipes sent on WhatsApp.';
   }
 
   /** Makes the plan now and sends it as set up. Returns the plan's text (or why not). */
@@ -783,7 +810,8 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       `You are Max's nutrition coach. Plan ${meals.join(' and ')} ${dayCount === 1 ? `for today, ${today.date} (${DAYS[today.weekday - 1]})` : `for the 7 days starting ${today.date} (${DAYS[today.weekday - 1]})`}, for ${servings} ${servings === 1 ? 'person' : 'people'}.`,
       `Everyone eats the same meals, so every recipe must suit EVERYONE below. ${strict}${vegan}`,
       `Goal: ${goal}.${t.kcal ? ` The user needs about ${t.kcal} kcal and ${t.protein} g of protein a day: aim for about ${Math.round((t.kcal * (meals.includes('breakfast') ? 0.85 : 0.65)) / meals.length)} kcal and ${Math.round(((t.protein ?? 0) * 0.75) / meals.length)} g protein per meal per person.` : ''} ${prof.goal === 'muscle' ? 'High protein in every meal (beans, lentils, tofu, tempeh, eggs, Greek yoghurt, cottage cheese, edamame, seitan… within the diets).' : prof.goal === 'lose' ? 'Filling and lower in calories: plenty of vegetables, pulses and protein, sensible portions.' : ''}`,
-      'Practical for a busy home: weekday dinners within 40 minutes, lunches quick or made from the previous dinner\'s leftovers (say so), ingredients reused across the week to cut waste and cost, seasonal UK produce, normal UK supermarket ingredients. Varied: no recipe twice, different cuisines.',
+      'Practical for a busy home: weekday dinners within 40 minutes, lunches quick or made from the previous dinner\'s leftovers (say so), ingredients reused across the week to cut waste and cost, seasonal UK produce. Varied: no recipe twice, different cuisines.',
+      'Every ingredient line starts with its quantity and names the product as a UK supermarket sells it, so it can be typed into a supermarket search: "400 g tin chopped tomatoes", "500 g chicken thigh fillets", "2 red onions", "1 tbsp olive oil", "150 g Greek yoghurt". Never vague ("some herbs", "vegetables of choice"). Steps: numbered, one action each, with times and temperatures ("Roast at 200°C for 25 min"), 4 to 10 steps.',
       p.sources.length ? 'Use the recipe websites below where they fit (and their recipes\' details); name the site in "source".' : '',
       'Reply with JSON only, no other text:',
       `{"title":"…","notes":"one or two sentences on the week","days":[{${meals.map((m) => `"${m}":{"name":"…","servings":${servings},"minutes":30,"kcal":550,"protein":30,"ingredients":["quantities for ${servings}, e.g. 400 g tin chickpeas"],"steps":["short steps"],"tip":"optional (e.g. make double for tomorrow\'s lunch)","source":"optional site"}`).join(',')}}${dayCount === 1 ? '' : ', … 7 days in order'}],"shopping":[{"aisle":"Fruit & veg","items":["2 red onions", …]}, …],"cost":38}`,
@@ -806,7 +834,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       if (!plan) {
         if (attempt === 1) throw new Error('the AI model\'s meal plan couldn\'t be read (not the expected format)');
       } else {
-        problems = plan.days.flatMap((d) => Object.values(d.meals).flatMap((r) => checkRecipe(r!, eaters)));
+        problems = plan.days.flatMap((d) => Object.values(d.meals).flatMap((r) => [...checkRecipe(r!, eaters), ...checkFormat(r!)]));
         if (!problems.length || attempt === 1) break;
         this.log.warn(`${p.name}: ${problems.length} recipe problem(s) with the dietary requirements; asking for a fix`);
       }
@@ -936,7 +964,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
         // a week of recipes is too long for one WhatsApp: the week at a glance and the shopping list (recipes by email, on the panel, or each morning)
         const m = this.data.meals;
         const body = p.part === 'diet' && p.span === 'week' && m?.planId === p.id
-          ? `${title}\n\n${m.warnings.length ? `Please check: ${m.warnings.join('; ')}\n\n` : ''}${overview(m)}\n\nShopping list\n${shoppingText(this.shopping)}${this.basketText() ? `\n\nCost: ${this.basketText()}.` : ''}\n\n${p.daily ? 'Each morning I\'ll send you that day\'s recipes.' : 'Ask me for any recipe ("what\'s for dinner tonight?").'}`
+          ? `${title}\n\n${m.warnings.length ? `Please check: ${m.warnings.join('; ')}\n\n` : ''}${overview(m)}\n\nShopping list\n${shoppingText(this.shopping)}${this.basketText() ? `\n\nCost: ${this.basketText()}.` : ''}\n\n${p.daily ? `Each day at ${p.dailyTime ?? '12:00'} I'll send you that day's recipes, step by step.` : 'Ask me for any recipe ("what\'s for dinner tonight?").'}`
           : `${title}\n\n${text}`;
         await this.whatsapp.sendToSelf(body);
         entry.sent.push('WhatsApp');

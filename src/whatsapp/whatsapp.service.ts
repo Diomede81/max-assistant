@@ -446,6 +446,24 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     this.log.log('Sent a WhatsApp message to you');
   }
 
+  /** The people Max may send to (chosen on the control panel), for other pages to offer. */
+  get allowedPeople(): { name: string; number: string }[] {
+    return this.allowed.map((a) => ({ name: a.name, number: a.number }));
+  }
+
+  /**
+   * A message to someone on the allowed list, chosen by number on the control panel (e.g. a scheduled
+   * task's result for Magda). Never to anyone off the list. Returns their name.
+   */
+  async sendToAllowed(number: string, text: string): Promise<string> {
+    if (!this.sock || this.state !== 'connected') throw new Error('WhatsApp isn\'t linked');
+    const a = this.allowed.find((x) => x.number === normaliseNumber(number));
+    if (!a) throw new Error(`${showNumber(number)} isn't on the allowed list any more`);
+    await this.sock.sendMessage(`${a.number}@s.whatsapp.net`, { text: `${MAX_MARK}${text}`.slice(0, 4000) });
+    this.log.log(`Sent a WhatsApp message to ${a.name}`);
+    return a.name;
+  }
+
   /**
    * Chatting with Max in your own chat: what you write there (from your phone or another device) is
    * answered by this, and the answer is sent back to the same chat. Set by WhatsAppChatService.

@@ -19,9 +19,9 @@ export function selfEmailTool(mcp?: McpServersService): { server: Server; tool: 
   return undefined;
 }
 
-/** Emails `to` (the user's own address, set on the control panel). Throws with a plain reason if it can't. */
-export async function sendSelfEmail(mcp: McpServersService | undefined, to: string | undefined, subject: string, body: string): Promise<void> {
-  if (!to) throw new Error('no email address set on the control panel');
+/** Emails `to` through the personal account: the user's own address, or someone they chose on the control panel. Throws with a plain reason if it can't. */
+export async function sendPersonalEmail(mcp: McpServersService | undefined, to: string | undefined, subject: string, body: string): Promise<void> {
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new Error(to ? `${to} doesn't look like an email address` : 'no email address set on the control panel');
   const found = selfEmailTool(mcp);
   if (!found) throw new Error('no email account connected (Connections → Apps: Gmail or Outlook)');
   const props = Object.keys((found.tool.type === 'function' ? (found.tool.function.parameters as { properties?: Record<string, unknown> })?.properties : undefined) ?? {});

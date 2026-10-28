@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_CONFIG, AppConfig } from '../config';
-import { SealedStore } from '../memory/sealed-store';
+import { memorySecret, SealedStore } from '../memory/sealed-store';
 
 interface Saved {
   /** scrypt hash of the code, with its salt (the code itself is never stored). */
@@ -39,7 +39,7 @@ export class LockService extends EventEmitter implements OnModuleInit {
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
     super();
-    this.store = new SealedStore(cfg.memory.dir, 'startup-code');
+    this.store = new SealedStore(cfg.memory.dir, 'startup-code', memorySecret(cfg));
   }
 
   onModuleInit(): void {
@@ -189,5 +189,5 @@ export class LockService extends EventEmitter implements OnModuleInit {
 }
 
 function hashOf(code: string, salt: string): string {
-  return scryptSync(code, salt, 32, { N: 16384, r: 8, p: 1 }).toString('hex');
+  return scryptSync(code, salt, 32, { N: 131072, r: 8, p: 1 }).toString('hex');
 }

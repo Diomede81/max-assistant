@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { APP_CONFIG, AppConfig } from '../config';
 import { HaSocket } from './ha-socket';
 
@@ -45,7 +46,8 @@ export interface HomeOverview {
   /** The full Home Assistant, for anything the simple page doesn't do. */
   url: string;
   /** The account Max created for it (shown under "Advanced"). */
-  login?: { username: string; password: string };
+  /** Max made the account: the password is shown on request (POST /home/password/show), never here. */
+  login?: { username: string };
   areas: { id: string; name: string }[];
   /** My dashboard: the devices you starred, in your order (they also come first everywhere else). */
   favourites?: string[];
@@ -139,6 +141,7 @@ const DISCOVERY = new Set(['zeroconf', 'ssdp', 'dhcp', 'homekit', 'bluetooth', '
 @Injectable()
 export class HomeService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Home');
+  private vault?: SealedStore<Saved>;
   private stateNow: HomeState = 'off';
   private message?: string;
   private saved: Saved = {};
@@ -328,11 +331,11 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     return body.access_token;
   }
 
-  /** Turns a short-lived sign-in into a 10-year token for Max. */
+  /** Turns a short-lived sign-in into a one-year token for Max (renewed from the saved login when it runs out). */
   private async keepToken(access: string): Promise<void> {
     const once = new HaSocket(this.base, () => access);
     try {
-      this.saved.token = await once.call<string>('auth/long_lived_access_token', { client_name: `Max (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`, lifespan: 3650 });
+      this.saved.token = await once.call<string>('auth/long_lived_access_token', { client_name: `Max (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`, lifespan: 365 });
       this.save();
     } finally {
       once.close();
@@ -418,22 +421,27 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     return this.socket;
   }
 
-  private get file(): string {
-    return join(this.cfg.memory.dir, 'home-assistant.json');
+  /** The account and token, encrypted on disk like everything else (data/home-assistant.vault). */
+  private get store(): SealedStore<Saved> {
+    return (this.vault ??= new SealedStore<Saved>(this.cfg.memory.dir, 'home-assistant', memorySecret(this.cfg)));
   }
 
   private load(): Saved {
     try {
-      return existsSync(this.file) ? (JSON.parse(readFileSync(this.file, 'utf8')) as Saved) : {};
-    } catch {
+      return this.store.load() ?? {};
+    } catch (err) {
+      this.log.error(`Could not read the saved Home Assistant login: ${(err as Error).message}`);
       return {};
     }
   }
 
   private save(): void {
-    mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(this.saved, null, 2), { mode: 0o600 });
-    chmodSync(this.file, 0o600);
+    this.store.save(this.saved).catch((err) => this.log.error(`Could not save the Home Assistant login: ${(err as Error).message}`));
+  }
+
+  /** The password of the account Max made, for the Devices page's Show/Copy buttons (asked for on purpose, not sent with every refresh). */
+  showPassword(): { username: string; password: string } | undefined {
+    return this.saved.username === 'max' && this.saved.password ? { username: 'max', password: this.saved.password } : undefined;
   }
 
   // ---------- the Devices page ----------
@@ -613,7 +621,7 @@ export class HomeService implements OnModuleInit, OnModuleDestroy {
     );
     return {
       ...base,
-      login: this.saved.username === 'max' && this.saved.password ? { username: 'max', password: this.saved.password } : undefined,
+      login: this.saved.username === 'max' && this.saved.password ? { username: 'max' } : undefined,
       areas: areas.map((a) => ({ id: a.area_id, name: a.name })).sort((a, b) => a.name.localeCompare(b.name)),
       devices: list,
       // As saved (a device hidden for now keeps its place); the page skips the ones it doesn't show.

@@ -198,7 +198,7 @@ export class SoulService implements OnModuleInit {
 
   private write(doc: SoulDoc, text: string): void {
     mkdirSync(dirname(this.file(doc)), { recursive: true });
-    writeFileSync(this.file(doc), text, 'utf8');
+    writeFileSync(this.file(doc), text, { encoding: 'utf8', mode: 0o600 });
     this.cache.delete(doc);
   }
 

@@ -96,6 +96,7 @@ Saturday".
 | Field | What to put |
 | --- | --- |
 | What to do | In full, as you'd say it to Max: what, where, which dates, what matters to you. The more you say, the better the result |
+| Links | A task may open the exact web addresses you type in the brief, and the links its own searches return. Naming a website is not enough: type the page's address. (A link can carry information out, so Max never opens one he built himself.) |
 | When | On chosen days of the week, once on a date (it switches itself off afterwards), or monthly on a day (the 31st = the month's last day); and the time |
 | Effort | **Quick** (a look-up, about a minute), **Normal** (a few steps, up to 4 minutes), **Thorough** (research and comparisons, up to 10 minutes) |
 | Model | The model for this task, from any provider you've set up (see [MODELS.md](MODELS.md)); leave it on *Scheduled tasks model* to use the one chosen in Settings → AI models |
@@ -103,7 +104,7 @@ Saturday".
 | Also send to | Other people: email addresses (sent from your own account), and WhatsApp contacts from the allowed list (Connections → WhatsApp). Only from the control panel, never by voice, and only when the task worked out |
 | Whose | Personal, Work or Household: a work task is only spoken about in work mode (it still runs and is sent) |
 
-Each task keeps its last five results on the control panel. Ask "what did the flight check find?" or
+Creating or deleting a task by voice needs your spoken yes, so nothing Max reads (an email, a page) can set one up. Each task keeps its last five results on the control panel. Ask "what did the flight check find?" or
 "run the energy task now". A task only finds out and reports: it never sends messages to anyone else,
 books, pays or deletes anything (those stay with you, in conversation, with your "yes"). If Max was
 off at the time, the task runs as soon as he's back, the same day.

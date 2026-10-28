@@ -7,7 +7,7 @@
 # he had forgotten everything. Nothing is deleted by this script.
 set -euo pipefail
 CURRENT=max-assistant_max-data
-peek() { docker run --rm -v "$1":/d:ro busybox sh -c 'cd /d && for f in *.vault *.json memory.key; do [ -f "$f" ] && echo "    $(date -r "$f" "+%Y-%m-%d %H:%M")  $(wc -c < "$f" | tr -d " ") bytes  $f"; done; true'; }
+peek() { docker run --rm -v "$1":/d:ro busybox sh -c 'cd /d && for f in *.vault *.json; do [ -f "$f" ] && echo "    $(date -r "$f" "+%Y-%m-%d %H:%M")  $(wc -c < "$f" | tr -d " ") bytes  $f"; done; true'; }
 
 if [[ "${1:-}" == "restore" ]]; then
   from="${2:?Give the name of the store to restore, from the list}"
@@ -23,7 +23,7 @@ if [[ "${1:-}" == "restore" ]]; then
   docker volume create "$CURRENT" >/dev/null
   docker run --rm -v "$from":/from:ro -v "$CURRENT":/to busybox sh -c 'cp -a /from/. /to/ && chown -R 1000:1000 /to'
   echo "Done. Start Max again (docker compose up -d) and check the control panel's Memory section."
-  echo "If memory.key is not in the store, MEMORY_KEY in .env must be the one used back then."
+  echo "The key is not copied: MEMORY_KEY in .env (or data/memory.key) must be the one used back then."
   exit 0
 fi
 

@@ -255,10 +255,21 @@ Use the control panel: Settings › Backup downloads one encrypted file with eve
 one into the `backups` folder every day. See [docs/BACKUP.md](BACKUP.md). By hand, the old way still works:
 
 ```bash
-docker compose cp max:/app/data ./max-memory-backup     # the encrypted vaults (keep memory.key elsewhere)
+docker compose cp max:/app/data ./max-memory-backup     # the encrypted vaults
+rm ./max-memory-backup/memory.key                        # keep the key apart from the data (see below)
 ```
 
-Restore by copying the folder back and restarting Max with the same key.
+Restore by copying the folder back and restarting Max with the same key: `MEMORY_KEY` in `.env`, or the
+`memory.key` file put back in `data/`.
+
+**Keep the key separate from the backup.** A backup that contains `memory.key` is readable by anyone who
+finds it. Copy the key somewhere else (a password manager is ideal) and delete it from the backup folder.
+
+**One key for everything.** The same key encrypts the memory vaults and every other store on the box
+(WhatsApp, health, people, journal, routines, Home Assistant's login, the start-up code…), whether or
+not memory is switched on. It is made on the first start, before anything is saved, so nothing is ever
+written in the clear. Any plain file left from an older version is taken into the vaults on the next
+start and removed.
 
 ## Troubleshooting
 

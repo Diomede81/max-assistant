@@ -32,6 +32,17 @@ reads the details back ("I'll email Anna saying you'll be 10 minutes late. Shall
 ahead?") and only acts after a clear "yes". This is enforced in Max's code, not left to
 the AI, so a misheard sentence can't send an email.
 
+The rule is "ask unless it's plainly just a look-up": an app's action whose name says it
+gets, lists, searches, finds or reads runs straight away; everything else (including
+actions Max can't tell apart) is asked about first. The yes has to come from the same
+conversation the question was asked in: a "yes" typed on WhatsApp never answers a question
+Max asked out loud, and the other way round. A task working on its own (a scheduled task,
+or "work on this") can't ask, so it can't do any of these at all: it leaves them for you.
+
+With real-time voice (OpenAI) and no `REALTIME_TRANSCRIBE_MODEL`, Max can't hear your
+actual words, only that you spoke after the question: set that model so the yes is checked
+properly (docs/REALTIME.md).
+
 ## Office 365 notes
 
 - Outlook covers **email and calendar** for Office 365 / Microsoft 365.

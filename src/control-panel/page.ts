@@ -9,6 +9,8 @@ import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 import { SPEAKER_TONES } from '../device/device.service';
 import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 import { HEALTH_CSS, healthParts, PanelHealth } from './health-page';
+import { backupSection } from './backup-page';
+import type { BackupStatus } from '../backup/backup.service';
 
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
@@ -64,6 +66,8 @@ export interface PanelData {
   models?: PanelModels;
   /** The start-up code (6 digits typed on Max's screen each time he starts). */
   lock?: { enabled: boolean; locked: boolean; canReset: boolean };
+  /** Backups (Settings › Backup). */
+  backup?: BackupStatus;
   /** The round screen's glance and photo frame (when the face is on). */
   screen?: PanelScreen;
   /** The tab to open first (overview, max, memory, projects, connections, settings). */
@@ -780,6 +784,11 @@ function attentionItems(d: PanelData): Attention[] {
   if (d.location && !d.location.place) out.push({ area: 'settings', href: '#location', where: 'Settings › Home location', text: '<b>Home location not set</b> · for local answers, trains and the weather' });
   if (d.updates?.onBox && d.updates.available?.behind && !d.updates.auto.auto) out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>An update is ready</b> · ${d.updates.available.behind} change${d.updates.available.behind === 1 ? '' : 's'} since your version` });
   if (d.updates?.state?.state === 'failed') out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>The last update failed</b> · ${esc(d.updates.state.message)}` });
+  if (d.backup) {
+    const days = d.backup.lastAt ? Math.floor((Date.now() - new Date(d.backup.lastAt).getTime()) / 86_400_000) : undefined;
+    if (d.backup.lastError) out.push({ area: 'settings', href: '#backup', where: 'Settings › Backup', text: `<b>The last backup failed</b> · ${esc(d.backup.lastError)}` });
+    else if (days === undefined || days >= 14) out.push({ area: 'settings', href: '#backup', where: 'Settings › Backup', text: days === undefined ? '<b>No backup yet</b> · download one, or keep a daily copy in the backups folder' : `<b>No backup for ${days} days</b> · everything Max keeps is only on this box` });
+  }
   return out;
 }
 
@@ -987,6 +996,7 @@ ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
       d.location && { id: 'location', label: 'Home location', html: locationSection(d.location) },
       d.models && { id: 'models', label: 'AI models', html: modelsSection(d.models, esc) },
       d.updates && { id: 'updates', label: 'Updates', html: updatesSection(d.updates) },
+      d.backup && { id: 'backup', label: 'Backup', html: backupSection(d.backup, esc) },
       d.log && { id: 'log', label: 'Log', html: logSection(d.log) },
       { id: 'security', label: 'Security', html: `<section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
 <div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>

@@ -17,6 +17,8 @@ services:
     volumes:
       - /run/user/${MAX_UID:-1000}/pulse:/run/user/${MAX_UID:-1000}/pulse
       - /run/max:/run/max
+      # Home Assistant's settings, read-only, so backups include them (docs/BACKUP.md).
+      - /var/lib/max/home-assistant:/app/home-assistant:ro
     ports: !override
       - "8099:8099"
       - "127.0.0.1:8098:8098"

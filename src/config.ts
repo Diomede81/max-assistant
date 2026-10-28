@@ -121,6 +121,8 @@ export interface AppConfig {
   controlPanel: { port: number; host: string; publicUrl: string; password: string; allowedHosts: string[] };
   /** Max's identity, story and personality (editable on the control panel). */
   soul: { file: string };
+  /** Backups (docs/BACKUP.md): the folder daily backups go into, and Home Assistant's folder when mounted (included in them). */
+  backup: { dir: string; homeDir: string };
   memory: {
     enabled: boolean;
     /** Folder holding the encrypted vaults (a Docker volume keeps it across restarts). */
@@ -339,6 +341,7 @@ export function loadConfig(): AppConfig {
       allowedHosts: (env.CONTROL_PANEL_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
     },
     soul: { file: env.SOUL_FILE || join(env.MEMORY_DIR || 'data', 'soul.md') },
+    backup: { dir: env.BACKUP_DIR || 'backups', homeDir: env.BACKUP_HOME_DIR || 'home-assistant' },
     memory: {
       enabled: env.MEMORY !== 'off',
       dir: env.MEMORY_DIR || 'data',

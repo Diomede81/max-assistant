@@ -259,6 +259,9 @@ set_env MAX_GID "$USER_GID"
 grep -q '^CONTROL_PANEL_URL=' .env || set_env CONTROL_PANEL_URL "http://$NAME.local:8099"
 grep -q '^PANEL_PASSWORD=.\+' .env || say "The control panel asks you to choose a password on your first visit (with a code shown on Max's screen)."
 grep -q '^COMPOSE_PROFILES=' .env || set_env COMPOSE_PROFILES max
+# Daily encrypted backups land here (docs/BACKUP.md); Max writes them as your user.
+install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" backups
+install -d -m 755 /var/lib/max/home-assistant
 # Home Assistant on the box: its own container (profile "home"), set up and connected by Max himself.
 OLD_HA_NOTE='# Not used while Home Assistant runs on the box: '
 PROFILES="$( (sed -n 's/^COMPOSE_PROFILES=//p' .env | tr ',' '\n' | grep -vx 'home' | grep -v '^$' | paste -sd, -) || true)"

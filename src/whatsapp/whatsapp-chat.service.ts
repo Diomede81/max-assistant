@@ -60,7 +60,7 @@ export class WhatsAppChatService implements OnModuleInit, OnModuleDestroy {
     this.history.push({ role: 'user', content: text });
     this.transcript.push({ who: 'user', text });
     // a typed answer to "Shall I go ahead?" counts, like a spoken one
-    this.tools.heard(text);
+    this.tools.heard(text, 'whatsapp');
     this.log.log(`Message from you (${text.split(/\s+/).length} words)`);
     let out = '';
     try {

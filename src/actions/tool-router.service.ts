@@ -27,7 +27,7 @@ import { ComposioService, SERVER } from '../composio/composio.service';
 import { EventEmitter } from 'node:events';
 import { Activity, describeActivity } from './activity';
 import { detail } from '../log-content';
-import { ConfirmationGate } from './confirmation';
+import { Channel, ConfirmationGate } from './confirmation';
 import type { TaskAgentService } from './task-agent.service';
 
 /** Emitted around every action: 'start' and 'end' (for the face and spoken "checking…" cues). */
@@ -38,7 +38,19 @@ export interface ActivityEvent extends Activity {
 }
 
 /** Actions that change something outside the house: sending, deleting, accepting... */
-const RISKY = /(SEND|REPLY|FORWARD|DELETE|REMOVE|TRASH|ARCHIVE|MOVE|CREATE|UPDATE|ACCEPT|DECLINE|CANCEL|POST|INVITE|SHARE)/i;
+/**
+ * A connected app's action that needs the user's yes: anything that plainly changes something (send, delete, create...),
+ * and anything that isn't plainly just looking something up (get, list, search...). An action Max can't tell apart is
+ * asked about rather than run, so a newly connected app can't do anything on its own that the user never saw.
+ */
+const WRITE_WORDS = new Set('send reply forward delete remove trash archive move create update accept decline cancel post invite share write edit patch put set add insert append upload publish merge approve pay transfer buy order book subscribe unsubscribe mark label assign unassign rename copy duplicate import execute run trigger start stop close open resolve complete submit schedule modify change clear reset revoke grant join leave kick ban mute unmute react pin unpin like follow unfollow batch bulk'.split(' '));
+const READ_WORDS = new Set('get list search find fetch read query retrieve lookup state status context check count describe view show preview history info details detail summary summarize summarise whoami me profile availability available suggest recommend translate convert calculate validate verify compare analyze analyse analysis extract parse render echo ping health capabilities schema metadata'.split(' '));
+export function isRiskyName(name: string): boolean {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((w) => WRITE_WORDS.has(w))) return true;
+  return !words.some((w) => READ_WORDS.has(w));
+}
+const RISKY = { test: isRiskyName };
 const CONFIRM_PARAM = 'confirmed';
 /** Home Assistant actions on locks, doors, the garage, gates or the alarm (reading their state is fine). */
 const HA_SENSITIVE = /(^|[^a-z])(lock|unlock|garage|gate|door|alarm|disarm)/i;
@@ -125,6 +137,11 @@ export class ToolRouterService {
   }
 
   onModuleInit(): void {
+    if (!this.wordsKnown) {
+      this.log.warn(
+        'Real-time voice without REALTIME_TRANSCRIBE_MODEL: Max cannot check the words of your "yes" before a risky action, only that you spoke. Set that model in .env (docs/REALTIME.md).',
+      );
+    }
     this.mcp.hide = (name, server) => this.isLockedWorkApp(name, server);
     this.mcp.serverHidden = (server) => this.isHiddenAccountSet(server);
   }
@@ -205,9 +222,9 @@ export class ToolRouterService {
     this.gate.userSpoke();
   }
 
-  /** What the user said (a sentence, or the part heard so far): the answer to a pending question. */
-  heard(text: string): void {
-    this.gate.heard(text);
+  /** What the user said (a sentence, or the part heard so far) and where (by voice, on WhatsApp, typed): the answer to a pending question. */
+  heard(text: string, channel: Channel = 'voice'): void {
+    this.gate.heard(text, channel);
     if (!text.trim()) return;
     const now = Date.now();
     this.recentWords = [...this.recentWords.filter((w) => now - w.at < ASK_WINDOW_MS), { text, at: now }].slice(-12);
@@ -295,7 +312,11 @@ export class ToolRouterService {
   async call(name: string, args: Record<string, unknown>, opts: { background?: boolean; allow?: (url: URL) => boolean } = {}): Promise<string> {
     // Belt and braces: nothing runs while the start-up code hasn't been entered.
     if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
-    if (opts.background) return this.timed(name, args, opts.allow);
+    if (opts.background) {
+      // Working on its own, a task has nobody to ask: anything that needs the user's yes is simply not for it.
+      if (this.needsConfirmation(name, args)) return 'Not done: this needs the user\'s yes, and a task working on its own can\'t ask. Leave it for the user, and say so in your answer.';
+      return this.timed(name, args, opts.allow);
+    }
     const what = describeActivity(name);
     if (!what) return this.rememberLinks(await this.timed(name, args));
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };

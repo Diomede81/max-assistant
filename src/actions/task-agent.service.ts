@@ -4,7 +4,7 @@ import { Assignment, ModelsService, Task } from '../models/models.service';
 import { MemoryService } from '../memory/memory.service';
 import { LocationService } from '../location/location.service';
 import { describeNow } from './clock';
-import { hostsIn, linkRule, linksIn, ToolRouterService } from './tool-router.service';
+import { linkRule, linksIn, ToolRouterService } from './tool-router.service';
 
 /** How a task is worked: for the conversation (defaults) or a scheduled task. */
 export interface WorkOptions {
@@ -119,7 +119,8 @@ export class TaskAgentService implements OnModuleInit {
     const failedActions: string[] = [];
     // In the background, the task keeps its own list of links it may open: those in the brief, and those its actions returned.
     const links = opts.background ? new Set(linksIn(goal)) : undefined;
-    const allow = links ? linkRule(links, new Set(hostsIn(goal))) : undefined;
+    // only the exact links in the brief and in results: naming a website is not enough (a path or query could carry data out)
+    const allow = links ? linkRule(links, new Set()) : undefined;
     const started = Date.now();
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
     const totalMs = opts.totalMs ?? TOTAL_MS;

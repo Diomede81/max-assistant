@@ -4,6 +4,8 @@ export interface PanelPeople {
   circles: { id: string; label: string; every: number }[];
   touches: { id: string; label: string }[];
   whatsapp: boolean;
+  /** Personal mode: Max uses the list by voice (in work mode the page is read and edited here only). */
+  personal: boolean;
 }
 
 export interface PanelPerson {
@@ -35,6 +37,7 @@ export function peopleParts(p: PanelPeople, esc: Esc): { id: string; label: stri
   const bdays = p.list.filter((x) => x.birthdayInDays !== undefined && x.birthdayInDays <= 30).sort((a, b) => a.birthdayInDays! - b.birthdayInDays!);
   const byCircle = p.circles.map((c) => ({ c, people: p.list.filter((x) => x.circle === c.id) })).filter((g) => g.people.length);
   const overview = `<section id="people"><h2>People</h2>
+${p.personal ? '' : '<p class="hint">Max is in work mode: he won\'t mention these people or log contact by voice until personal mode. You can still read and update the list here.</p>'}
 <p class="meta">The people close to you, and keeping in touch with them. Tell Max "I called Mum, her knee is better", "had lunch with Marco", "Anna's into climbing now", or ask "who should I catch up with?" and "what's new with Marco?". A WhatsApp message to or from someone here counts as texting. Everything stays on the box, encrypted, and only in personal mode.</p>
 ${p.list.length ? '' : '<p class="empty">Nobody yet: add the people you want to stay close to below, or say "Max, add my sister Anna to my people".</p>'}</section>
 ${due.length ? `<section id="people-due"><h2>Worth catching up with</h2><ul>${due.map((x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge warn">${x.daysSince === undefined ? 'not in touch yet' : `${x.daysSince} days`}</span></div><div class="meta">${esc(x.circleLabel)}${x.relation ? ` · ${esc(x.relation)}` : ''} · you'd like every ${x.every} days${x.updates[0] ? ` · latest: ${esc(x.updates[0].text)}` : ''}</div></div><div class="acts">${quick(x, esc)}</div></li>`).join('')}</ul></section>` : ''}

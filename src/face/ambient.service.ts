@@ -31,6 +31,9 @@ export const FACE_STYLES = {
   rolling: 'Rolling droid: white and orange (Star Wars style)',
   alien: 'Blue alien: big ears (Disney style)',
   classic: 'Classic: the flat face (lightest for the box)',
+  dracula: 'Dracula: pale, slicked black hair, cape and fangs (Halloween)',
+  frankenstein: "Frankenstein's monster: green, flat head, bolts and stitches (Halloween)",
+  jekyll: 'Dr Jekyll and Mr Hyde: half gentleman in a top hat, half monster (Halloween)',
 } as const;
 export type FaceStyle = keyof typeof FACE_STYLES;
 

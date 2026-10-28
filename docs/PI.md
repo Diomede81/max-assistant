@@ -89,7 +89,9 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   and mouth show his expressions and move as he talks; the head turns, tilts, nods and dozes. **Settings → Screen
   → Face** picks another character with the same eyes and expressions (an **astro droid** with a silver and
   blue dome, a **golden droid**, a white and orange **rolling droid**, or a **blue alien** with big ears), or
-  the classic flat face. Preview one with `/?demo&face=astro` (`golden`, `rolling`, `alien`). If the box can't draw the 3D face smoothly (or at all), it lowers
+  the classic flat face. For Halloween: **Dracula** (pale, slicked hair, cape and fangs), **Frankenstein's monster**
+  (green, flat head, bolts and stitches) or **Dr Jekyll and Mr Hyde** (half gentleman in a top hat, half monster).
+  Preview one with `/?demo&face=astro` (`golden`, `rolling`, `alien`, `dracula`, `frankenstein`, `jekyll`). If the box can't draw the 3D face smoothly (or at all), it lowers
   the detail and then falls back to the classic face on its own. Preview on a computer: `/?demo` (add
   `&face=classic` for the classic face).
 - **Cards on the screen:** when there's something worth seeing, Max shrinks to a small face at the top and

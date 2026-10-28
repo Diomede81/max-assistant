@@ -26,35 +26,46 @@ const WORDS_WAIT_MS = 5000;
 
 export type Verdict = 'yes' | 'no' | 'unclear' | 'no-answer' | 'not-asked';
 
+/** Where the user is talking to Max from: a yes only counts from the same place the question was asked. */
+export type Channel = 'voice' | 'whatsapp' | 'typed';
+
 export class ConfirmationGate {
-  private readonly asked = new Map<string, number>();
-  /** When the user last started or finished speaking, and the last words heard (with when). */
+  private readonly asked = new Map<string, { at: number; channel: Channel }>();
+  /** When the user last started or finished speaking, and the last words heard (with when and where). */
   private spokeAt = 0;
-  private words = { text: '', at: 0 };
+  private words = { text: '', at: 0, channel: 'voice' as Channel };
+  /** Where the user last spoke from: a question asked now is a question in that conversation. */
+  private channel: Channel = 'voice';
   private waiting: (() => void)[] = [];
 
   /** The user is speaking (real-time voice: speech started), words maybe still to come. */
   userSpoke(): void {
     this.spokeAt = Date.now();
+    this.channel = 'voice';
   }
 
-  /** The user's words (a full sentence, or the part heard so far). */
-  heard(text: string): void {
+  /** The user's words (a full sentence, or the part heard so far), and where they came from. */
+  heard(text: string, channel: Channel = 'voice'): void {
     if (!text.trim()) return;
-    this.spokeAt = Date.now();
-    this.words = { text, at: Date.now() };
+    if (channel === 'voice') this.spokeAt = Date.now();
+    this.channel = channel;
+    this.words = { text, at: Date.now(), channel };
     for (const w of this.waiting.splice(0)) w();
   }
 
-  /** The model asked the user about this action (key = action + its exact details). */
+  /**
+   * The model asked the user about this action (key = action + its exact details), in the conversation
+   * the user last spoke in: a "yes" typed on WhatsApp never answers a question Max asked out loud, and
+   * the other way round.
+   */
   ask(key: string): void {
-    this.asked.set(key, Date.now());
-    for (const [k, at] of this.asked) if (Date.now() - at > WINDOW_MS) this.asked.delete(k);
+    this.asked.set(key, { at: Date.now(), channel: this.channel });
+    for (const [k, a] of this.asked) if (Date.now() - a.at > WINDOW_MS) this.asked.delete(k);
   }
 
   isAsked(key: string): boolean {
-    const at = this.asked.get(key);
-    return at !== undefined && Date.now() - at <= WINDOW_MS;
+    const a = this.asked.get(key);
+    return a !== undefined && Date.now() - a.at <= WINDOW_MS;
   }
 
   forget(key: string): void {
@@ -66,14 +77,16 @@ export class ConfirmationGate {
    * is known (real-time voice without transcription): then speaking after the question counts.
    */
   async answer(key: string, wordsKnown = true): Promise<Verdict> {
-    const askedAt = this.asked.get(key);
-    if (askedAt === undefined || Date.now() - askedAt > WINDOW_MS) return 'not-asked';
+    const a = this.asked.get(key);
+    if (a === undefined || Date.now() - a.at > WINDOW_MS) return 'not-asked';
+    const askedAt = a.at;
     const deadline = Date.now() + WORDS_WAIT_MS;
-    // Words since the question that clearly say yes or no: decided. Otherwise wait a moment for more
-    // (they can trail the model's action, and arrive a piece at a time).
-    const decided = () => this.words.at > askedAt && (YES.test(this.words.text) || NO.test(this.words.text));
+    // Words since the question, from the same conversation, that clearly say yes or no: decided. Otherwise
+    // wait a moment for more (they can trail the model's action, and arrive a piece at a time).
+    const since = () => this.words.at > askedAt && this.words.channel === a.channel;
+    const decided = () => since() && (YES.test(this.words.text) || NO.test(this.words.text));
     while (!decided() && Date.now() < deadline) {
-      if (!wordsKnown && this.spokeAt > askedAt) break;
+      if (!wordsKnown && a.channel === 'voice' && this.spokeAt > askedAt) break;
       await new Promise<void>((resolve) => {
         const t = setTimeout(resolve, deadline - Date.now());
         this.waiting.push(() => {
@@ -82,8 +95,8 @@ export class ConfirmationGate {
         });
       });
     }
-    if (this.words.at > askedAt) return NO.test(this.words.text) ? 'no' : YES.test(this.words.text) ? 'yes' : 'unclear';
-    if (this.spokeAt > askedAt) return wordsKnown ? 'unclear' : 'yes';
+    if (since()) return NO.test(this.words.text) ? 'no' : YES.test(this.words.text) ? 'yes' : 'unclear';
+    if (a.channel === 'voice' && this.spokeAt > askedAt) return wordsKnown ? 'unclear' : 'yes';
     return 'no-answer';
   }
 

@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     const text = String(next.value).trim();
     if (!text) break;
     history.push({ role: 'user', content: text });
-    app.get(ToolRouterService).heard(text); // typed answers to "Shall I go ahead?" count too
+    app.get(ToolRouterService).heard(text, 'typed'); // typed answers to "Shall I go ahead?" count too
     transcript.push({ who: 'user', text });
     let reply = '';
     const started = Date.now();

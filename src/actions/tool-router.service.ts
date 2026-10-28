@@ -17,6 +17,7 @@ import { HealthService } from '../health/health.service';
 import { WebService } from '../web/web.service';
 import { TrainsService } from '../trains/trains.service';
 import { RoutinesService } from '../routines/routines.service';
+import { SocialService } from '../social/social.service';
 import { UpdatesService } from '../updates/updates.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { AutomationsService } from '../home/automations.service';
@@ -83,6 +84,7 @@ export class ToolRouterService {
     @Optional() private readonly composio?: ComposioService,
     @Optional() private readonly web?: WebService,
     @Optional() private readonly routines?: RoutinesService,
+    @Optional() private readonly social?: SocialService,
     @Optional() private readonly updates?: UpdatesService,
     @Optional() private readonly meetings?: MeetingsService,
     @Optional() private readonly automations?: AutomationsService,
@@ -134,7 +136,7 @@ export class ToolRouterService {
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
-    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.jobs?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...this.healthTools, ...ha, ...external, ...(this.taskAgent?.available ? [this.taskAgent.tool] : [])];
+    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.social?.tools ?? []), ...(this.jobs?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...this.healthTools, ...ha, ...external, ...(this.taskAgent?.available ? [this.taskAgent.tool] : [])];
   }
 
   /** Health records are personal: only when the personal vault is open (not in guest or work mode). */
@@ -185,7 +187,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.jobs?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name) || this.health?.has(name) || name === 'work_on_task') return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.social?.has(name) || this.jobs?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name) || this.health?.has(name) || name === 'work_on_task') return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -386,6 +388,7 @@ export class ToolRouterService {
         return await this.web.call(name, args);
       }
       if (this.trains?.has(name)) return await this.trains.call(name, args);
+      if (this.social?.has(name)) return await this.social.call(name, args);
       if (this.jobs?.has(name)) return await this.jobs.call(name, args);
       if (this.routines?.has(name)) {
         if (name === 'news_briefing') this.externalContentAt = Date.now(); // summaries of web pages

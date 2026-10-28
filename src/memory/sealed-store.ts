@@ -1,8 +1,8 @@
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '../config';
-import { masterKey, open, seal, SealedFile, vaultKey } from './crypto';
+import { masterKey, newSecret, open, seal, SealedFile, vaultKey } from './crypto';
 
 /**
  * A small file of Max's own state (timers and reminders, his journal...) kept next to the
@@ -30,10 +30,28 @@ export class SealedStore<T> {
     try {
       raw = readFileSync(this.file, 'utf8');
     } catch {
-      return undefined;
+      return this.key ? this.fromPlain() : undefined;
     }
     const text = this.key ? open(this.key, this.name, JSON.parse(raw) as SealedFile) : raw;
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * A plain file left from before this store was encrypted (memory switched off, or a first start
+   * before the key existed): taken into the vault and removed, so nothing stays on disk unencrypted.
+   */
+  private fromPlain(): T | undefined {
+    const plain = join(this.dir, `${this.name}.json`);
+    if (!existsSync(plain)) return undefined;
+    try {
+      const data = JSON.parse(readFileSync(plain, 'utf8')) as T;
+      writeFileSync(`${this.file}.tmp`, JSON.stringify(seal(this.key!, this.name, JSON.stringify(data))), { encoding: 'utf8', mode: 0o600 });
+      renameSync(`${this.file}.tmp`, this.file);
+      unlinkSync(plain);
+      return data;
+    } catch {
+      return undefined;
+    }
   }
 
   save(data: T): Promise<void> {
@@ -48,13 +66,31 @@ export class SealedStore<T> {
   }
 }
 
-/** The memory encryption secret (MEMORY_KEY, or the key file MemoryService created), if memory is on. */
-export function memorySecret(cfg: AppConfig): string | undefined {
-  if (!cfg.memory.enabled) return undefined;
+let generated = false;
+
+/**
+ * The encryption secret every store uses: MEMORY_KEY from .env, else a key made once on the first
+ * start and kept in data/memory.key. Made here, synchronously, before any store opens, so no store
+ * can ever be written unencrypted because it started before the key existed. Independent of whether
+ * memory (the vaults) is switched on: WhatsApp keys, health records and the rest are encrypted regardless.
+ */
+export function memorySecret(cfg: AppConfig): string {
   if (cfg.memory.key) return cfg.memory.key;
+  const file = join(cfg.memory.dir, 'memory.key');
   try {
-    return readFileSync(join(cfg.memory.dir, 'memory.key'), 'utf8').trim() || undefined;
+    const s = readFileSync(file, 'utf8').trim();
+    if (s) return s;
   } catch {
-    return undefined;
+    // none yet
   }
+  mkdirSync(cfg.memory.dir, { recursive: true });
+  const s = newSecret();
+  writeFileSync(file, s, { encoding: 'utf8', mode: 0o600 });
+  generated = true;
+  return s;
+}
+
+/** Whether this start made a new key (so the memory service can say so once). */
+export function keyWasGenerated(): boolean {
+  return generated;
 }

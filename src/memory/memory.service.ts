@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync,
 import { writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { keyWasGenerated, memorySecret } from './sealed-store';
 import { APP_CONFIG, AppConfig } from '../config';
 import { timeZone } from '../actions/clock';
 import { masterKey, newSecret, open, seal, SealedFile, vaultKey } from './crypto';
@@ -766,22 +767,16 @@ export class MemoryService implements OnModuleInit {
     return mode === 'guest' ? ' (only household memory is open in guest mode)' : mode === 'work' ? ' (the Personal vault is locked in work mode)' : ' (the Work vault is locked in this mode)';
   }
 
-  /** MEMORY_KEY from .env, or a key generated on first start and kept next to the vaults. */
+  /** MEMORY_KEY from .env, or the key made once on first start and kept next to the vaults (memorySecret). */
   private secret(): string {
-    if (this.cfg.memory.key) return this.cfg.memory.key;
-    const file = join(this.cfg.memory.dir, 'memory.key');
-    try {
-      return readFileSync(file, 'utf8').trim();
-    } catch {
-      mkdirSync(this.cfg.memory.dir, { recursive: true });
-      const s = newSecret();
-      writeFileSync(file, s, { encoding: 'utf8', mode: 0o600 });
+    const s = memorySecret(this.cfg);
+    if (keyWasGenerated()) {
       this.log.warn(
-        `Generated a memory encryption key in ${file}. For stronger protection, copy it into .env as MEMORY_KEY ` +
-          'and delete the file, so the key and the vaults are never stored together (docs/MEMORY.md).',
+        `Generated an encryption key in ${join(this.cfg.memory.dir, 'memory.key')}. For stronger protection, copy it into .env as MEMORY_KEY ` +
+          'and delete the file, so the key and the data are never stored together (docs/MEMORY.md).',
       );
-      return s;
     }
+    return s;
   }
 
   private load(name: VaultName, key: Buffer): Vault {

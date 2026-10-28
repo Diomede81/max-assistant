@@ -13,7 +13,7 @@ import { WyomingClient } from '../wyoming/wyoming-client';
 export class WakeWordService {
   private readonly log = new Logger(WakeWordService.name);
   private client?: WyomingClient;
-  /** The wake words chosen on the control panel (Settings → Device & voice); else WAKEWORD_NAMES. */
+  /** The wake words chosen on the control panel (Settings → Voice & wake word); else WAKEWORD_NAMES. */
   private readonly store: SealedStore<{ names: string[] }>;
   private chosen?: string[];
 

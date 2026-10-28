@@ -418,7 +418,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
   async findProducts(id: string): Promise<{ ok: boolean; message: string }> {
     const item = this.shopping.find((i) => i.id === id);
     if (!item) return { ok: false, message: 'That item is no longer on the list.' };
-    if (!this.web?.enabled) return { ok: false, message: 'Finding products needs Firecrawl (Connections → Web search). The search links work without it.' };
+    if (!this.web?.enabled) return { ok: false, message: 'Finding products needs Firecrawl (Connections → Web & trains). The search links work without it.' };
     const g = GROCERS[this.grocer];
     this.finding.add(id);
     try {
@@ -437,7 +437,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
 
   /** Looks up every item still to buy that has no product yet (in the background, a few at a time). */
   findAll(): string {
-    if (!this.web?.enabled) return 'Finding products needs Firecrawl (Connections → Web search). The search links work without it.';
+    if (!this.web?.enabled) return 'Finding products needs Firecrawl (Connections → Web & trains). The search links work without it.';
     const todo = this.shopping.filter((i) => !i.done && !i.pick && !i.found?.length && !this.finding.has(i.id));
     if (!todo.length) return 'Every item has products or a choice already.';
     for (const i of todo) this.finding.add(i.id);

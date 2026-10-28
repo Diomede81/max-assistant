@@ -49,7 +49,7 @@ docker compose up -d
 cp .env.example .env    # set HA_TOKEN, LLM_API_KEY (free Groq key: https://console.groq.com)
 
 # 5. Wake word: train "hey max" once (about 1 hour, free) - see training/README.md
-#    Until then, tick "Hey Jarvis" (built in) in Settings → Device & voice → Wake words on the control panel.
+#    Until then, tick "Hey Jarvis" (built in) in Settings → Voice & wake word → Wake words on the control panel.
 npm install
 npm run mic-check       # live mic levels + wake word detections, for tuning
 
@@ -75,7 +75,7 @@ See [`deploy/max.service`](deploy/max.service).
 
 - **Control your home** through Home Assistant: anything you expose to Assist (lights, heating, media, covers…)
 - **Date and time**: "What's the date?", "What time is it?"
-- **Health**: a Health tab for exercise, diet, heart, sleep and weight ("I ran 5 km in 30 minutes", "my blood
+- **Health**: a Health area for exercise, diet, heart, sleep and weight ("I ran 5 km in 30 minutes", "my blood
   pressure is 128 over 82"), with goals and trends; exercise routines and meal plans made from websites you
   choose, daily or weekly, sent to you by email or WhatsApp. See [docs/HEALTH.md](docs/HEALTH.md).
 - **WhatsApp**: "Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way"
@@ -140,7 +140,7 @@ Set `TZ` in `.env` (e.g. `TZ=Europe/London`) so the time is right inside Docker.
 Set `VOICE_MODE=realtime` to talk to Max through a speech-to-speech model: the most natural conversation,
 typically under a second to respond, paid per minute. Two providers: **OpenAI Realtime** or **Gemini Live**
 (similar speed, roughly 10x cheaper). His voice can be chosen and tried out on the control panel
-(**Settings → Device**), and his "Hey Max" greeting is spoken in that same voice.
+(**Settings → Voice & wake word**), and his "Hey Max" greeting is spoken in that same voice.
 See **[docs/REALTIME.md](docs/REALTIME.md)**.
 
 ## Voice (normal mode)

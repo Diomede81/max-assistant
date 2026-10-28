@@ -515,31 +515,31 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'eater-remove':
         return back(h.removeEater(get('id')), true, 'health-diet-needs');
       case 'shop-add':
-        return back(h.addShopping(get('item')), true, 'health-meals');
+        return back(h.addShopping(get('item')), true, 'health-shop');
       case 'shop-tick':
         h.tickShopping(get('id'), get('done') === 'yes');
-        return this.redirect(res, '/#health-meals');
+        return this.redirect(res, '/#health-shop');
       case 'shop-add-meals': {
         const meal = get('meal') as MealName;
-        return back(h.addIngredients({ date: /^\d{4}-\d{2}-\d{2}$/.test(get('date')) ? get('date') : undefined, meal: ['breakfast', 'lunch', 'dinner'].includes(meal) ? meal : undefined }), true, 'health-meals');
+        return back(h.addIngredients({ date: /^\d{4}-\d{2}-\d{2}$/.test(get('date')) ? get('date') : undefined, meal: ['breakfast', 'lunch', 'dinner'].includes(meal) ? meal : undefined }), true, 'health-shop');
       }
       case 'grocer':
-        return back(h.setGrocer(get('grocer')), true, 'health-meals');
+        return back(h.setGrocer(get('grocer')), true, 'health-shop');
       case 'shop-find': {
         const r = await h.findProducts(get('id'));
-        return back(r.message, r.ok, 'health-meals');
+        return back(r.message, r.ok, 'health-shop');
       }
       case 'shop-find-all':
-        return back(h.findAll(), true, 'health-meals');
+        return back(h.findAll(), true, 'health-shop');
       case 'shop-pick':
-        return back(h.pickProduct(get('id'), get('url')), true, 'health-meals');
+        return back(h.pickProduct(get('id'), get('url')), true, 'health-shop');
       case 'shop-qty':
         h.setQty(get('id'), Number(get('qty')));
-        return this.redirect(res, '/#health-meals');
+        return this.redirect(res, '/#health-shop');
       case 'shop-unpick':
-        return back(h.unpickProduct(get('id')), true, 'health-meals');
+        return back(h.unpickProduct(get('id')), true, 'health-shop');
       case 'shop-clear':
-        return back(h.clearBought(), true, 'health-meals');
+        return back(h.clearBought(), true, 'health-shop');
       case 'email': {
         const msg = h.setEmail(get('email'));
         return back(msg, !/doesn't look right/.test(msg), 'health-plans');

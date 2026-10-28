@@ -1,11 +1,11 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
-import { DEVICES_CSS, devicesPane } from './devices-page';
+import { DEVICES_CSS, devicesExtra, devicesParts } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
 import { SPEAKER_TONES } from '../device/device.service';
 import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
-import { HEALTH_CSS, healthSection, PanelHealth } from './health-page';
+import { HEALTH_CSS, healthParts, PanelHealth } from './health-page';
 
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
@@ -41,7 +41,7 @@ export interface PanelData {
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
-  /** The wake words installed, and the ones Max listens for (Settings → Device & voice). */
+  /** The wake words installed, and the ones Max listens for (Settings → Voice & wake word). */
   wakeWords?: { available: string[]; active: string[]; error?: string };
   /** Max's recent log (Settings → Log). */
   log?: { at: number; level: string; context: string; message: string }[];
@@ -623,7 +623,7 @@ ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read M
 <ul>${facts}</ul>
 <form class="addfact" method="post" action="/memory/add">${hidden('vault', v.name)}<input name="fact" maxlength="300" required placeholder="Add to ${VAULT_LABEL[v.name]}, e.g. Sofia's birthday is 14 March"><select name="kind" aria-label="Kind">${kinds}</select><button class="btn" type="submit">Remember</button></form>
 <p class="meta">Each vault is encrypted separately. Passwords, PINs and codes are never stored.</p></section>
-<section><h2>${VAULT_LABEL[v.name]} conversations${v.totalNotes > v.notes.length ? ` (latest ${v.notes.length} of ${v.totalNotes}; Max can search them all)` : ''}</h2><ul>${notes}</ul>
+<section id="conversations"><h2>Conversations <span class="meta">${VAULT_LABEL[v.name]}${v.totalNotes > v.notes.length ? ` · latest ${v.notes.length} of ${v.totalNotes}; Max can search them all` : ''}</span></h2><ul>${notes}</ul>
 <p class="meta">Older notes are rolled up into weekly, then monthly digests automatically.</p></section>
 ${activitySection(m.activity)}`;
 }
@@ -641,54 +641,43 @@ const NOTES: Record<string, string> = {
 const badge = (ok: boolean, yes = 'Connected', no = 'Not connected') =>
   `<span class="badge ${ok ? 'ok' : 'off'}">${ok ? yes : no}</span>`;
 
-/** One tap away at the top: what's used most. Everything else is in the menu drawer (DRAWER). */
-const QUICK = ['overview', 'devices', 'myday', 'health', 'projects'];
-
-/** The menu drawer: [link, label, tab it needs]. Sections inside a pane open on their own. */
-const DRAWER: [string, [string, string, string][]][] = [
-  ['Max', [['#tab-meetings', 'Meetings', 'meetings'], ['#about-you', 'About you', 'memory'], ['#tab-max', 'Personality', 'max'], ['#tab-memory', 'Memory', 'memory'], ['#tab-routines', 'News briefing', 'routines']]],
-  ['Connections', [['#apps', 'Apps', 'connections'], ['#music', 'Music & AirPlay', 'connections'], ['#whatsapp', 'WhatsApp', 'connections'], ['#home-assistant', 'Home Assistant', 'connections'], ['#web', 'Web search', 'connections'], ['#trains', 'Trains', 'connections'], ['#servers', 'Other servers', 'connections']]],
-  ['Settings', [['#device', 'Device & voice', 'settings'], ['#screen', 'Screen', 'settings'], ['#location', 'Home location', 'settings'], ['#models', 'AI models', 'settings'], ['#updates', 'Updates', 'settings'], ['#log', 'Log', 'settings'], ['#security', 'Security', 'settings']]],
-];
-
-const TABS: [string, string][] = [
-  ['overview', 'Home'],
-  ['devices', 'Devices'],
-  ['myday', 'My Day'],
-  ['health', 'Health'],
-  ['routines', 'Routines'],
-  ['max', 'Max'],
-  ['memory', 'Memory'],
-  ['projects', 'Projects'],
-  ['meetings', 'Meetings'],
-  ['connections', 'Connections'],
-  ['settings', 'Settings'],
-];
-
-function myDayTile(m: NonNullable<PanelData['memory']>, tile: (href: string, k: string, v: string, meta: string) => string): string {
-  const open = m.todos.filter((t) => !t.done);
-  const overdue = open.filter((t) => t.due && t.due.slice(0, 10) < m.today).length;
-  const today = open.filter((t) => t.due?.slice(0, 10) === m.today).length;
-  const critical = open.filter((t) => t.criticality === 'critical').length;
-  return tile(
-    '#tab-myday',
-    'My Day',
-    `${today} due today${overdue ? ` · <span class="warntext">${overdue} overdue</span>` : ''}`,
-    `${critical} critical · ${open.length} open to-do${open.length === 1 ? '' : 's'}`,
-  );
+/** A part of an area: its own entry in the area's sub-menu. `one`: its sections show one at a time. */
+interface Part {
+  id: string;
+  label: string;
+  html: string;
+  one?: boolean;
 }
 
-function newsTile(r: PanelRoutines, tile: (href: string, k: string, v: string, meta: string) => string): string {
-  if (!r.list.length) return tile('#tab-routines', 'Routines', 'No news briefing yet', 'Set one up: Max prepares your news each morning');
-  const first = r.list[0];
-  const b = first.briefing;
-  return tile(
-    '#tab-routines',
-    'News briefing',
-    first.running ? 'Gathering now…' : b?.articles.length ? `${b.articles.length} articles ready` : 'Nothing gathered yet',
-    `${first.daysText} at ${first.time}${r.list.length > 1 ? ` · ${r.list.length} routines` : ''}`,
-  );
-}
+/** The menu: every area in order, its group (Every day / Set up) and a line on what it's for. */
+const AREAS: { id: string; label: string; group: 'day' | 'setup'; about: string }[] = [
+  { id: 'overview', label: 'Home', group: 'day', about: 'Max today: his mode, the microphone and whatever needs you.' },
+  { id: 'myday', label: 'My Day', group: 'day', about: 'Your to-do list and your meetings.' },
+  { id: 'projects', label: 'Projects', group: 'day', about: 'Each project with its people, tasks and memory.' },
+  { id: 'health', label: 'Health', group: 'day', about: 'Exercise, meals, heart, sleep and weight.' },
+  { id: 'devices', label: 'Devices', group: 'day', about: 'Your lights, heating and devices, through Home Assistant on the box.' },
+  { id: 'routines', label: 'News briefing', group: 'day', about: 'Max reads the websites you choose and prepares your news.' },
+  { id: 'max', label: "Max's memory & personality", group: 'setup', about: 'What Max knows about you, what he remembers, and who he is.' },
+  { id: 'connections', label: 'Connections', group: 'setup', about: 'The accounts and services Max can use.' },
+  { id: 'settings', label: 'Settings', group: 'setup', about: 'How the Max box behaves: its sound, voice, screen and software.' },
+];
+const GROUP_LABEL: Record<'day' | 'setup', string> = { day: 'Every day', setup: 'Set up' };
+/** The phone's bottom bar: the first four of these that exist, then More (everything, grouped). */
+const BAR = ['overview', 'myday', 'health', 'devices', 'projects'];
+/** Old addresses: areas that became part of another, and the old tab names. */
+const ALIAS: Record<string, string> = { 'tab-memory': 'memory', 'tab-meetings': 'meetings', 'tab-max': 'about-you' };
+const TAB_ALIAS: Record<string, string> = { memory: 'max', meetings: 'myday' };
+
+/** Simple line icons for the phone's bottom bar (24px grid). */
+const ICON: Record<string, string> = {
+  overview: 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  myday: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',
+  health: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z',
+  devices: 'M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z',
+  projects: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+};
+const icon = (id: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${id === 'more' ? 3 : 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[id] ?? ICON.more}"/></svg>`;
 
 /** Settings → Log: what Max did lately (the same lines as the box's Docker log, never message content). */
 function logSection(lines: NonNullable<PanelData['log']>): string {
@@ -729,50 +718,122 @@ ${busy ? '' : '<form method="post" action="/updates/check"><button class="btn se
 <p class="meta">New versions come from GitHub (${esc(v?.repo || 'your repository')}): merge a change there and it shows up here. Your settings, keys and Max's memory stay as they are.</p></section>`;
 }
 
-/** The front page: the mode switch, then one tile per area with its status; each tile opens its tab. */
-/** Home: what's playing (radio, AirPlay) and the AirPlay code, to hand to a guest's phone. */
-function musicTile(mu: PanelData['music'], tile: (href: string, k: string, v: string, meta: string) => string): string {
-  if (!mu) return '';
-  const a = mu.airplay;
-  const now = mu.radio?.playing ? `📻 ${esc(mu.radio.playing)}` : a?.playing ? '📱 AirPlay' : 'Nothing playing';
-  const code = a?.onBox ? (!a.enabled ? 'AirPlay off' : a.locked ? 'AirPlay off while Max is locked' : `AirPlay code <b>${esc(a.code)}</b>`) : 'Radio, Spotify and AirPlay';
-  return tile('#music', 'Music', now, code);
+
+/** Something that needs the user: listed on Home with a link, and a dot on its area in the menu. */
+interface Attention {
+  area: string;
+  href: string;
+  where: string;
+  text: string;
 }
 
-function overview(d: PanelData): string {
+function attentionItems(d: PanelData): Attention[] {
+  const out: Attention[] = [];
   const m = d.memory;
+  if (m) {
+    const overdue = m.todos.filter((t) => !t.done && t.due && t.due.slice(0, 10) < m.today);
+    if (overdue.length) out.push({ area: 'myday', href: '#myday', where: 'My Day', text: `<b>${overdue.length} to-do${overdue.length === 1 ? ' is' : 's are'} overdue</b> · ${esc(overdue.slice(0, 3).map((t) => t.title).join(', '))}${overdue.length > 3 ? '…' : ''}` });
+    const closed = m.vaults.filter((v) => v.status !== 'open');
+    if (closed.length) out.push({ area: 'max', href: '#memory', where: 'Max › Memory', text: `<b>A memory vault can't be opened</b> · ${esc(closed.map((v) => VAULT_LABEL[v.name]).join(', '))}` });
+    const unverified = m.vaults.filter((v) => m.readable.includes(v.name)).reduce((n, v) => n + v.facts.filter((f) => f.unverified).length, 0);
+    if (unverified) out.push({ area: 'max', href: '#memory', where: 'Max › Memory', text: `<b>${unverified} memor${unverified === 1 ? 'y' : 'ies'} to confirm</b> · saved right after Max read something: check ${unverified === 1 ? "it's" : "they're"} true` });
+  }
+  if (d.device?.mic?.muted) out.push({ area: 'overview', href: '#mode', where: 'Home', text: "<b>The microphone is off</b> · Max can't hear you" });
+  if (d.music?.state === 'pairing') out.push({ area: 'connections', href: '#music', where: 'Connections › Music', text: "<b>Spotify needs a sign-in</b> · music by voice won't work until then" });
+  if (d.composio.error) out.push({ area: 'connections', href: '#apps', where: 'Connections › Apps', text: `<b>Apps can't be reached</b> · ${esc(d.composio.error)}` });
+  if (d.composio.notEnabled.length || d.composio.otherUser.length) out.push({ area: 'connections', href: '#apps', where: 'Connections › Apps', text: `<b>Some apps aren't usable yet</b> · ${esc([...d.composio.notEnabled, ...d.composio.otherUser].join(', '))}` });
+  if (d.web?.configured && !d.web.connected) out.push({ area: 'connections', href: '#web', where: 'Connections › Web & trains', text: `<b>Web search isn't working</b>${d.web.error ? ` · ${esc(d.web.error)}` : ''}` });
+  if (d.homeAssistant.error && (d.homeDevices?.enabled || d.homeAssistant.where)) out.push({ area: 'connections', href: '#home-assistant', where: 'Connections › Home Assistant', text: `<b>Home Assistant isn't connected</b> · ${esc(d.homeAssistant.error)}` });
+  if (d.whatsapp?.note) out.push({ area: 'connections', href: '#whatsapp', where: 'Connections › WhatsApp', text: `<b>WhatsApp</b> · ${esc(d.whatsapp.note)}` });
+  for (const r of d.routines?.list ?? []) if (r.enabled && r.lastError && !r.running) out.push({ area: 'routines', href: '#routines', where: 'News briefing', text: `<b>${esc(r.name)} failed last time</b> · ${esc(r.lastError)}` });
+  for (const p of d.health?.plans ?? []) if (p.enabled && p.lastError && !p.running) out.push({ area: 'health', href: `#plan-${esc(p.id)}`, where: 'Health › Plans', text: `<b>${esc(p.name)} failed last time</b> · ${esc(p.lastError)}` });
+  if (d.location && !d.location.place) out.push({ area: 'settings', href: '#location', where: 'Settings › Home location', text: '<b>Home location not set</b> · for local answers, trains and the weather' });
+  if (d.updates?.onBox && d.updates.available?.behind && !d.updates.auto.auto) out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>An update is ready</b> · ${d.updates.available.behind} change${d.updates.available.behind === 1 ? '' : 's'} since your version` });
+  if (d.updates?.state?.state === 'failed') out.push({ area: 'settings', href: '#updates', where: 'Settings › Updates', text: `<b>The last update failed</b> · ${esc(d.updates.state.message)}` });
+  return out;
+}
+
+/** Home: mode and microphone, what needs attention, today's numbers, and whether everything is connected. */
+function overview(d: PanelData, items: Attention[]): string {
+  const m = d.memory;
+  const mic = d.device?.mic;
   const modes = m
     ? (['personal', 'work', 'guest', 'auto'] as const)
         .map((x) => post('/mode', { mode: x }, x === 'auto' ? 'Automatic' : `${x[0].toUpperCase()}${x.slice(1)}`, `btn ${m.mode === x ? '' : 'secondary'}`))
         .join('')
     : '';
-  const count = (list: { connected: boolean }[]) => `${list.filter((a) => a.connected).length} of ${list.length}`;
-  const tile = (href: string, k: string, v: string, meta: string) =>
-    `<a class="tile" href="${href}"><div class="k">${k}</div><div class="v">${v}</div><div class="meta">${meta}</div></a>`;
-  const facts = m ? m.vaults.filter((v) => m.readable.includes(v.name)).reduce((n, v) => n + v.facts.length, 0) : 0;
-  const tasks = m ? m.projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'open').length, 0) : 0;
-  const music = d.music && d.music.state !== 'off' ? (d.music.state === 'ready' ? badge(true, 'Ready') : badge(false, '', d.music.state === 'pairing' ? 'Sign-in needed' : 'Not running')) : '';
-  // Everyday things first (your day, music, news, projects), then how Max's connections are doing.
-  const tiles = [
-    m ? myDayTile(m, tile) : '',
-    musicTile(d.music, tile),
-    d.routines ? newsTile(d.routines, tile) : '',
-    m ? tile('#tab-projects', 'Projects', `${m.projects.length} project${m.projects.length === 1 ? '' : 's'}`, `${tasks} open task${tasks === 1 ? '' : 's'}`) : '',
-    d.composio.configured
-      ? tile('#apps', 'Apps', `${count(d.composio.apps)} personal · ${count(d.composio.workApps)} work`, 'Email, calendar, messaging and more')
-      : tile('#apps', 'Apps', badge(false, '', 'Not set up'), 'Add a Composio key to connect email and other apps'),
-    tile('#web', 'Web search', d.web?.configured ? badge(d.web.connected) : badge(false, '', 'Not set up'), d.web?.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages'),
-    tile('#home-assistant', 'Home Assistant', badge(d.homeAssistant.connected), d.homeAssistant.connected ? `${d.homeAssistant.tools} actions` : 'Lights, heating and devices'),
-    music ? tile('#music', 'Spotify', music, d.music?.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice') : '',
-    m ? tile('#tab-memory', 'Memory', `${facts} thing${facts === 1 ? '' : 's'} Max knows`, 'In the vaults open in this mode') : '',
-    d.about ? tile('#about-you', 'About you', d.about.fields.find((f) => f.key === 'name')?.value ? esc(d.about.fields.find((f) => f.key === 'name')!.value) : badge(false, '', 'Not set'), 'Who Max supports: your name, family, likes') : '',
-    d.soul ? tile('#tab-max', 'Personality', "Max's soul", 'Who he is and how he behaves in each mode') : '',
-    d.location ? tile('#location', 'Home location', d.location.place ? esc(d.location.place) : badge(false, '', 'Not set'), 'For local answers and search results') : '',
-  ].join('');
-  return `${m ? `<section id="mode"><h2>Mode</h2><div class="name">${esc(m.modeText)}</div>
-<p class="meta">Each mode has its own behaviour, memories and accounts. You can also say "Max, work mode", "personal mode" or "guest mode".</p>
-<div class="modes">${modes}</div></section>` : ''}
-<div class="tiles">${tiles}</div>`;
+  const mode = `<section id="mode"${mic?.muted ? ' class="mic-off"' : ''}><h2>Mode and microphone</h2>
+${m ? `<div class="name">${esc(m.modeText)}</div><p class="meta">Each mode has its own behaviour, memories and accounts. You can also say "Max, work mode", "personal mode" or "guest mode".</p><div class="modes">${modes}</div>` : ''}
+${mic ? micSwitch(mic, 'home') : ''}</section>`;
+  const attention = `<section id="attention"${items.length ? ' class="attn"' : ''}><h2>Needs your attention${items.length ? ` · ${items.length}` : ''}</h2>
+${items.length ? `<ul>${items.map((i) => `<li class="row"><div>${i.text}</div><a class="btn secondary" href="${i.href}">${esc(i.where)}</a></li>`).join('')}</ul>` : '<p class="meta">Nothing: everything is set up and working.</p>'}</section>`;
+
+  const tile = (href: string, k: string, v: string, meta: string) => `<a class="tile" href="${href}"><div class="k">${k}</div><div class="v">${v}</div><div class="meta">${meta}</div></a>`;
+  const tiles: string[] = [];
+  if (m) {
+    const open = m.todos.filter((t) => !t.done);
+    const today = open.filter((t) => t.due?.slice(0, 10) === m.today).length;
+    const critical = open.filter((t) => t.criticality === 'critical').length;
+    tiles.push(tile('#myday', 'My Day', `${today} due today`, `${critical} critical · ${open.length} open to-do${open.length === 1 ? '' : 's'}`));
+  }
+  if (d.meetings?.enabled) {
+    const now = d.meetings.list.filter((x) => ON_NOW.includes(x.state));
+    if (now.length) tiles.push(tile('#meetings', 'Meetings', `In a meeting: ${esc(now[0].title)}`, now[0].status));
+  }
+  if (d.health) {
+    const h = d.health;
+    const day = h.meals?.days.find((x) => x.date === h.today);
+    const dinner = day?.meals.dinner ?? day?.meals.lunch;
+    const toBuy = h.shopping.filter((i) => !i.done).length;
+    tiles.push(tile('#health-meals', 'Health', dinner ? `${day?.meals.dinner ? 'Dinner' : 'Lunch'}: ${esc(dinner.name)}` : h.meals ? 'Nothing planned today' : 'No meal plan yet', toBuy ? `${toBuy} item${toBuy === 1 ? '' : 's'} to buy` : 'Shopping list done'));
+  }
+  if (d.music) {
+    const a = d.music.airplay;
+    const now = d.music.radio?.playing ? `📻 ${esc(d.music.radio.playing)}` : a?.playing ? '📱 AirPlay' : 'Nothing playing';
+    const code = a?.onBox ? (!a.enabled ? 'AirPlay off' : a.locked ? 'AirPlay off while Max is locked' : `AirPlay code <b>${esc(a.code)}</b>`) : 'Radio, Spotify and AirPlay';
+    tiles.push(tile('#music', 'Music', now, code));
+  }
+  if (d.routines) {
+    const first = d.routines.list[0];
+    const b = first?.briefing;
+    tiles.push(first
+      ? tile('#routines', 'News briefing', first.running ? 'Gathering now…' : b?.articles.length ? `${b.articles.length} articles ready` : 'Nothing gathered yet', `${first.daysText} at ${first.time}`)
+      : tile('#routines', 'News briefing', 'Not set up', 'Max prepares your news each morning'));
+  }
+  const today = `<h2 class="sh">Today</h2><div class="tiles">${tiles.join('')}</div>`;
+
+  const count = (list: { connected: boolean }[]) => `${list.filter((a) => a.connected).length} of ${list.length} connected`;
+  const srow = (href: string, name: string, meta: string, state: 'ok' | 'off' | 'warn', label: string) =>
+    `<li class="row"><div><div class="name">${name} <span class="badge ${state}">${label}</span></div><div class="meta">${meta}</div></div><a class="btn secondary" href="${href}">Open</a></li>`;
+  const status: string[] = [];
+  status.push(d.composio.configured
+    ? srow('#apps', 'Apps', `${count(d.composio.apps)} personal · ${count(d.composio.workApps)} work`, d.composio.error ? 'warn' : 'ok', d.composio.error ? 'Check' : 'Fine')
+    : srow('#apps', 'Apps', 'Email, calendar and other apps', 'off', 'Not set up'));
+  if (d.whatsapp) status.push(srow('#whatsapp', 'WhatsApp', d.whatsapp.state === 'connected' ? `Linked${d.whatsapp.phone ? ` · ${esc(d.whatsapp.phone)}` : ''} · ${d.whatsapp.readable.length + 1} chat${d.whatsapp.readable.length ? 's' : ''} visible` : 'Max reads and sends messages once a phone is linked', d.whatsapp.state === 'connected' ? 'ok' : 'off', d.whatsapp.state === 'connected' ? 'Fine' : d.whatsapp.state === 'off' ? 'Not linked' : 'Connecting'));
+  if (d.music && d.music.state !== 'off') status.push(srow('#music', 'Spotify', d.music.account ? `Signed in as ${esc(d.music.account)}` : 'Play music by voice', d.music.state === 'ready' ? 'ok' : 'warn', d.music.state === 'ready' ? 'Fine' : d.music.state === 'pairing' ? 'Sign-in needed' : 'Not running'));
+  status.push(d.homeAssistant.connected
+    ? srow('#home-assistant', 'Home Assistant', `${d.homeAssistant.tools} actions`, 'ok', 'Fine')
+    : srow('#home-assistant', 'Home Assistant', d.homeAssistant.error ? esc(d.homeAssistant.error) : 'Lights, heating and devices', d.homeAssistant.where || d.homeDevices?.enabled ? 'warn' : 'off', d.homeAssistant.where || d.homeDevices?.enabled ? 'Check' : 'Not set up'));
+  status.push(d.web?.configured
+    ? srow('#web', 'Web search', d.web.remainingCredits !== undefined ? `${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : 'Searching and reading web pages', d.web.connected ? 'ok' : 'warn', d.web.connected ? 'Fine' : 'Check')
+    : srow('#web', 'Web search', 'Searching and reading web pages', 'off', 'Not set up'));
+  if (d.trains) status.push(srow('#trains', 'Trains', d.trains.home ? `Home station: ${esc(d.trains.home.name)}` : 'Live departures and journeys', d.trains.departures || d.trains.journeys ? 'ok' : 'off', d.trains.departures || d.trains.journeys ? 'Fine' : 'Not set up'));
+  if (d.meetings) status.push(srow('#meetings', 'Meetings', d.meetings.enabled ? 'Max can join as a notetaker' : 'Max joins online meetings as a notetaker', d.meetings.enabled ? 'ok' : 'off', d.meetings.enabled ? 'Fine' : 'Not set up'));
+  const connected = `<section id="status"><h2>Is everything connected?</h2><ul>${status.join('')}</ul></section>`;
+  return `${mode}${attention}${today}${connected}`;
+}
+
+/** The first section's address in a part's HTML (what its sub-menu entry links to). */
+const firstId = (html: string) => /<section id="([^"]+)"/.exec(html)?.[1] ?? '';
+
+/** A second row of pills for a part whose sections show one at a time: one per section, from its heading. */
+function pills(html: string): string {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<section id="([^"]+)"[^>]*>\s*<h2[^>]*>([\s\S]*?)<\/h2>/g)) {
+    const label = m[2].replace(/<span[^>]*>[\s\S]*?<\/span>/g, '').replace(/<[^>]+>/g, '').replace(/&(amp|#39|quot|lt|gt);/g, (_, e: string) => ({ amp: '&', '#39': "'", quot: '"', lt: '<', gt: '>' })[e as 'amp']).replace(/^[^\p{L}\p{N}]+/u, '').split(/ · | \(/)[0].trim();
+    if (label) out.push(`<a href="#${m[1]}">${esc(label)}</a>`);
+  }
+  return out.length > 1 ? `<nav class="sub sub2" aria-label="Parts">${out.join('')}</nav>` : '';
 }
 
 export function renderPanel(d: PanelData): string {
@@ -816,15 +877,105 @@ export function renderPanel(d: PanelData): string {
         <div class="meta">${s.connected ? `${s.offered} of ${s.total} actions available to Max` : esc(s.error ?? '')}</div>${s.duplicate ? `<div class="meta"><b>This looks like another Home Assistant.</b> Max ignores its device actions and uses ${esc(d.homeAssistant.where ?? 'the main one')}. To remove it, delete "${esc(s.name)}" from config/mcp-servers.json (or set "enabled": false) and restart Max.</div>` : ''}</div></li>`,
     )
     .join('');
+  const items = attentionItems(d);
+  const m = d.memory;
+  const tab = TAB_ALIAS[d.tab ?? ''] ?? d.tab;
 
-  const show: Record<string, boolean> = { overview: true, devices: Boolean(d.homeDevices?.enabled), myday: Boolean(d.memory), health: Boolean(d.health), routines: Boolean(d.routines), max: Boolean(d.soul), memory: Boolean(d.memory), projects: Boolean(d.memory), meetings: Boolean(d.meetings), connections: true, settings: true };
-  const attention: Record<string, boolean> = {
-    connections: Boolean(d.composio.error || d.composio.notEnabled.length || d.composio.otherUser.length || (d.web?.configured && !d.web.connected) || d.music?.state === 'pairing'),
-    settings: Boolean(d.location && !d.location.place),
-    routines: Boolean(d.routines?.list.some((r) => r.enabled && r.lastError && !r.running)),
-    myday: Boolean(d.memory?.todos.some((t) => !t.done && t.due && t.due.slice(0, 10) < d.memory!.today)),
-    memory: Boolean(d.memory?.vaults.some((v) => v.status !== 'open' || v.facts.some((f) => f.unverified))),
+  // Settings › Device: the box itself (microphone, sound, screen brightness, power).
+  const deviceSection = `<section id="device"><h2>Device</h2>
+${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
+${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
+<form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
+${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>
+${Object.entries(SPEAKER_TONES).map(([k, label]) => `<label class="meta tick"><input type="radio" name="tone" value="${k}" ${(d.device!.tone ?? 'flat') === k ? 'checked' : ''} onchange="this.form.submit()"> ${esc(label)}</label>`).join('')}
+<noscript><button class="btn" type="submit">Save</button></noscript></form>` : ''}
+${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}
+${d.onBox
+  ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>
+<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="reboot"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, restart Max now</label><button class="btn secondary" type="submit">Restart</button></form>
+<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="poweroff"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, turn Max off now</label><button class="btn secondary" type="submit">Turn off</button></form>`
+  : '<p class="meta">Turning off and restarting are available when Max runs on the Max box (Raspberry Pi).</p>'}
+
+</section>`;
+  // Settings › Voice & wake word: how Max listens and speaks.
+  const voiceSection = `<section id="voice"><h2>Voice &amp; wake word</h2>
+${d.wakeWords ? wakeWordsRow(d.wakeWords) : ''}
+${d.wakeUps ? wakeUpsSection(d.wakeUps) : ''}
+${d.device ? `<form class="stack" method="post" action="/device/voice">
+<div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
+<div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[
+      [0, 'Every time'],
+      [5, '5 minutes'],
+      [10, '10 minutes'],
+      [30, '30 minutes'],
+      [60, '1 hour'],
+    ]
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.greetAgainMin ?? 10) ? 'selected' : ''}>${l}</option>`)
+      .join('')}</select><span class="meta">of quiet. Sooner than that, "Hey Max" gets just the short beep.</span></div>
+<div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
+<p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
+</form>` : ''}
+${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
+</section>`;
+
+  const parts: Record<string, (Part | false | undefined | '')[]> = {
+    overview: [{ id: 'home', label: 'Home', html: overview(d, items) }],
+    myday: [m && { id: 'todo', label: 'To-do list', html: myDaySection(m) }, d.meetings && { id: 'meetings', label: 'Meetings', html: meetingsSection(d.meetings) }],
+    projects: [m && { id: 'projects', label: 'Projects', html: projectsSection(m) }],
+    health: d.health ? healthParts(d.health, esc) : [],
+    devices: d.homeDevices?.enabled ? [...devicesParts(), d.automations && { id: 'automations', label: 'Automations', html: automationsSection(d.automations) }] : [],
+    routines: [d.routines && { id: 'routines', label: 'News briefing', html: routinesSection(d.routines, esc) }],
+    max: [d.about && { id: 'about', label: 'About you', html: aboutSection(d.about) }, m && { id: 'memory', label: 'Memory', html: memorySection(m), one: true }, d.soul && { id: 'soul', label: 'Personality', html: soulSection(d.soul) }],
+    connections: [
+      { id: 'apps', label: 'Apps', html: `<section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
+<p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>` },
+      d.whatsapp && { id: 'whatsapp', label: 'WhatsApp', html: whatsappSection(d.whatsapp) },
+      { id: 'music', label: 'Music', html: musicSection(d.music) },
+      { id: 'home', label: 'Home Assistant', html: `<section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
+<div class="meta">${d.homeAssistant.where ? `${esc(d.homeAssistant.where)} · ` : ''}${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul>
+<p class="meta">Max uses one Home Assistant. ${d.homeDevices?.enabled ? 'It runs on this box: manage your devices on the Devices tab. Any earlier Home Assistant connection is no longer used.' : 'To change it, edit HA_MCP_URL and HA_TOKEN in .env.'}</p></section>${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}` },
+      { id: 'web', label: 'Web & trains', html: `<section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
+<div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>${d.trains ? trainsSection(d.trains) : ''}` },
+    ],
+    settings: [
+      { id: 'device', label: 'Device', html: deviceSection },
+      { id: 'voice', label: 'Voice & wake word', html: voiceSection },
+      d.screen && { id: 'screen', label: 'Screen', html: screenSection(d.screen, esc) },
+      d.location && { id: 'location', label: 'Home location', html: locationSection(d.location) },
+      d.models && { id: 'models', label: 'AI models', html: modelsSection(d.models, esc) },
+      d.updates && { id: 'updates', label: 'Updates', html: updatesSection(d.updates) },
+      d.log && { id: 'log', label: 'Log', html: logSection(d.log) },
+      { id: 'security', label: 'Security', html: `<section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
+<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>
+${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" method="post" action="/security/password" style="margin-top:8px">
+<input type="password" name="current" placeholder="Current password" required autocomplete="current-password">
+<input type="password" name="password" placeholder="New password (8+ characters)" minlength="8" required autocomplete="new-password">
+<input type="password" name="again" placeholder="New password again" minlength="8" required autocomplete="new-password">
+<div><button class="btn secondary" type="submit">Change password</button></div></form>` : d.memory?.passwordFromEnv ? '<div class="meta">Set in <code>.env</code> (<code>PANEL_PASSWORD</code>): change it there.</div>' : ''}</div></li>
+${d.devices ? devicesRow(d.devices) : ''}
+${d.lock ? lockRow(d.lock) : ''}
+<li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section>` },
+    ],
   };
+  const areas = AREAS.map((a) => ({ ...a, parts: (parts[a.id] ?? []).filter((p): p is Part => Boolean(p && p.html)) })).filter((a) => a.parts.length);
+  const flag = (area: string) => items.some((i) => i.area === area);
+  const dot = (on: boolean, title = 'Needs attention') => (on ? `<span class="dot" title="${title}"></span>` : '');
+
+  const pane = (a: (typeof areas)[number]) => {
+    const sub = a.parts.length > 1
+      ? `<nav class="sub" aria-label="${esc(a.label)} parts">${a.parts.map((p) => `<a href="#${firstId(p.html)}" data-part="${p.id}">${esc(p.label)}${dot(items.some((i) => i.area === a.id && p.html.includes(`id="${i.href.slice(1)}"`)))}</a>`).join('')}</nav>`
+      : '';
+    const body = a.parts.map((p) => `<div class="part" data-part="${p.id}"${p.one ? ' data-one' : ''}>${p.one ? pills(p.html) : ''}${p.html}</div>`).join('');
+    const extra = a.id === 'devices' ? devicesExtra() : a.id === 'connections' ? '<p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>' : '';
+    return `<div class="pane" id="tab-${a.id}"><div class="phead"><h1>${esc(a.label)}</h1><p class="meta">${esc(a.about)}</p></div>${sub}${body}${extra}</div>`;
+  };
+  const menu = (['day', 'setup'] as const)
+    .map((g) => `<div class="mgroup"><div class="mtitle">${GROUP_LABEL[g]}</div>${areas.filter((a) => a.group === g).map((a) => `<a href="#tab-${a.id}" data-tab="${a.id}"><span>${esc(a.label)}</span>${dot(flag(a.id))}</a>`).join('')}</div>`)
+    .join('');
+  const acts = `<div class="sacts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div>`;
+  const barIds = BAR.filter((id) => areas.some((a) => a.id === id)).slice(0, 4);
+  const bar = barIds.map((id) => `<a href="#tab-${id}" data-tab="${id}">${icon(id)}${esc(areas.find((a) => a.id === id)!.label)}${dot(flag(id))}</a>`).join('')
+    + `<button type="button" id="moreBtn" aria-controls="sheet" aria-expanded="false">${icon('more')}More${dot(areas.some((a) => !barIds.includes(a.id) && flag(a.id)), 'Something in the menu needs attention')}</button>`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -833,7 +984,7 @@ export function renderPanel(d: PanelData): string {
 :root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#5d6670;--line:#e3e6ea;--accent:#2f6fed;--ok:#1f8a4c;--okbg:#e5f5ec;--offbg:#eef0f2;--err:#b42318;--errbg:#fdecea}
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--text:#e8eaed;--muted:#9aa3ad;--line:#2b3138;--accent:#6e9bff;--ok:#5fd18f;--okbg:#173524;--offbg:#252a31;--err:#ff8a80;--errbg:#3a1d1b}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:760px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);margin:0 0 20px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);margin:0 0 20px}
 section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
@@ -860,146 +1011,79 @@ input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-s
 code{background:var(--offbg);padding:1px 5px;border-radius:5px;font-size:13px}a{color:var(--accent)}
 form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 @media (max-width:520px){.row{flex-direction:column;align-items:stretch}.btn{text-align:center}.addfact{flex-wrap:wrap}.addfact input{flex-basis:100%}}
-.nav{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;margin:0 -16px 16px;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
-.nav::-webkit-scrollbar{display:none}.nav a{flex:none;padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600}
-.nav a:hover{color:var(--text)}.nav a.on{background:var(--accent);color:#fff}
-.nav .menu{margin-left:auto;flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-weight:600;cursor:pointer}.nav .menu.on{border-color:var(--accent);color:var(--accent)}
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}.scrim[hidden],.drawer[hidden]{display:none}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(300px,86vw);background:var(--card);border-left:1px solid var(--line);z-index:21;overflow-y:auto;padding:12px 16px 24px;box-shadow:-8px 0 24px rgba(0,0,0,.15)}
-.dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.dhead button{border:0;background:none;font-size:20px;color:var(--muted);cursor:pointer;padding:6px}
-.dgroup{padding:10px 0;border-top:1px solid var(--line)}.dgroup:first-of-type{border-top:0}.dtitle{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:0 0 4px}
-.dgroup a{display:block;padding:9px 10px;border-radius:8px;text-decoration:none;color:var(--text);font-weight:600}.dgroup a:hover{background:var(--bg)}.dgroup a.on{background:var(--accent);color:#fff}
-.dgroup .dot,.menu .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
-.pane.focus>section:not(.on),.pane.focus>p,.pane.focus>.jump{display:none}
-.stack input[type=password]{display:block;width:100%;max-width:340px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin:6px 0}.nav .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:2px}
-section{scroll-margin-top:64px}.js .pane{display:none}.js .pane.on{display:block}.pane>h2.title{font-size:13px;margin:0 0 10px}
-.jump{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}.jump a{font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--text)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
-.tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--text)}
-.tile:hover{border-color:var(--accent)}.tile .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}.tile .v{font-weight:600;margin:4px 0 2px}
-</style><script>document.documentElement.className='js'</script></head><body data-tab="${esc(TABS.some((t) => t[0] === d.tab) ? d.tab : 'overview')}"><main>
-<div class="top"><div><h1>Max</h1><p class="sub">Voice: ${esc(d.voice)}</p></div>
-<div class="acts"><form method="post" action="/refresh"><button class="btn secondary" type="submit">Refresh</button></form>${d.memory?.passwordSet ? '<form method="post" action="/logout"><button class="btn secondary" type="submit">Sign out</button></form>' : ''}</div></div>
-<nav class="nav" aria-label="Sections">${TABS.filter(([id]) => show[id] && QUICK.includes(id)).map(([id, name]) => `<a href="#tab-${id}" data-tab="${id}">${name}${attention[id] ? '<span class="dot" title="Needs attention"></span>' : ''}</a>`).join('')}
-<button type="button" class="menu" id="menuBtn" aria-controls="drawer" aria-expanded="false">☰ Menu${Object.entries(attention).some(([id, on]) => on && !QUICK.includes(id)) ? '<span class="dot" title="Something in the menu needs attention"></span>' : ''}</button></nav>
-<div class="scrim" id="scrim" hidden></div>
-<aside class="drawer" id="drawer" aria-label="Menu" hidden><div class="dhead"><b>Menu</b><button type="button" id="drawerClose" aria-label="Close">✕</button></div>
-${DRAWER.map(([group, items]) => `<div class="dgroup"><div class="dtitle">${group}</div>${items.filter(([, , tab]) => show[tab]).map(([href, label, tab]) => `<a href="${href}" data-tab="${tab}">${label}${attention[tab] && (tab !== 'connections' && tab !== 'settings') ? '<span class="dot"></span>' : ''}</a>`).join('')}</div>`).join('')}
-</aside>
+.stack input[type=password]{display:block;width:100%;max-width:340px;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);margin:6px 0}
+
+.shell{display:flex;min-height:100vh}.side{display:none}
+main{flex:1 1 auto;min-width:0;max-width:820px;margin:0 auto;padding:16px 16px 96px}
+.phead{margin:4px 0 14px}.phead h1{font-size:24px;margin:0}.phead p{margin:2px 0 0}h2.sh{margin:4px 0 10px}
+.mgroup{padding:8px 0}.mtitle{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;padding:6px 12px}
+.mgroup a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:8px;text-decoration:none;color:var(--text);font-weight:600}.mgroup a:hover{background:var(--bg)}.mgroup a.on{background:var(--accent);color:#fff}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--err);flex:none}
+.sub{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:6px;flex-wrap:wrap;padding:8px 0 10px;margin:0 0 12px;border-bottom:1px solid var(--line)}
+.sub a{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600;font-size:14px}.sub a:hover{color:var(--text)}.sub a.on{background:var(--accent);color:#fff}
+.sub2{position:static;border-bottom:0;padding:0;margin:0 0 10px}.sub2 a{font-size:13px;padding:5px 11px;border:1px solid var(--line);color:var(--text)}.sub2 a.on{border-color:var(--accent);background:transparent;color:var(--accent)}
+.js .pane{display:none}.js .pane.on{display:block}.js .part{display:none}.js .part.on{display:block}.js .part[data-one]>section{display:none}.js .part[data-one]>section.on{display:block}
+section{scroll-margin-top:72px}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.bar a,.bar button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font:inherit;font-size:11px;font-weight:600;text-decoration:none;color:var(--muted);background:none;border:0;cursor:pointer;position:relative}.bar svg{width:22px;height:22px}.bar .on{color:var(--accent)}.bar .dot{position:absolute;top:4px;left:calc(50% + 8px)}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}.scrim[hidden],.sheet[hidden]{display:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:85vh;overflow-y:auto;background:var(--card);border-radius:16px 16px 0 0;z-index:21;padding:12px 12px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 24px rgba(0,0,0,.15)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:0 4px 4px}.dhead button{border:0;background:none;font-size:20px;color:var(--muted);cursor:pointer;padding:6px}
+.sacts{display:flex;gap:8px;padding:12px 4px 0}.sacts form{flex:1}.sacts .btn{width:100%;text-align:center}
+.attn{border-color:var(--err)}.attn h2{color:var(--err)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--text)}.tile:hover{border-color:var(--accent)}.tile .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}.tile .v{font-weight:600;margin:4px 0 2px}
+@media (min-width:900px){.side{display:flex;flex-direction:column;flex:0 0 240px;position:sticky;top:0;height:100vh;overflow-y:auto;box-sizing:border-box;padding:20px 12px;background:var(--card);border-right:1px solid var(--line)}.brand{font-size:22px;font-weight:700;padding:0 12px 14px}.side .sacts{margin-top:auto}.bar{display:none}main{padding:24px 32px 48px}}
+</style><script>document.documentElement.className='js'</script></head><body data-tab="${esc(AREAS.some((t) => t.id === tab) ? tab : 'overview')}"><div class="shell">
+<aside class="side"><div class="brand">Max</div><nav aria-label="Menu">${menu}</nav>${acts}</aside>
+<main>
 ${d.notice ? `<div class="notice ${d.notice.kind}">${esc(d.notice.text)}</div>` : ''}
-
-<div class="pane" id="tab-overview">${micBanner(d)}${overview(d)}</div>
-
-<div class="pane" id="tab-myday">${d.memory ? myDaySection(d.memory) : ''}</div>
-
-<div class="pane" id="tab-health">${d.health ? healthSection(d.health, esc) : ''}</div>
-
-<div class="pane" id="tab-routines">${d.routines ? routinesSection(d.routines, esc) : ''}</div>
-
-<div class="pane" id="tab-max">${d.soul ? soulSection(d.soul) : ''}</div>
-
-<div class="pane" id="tab-memory">${d.about ? aboutSection(d.about) : ''}${d.memory ? memorySection(d.memory) : ''}</div>
-
-${d.homeDevices?.enabled ? `<div class="pane" id="tab-devices">${devicesPane()}${d.automations ? automationsSection(d.automations) : ''}</div>` : ''}
-
-<div class="pane" id="tab-projects">${d.memory ? projectsSection(d.memory) : ''}</div>
-
-<div class="pane" id="tab-meetings">${d.meetings ? meetingsSection(d.meetings) : ''}</div>
-
-<div class="pane" id="tab-connections">
-<section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>
-<p class="meta add">To add another app (e.g. linkedin, instagram, slack, notion), add its name to <code>COMPOSIO_TOOLKITS</code> (personal) or <code>COMPOSIO_WORK_TOOLKITS</code> (work) in <code>.env</code> and restart Max; it then appears here with a Connect button.</p></section>
-<section id="web"><h2>Web search</h2><ul><li class="row"><div><div class="name">Firecrawl ${d.web?.configured ? badge(d.web.connected) : '<span class="badge off">Not set up</span>'}</div>
-<div class="meta">${!d.web?.configured ? 'Add <code>FIRECRAWL_API_KEY</code> to <code>.env</code> (free key at <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>) and restart Max: he can then search the web and read pages.' : d.web.connected ? `Max can search the web and read pages${d.web.remainingCredits !== undefined ? ` · ${d.web.remainingCredits.toLocaleString('en-GB')} credits left` : ''}` : esc(d.web.error ?? 'Not reachable')}</div></div></li></ul></section>
-${d.whatsapp ? whatsappSection(d.whatsapp) : ''}
-${d.trains ? trainsSection(d.trains) : ''}
-<section id="home-assistant"><h2>Home Assistant</h2><ul><li class="row"><div><div class="name">Home Assistant ${badge(d.homeAssistant.connected)}</div>
-<div class="meta">${d.homeAssistant.where ? `${esc(d.homeAssistant.where)} · ` : ''}${d.homeAssistant.connected ? `${d.homeAssistant.tools} actions available to Max` : esc(d.homeAssistant.error ?? 'Not connected')}</div></div></li></ul>
-<p class="meta">Max uses one Home Assistant. ${d.homeDevices?.enabled ? 'It runs on this box: manage your devices on the Devices tab. Any earlier Home Assistant connection is no longer used.' : 'To change it, edit HA_MCP_URL and HA_TOKEN in .env.'}</p></section>
-${musicSection(d.music)}
-${servers ? `<section id="servers"><h2>Other MCP servers</h2><ul>${servers}</ul></section>` : ''}
-<p class="meta">Sending, replying, deleting and similar actions always need your spoken "yes" first.</p>
-</div>
-
-<div class="pane" id="tab-settings">${d.location ? locationSection(d.location) : ''}
-${d.screen ? screenSection(d.screen, esc) : ''}
-${d.models ? modelsSection(d.models, esc) : ''}
-<section id="device"><h2>Device</h2>
-${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
-${d.wakeWords ? wakeWordsRow(d.wakeWords) : ''}
-${d.wakeUps ? wakeUpsSection(d.wakeUps) : ''}
-${d.device ? `<form class="stack" method="post" action="/device/voice">
-<div class="addfact"><label class="meta" for="greet">When you say "Hey Max", he answers</label><input id="greet" name="greeting" maxlength="120" value="${esc(d.device.greeting ?? '')}" placeholder="Leave empty for a short beep"></div>
-<div class="addfact"><label class="meta" for="greet-again">Say it again only after</label><select id="greet-again" name="greetAgain">${[
-      [0, 'Every time'],
-      [5, '5 minutes'],
-      [10, '10 minutes'],
-      [30, '30 minutes'],
-      [60, '1 hour'],
-    ]
-      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.greetAgainMin ?? 10) ? 'selected' : ''}>${l}</option>`)
-      .join('')}</select><span class="meta">of quiet. Sooner than that, "Hey Max" gets just the short beep.</span></div>
-<div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
-<p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
-</form>` : ''}
-${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
-${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
-<form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
-${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>
-${Object.entries(SPEAKER_TONES).map(([k, label]) => `<label class="meta tick"><input type="radio" name="tone" value="${k}" ${(d.device!.tone ?? 'flat') === k ? 'checked' : ''} onchange="this.form.submit()"> ${esc(label)}</label>`).join('')}
-<noscript><button class="btn" type="submit">Save</button></noscript></form>` : ''}
-${d.device.volume === undefined ? '<p class="meta">The speaker volume can\'t be read: is the sound system running?</p>' : ''}${d.onBox && d.device.brightnessSupported === false ? "<p class=\"meta\">This screen doesn't let the Pi change its brightness.</p>" : ''}` : ''}
-${d.onBox
-  ? `<p class="meta">Turn the Max box off safely before unplugging it, or restart it. You can also hold a finger on its screen for 2 seconds, or say "Max, turn off". To turn it on again, press the power button on the Raspberry Pi.</p>
-<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="reboot"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, restart Max now</label><button class="btn secondary" type="submit">Restart</button></form>
-<form class="addfact danger" method="post" action="/device/power"><input type="hidden" name="action" value="poweroff"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Yes, turn Max off now</label><button class="btn secondary" type="submit">Turn off</button></form>`
-  : '<p class="meta">Turning off and restarting are available when Max runs on the Max box (Raspberry Pi).</p>'}
-</section>
-${d.updates ? updatesSection(d.updates) : ''}
-${d.log ? logSection(d.log) : ''}
-<section id="security"><h2>Security</h2><ul><li class="row"><div><div class="name">Panel password ${badge(Boolean(d.memory?.passwordSet), 'On', 'Off')}</div>
-<div class="meta">${d.memory?.passwordSet ? 'This page asks for a password.' : 'Anyone who can open this page can use it. Set <code>PANEL_PASSWORD</code> in <code>.env</code> (on the Max box the panel always asks for one).'}</div>
-${d.memory?.passwordSet && !d.memory.passwordFromEnv ? `<form class="stack" method="post" action="/security/password" style="margin-top:8px">
-<input type="password" name="current" placeholder="Current password" required autocomplete="current-password">
-<input type="password" name="password" placeholder="New password (8+ characters)" minlength="8" required autocomplete="new-password">
-<input type="password" name="again" placeholder="New password again" minlength="8" required autocomplete="new-password">
-<div><button class="btn secondary" type="submit">Change password</button></div></form>` : d.memory?.passwordFromEnv ? '<div class="meta">Set in <code>.env</code> (<code>PANEL_PASSWORD</code>): change it there.</div>' : ''}</div></li>
-${d.devices ? devicesRow(d.devices) : ''}
-${d.lock ? lockRow(d.lock) : ''}
-<li class="row"><div><div class="name">Voice</div><div class="meta">${esc(d.voice)}</div></div></li></ul></section></div>
-</main>
+${areas.map(pane).join('\n')}
+</main></div>
+<nav class="bar" aria-label="Menu">${bar}</nav>
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" hidden><div class="dhead"><b>Menu</b><button type="button" id="sheetClose" aria-label="Close">✕</button></div><nav aria-label="All areas">${menu}</nav>${acts}</div>
 <script>
 (function () {
   var panes = [].slice.call(document.querySelectorAll('.pane'));
-  var links = [].slice.call(document.querySelectorAll('.nav a'));
-  var drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim'), menuBtn = document.getElementById('menuBtn');
-  var dlinks = [].slice.call(drawer.querySelectorAll('a'));
-  // Menu entries for sections that aren't there (an app not set up...) are left out.
-  dlinks.forEach(function (a) { if (!document.getElementById(a.getAttribute('href').slice(1))) a.remove(); });
+  var menuLinks = [].slice.call(document.querySelectorAll('[data-tab]'));
+  var sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim'), moreBtn = document.getElementById('moreBtn');
+  var ALIAS = ${JSON.stringify(ALIAS)};
   function openMenu(open) {
-    drawer.hidden = !open; scrim.hidden = !open;
-    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { var first = drawer.querySelector('a.on') || drawer.querySelector('a'); if (first) first.focus(); }
+    sheet.hidden = !open; scrim.hidden = !open;
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { var first = sheet.querySelector('a.on') || sheet.querySelector('a'); if (first) first.focus(); }
   }
-  menuBtn.addEventListener('click', function () { openMenu(drawer.hidden); });
+  moreBtn.addEventListener('click', function () { openMenu(sheet.hidden); });
   scrim.addEventListener('click', function () { openMenu(false); });
-  document.getElementById('drawerClose').addEventListener('click', function () { openMenu(false); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) openMenu(false); });
-  dlinks.forEach(function (a) { a.addEventListener('click', function () { openMenu(false); }); });
+  document.getElementById('sheetClose').addEventListener('click', function () { openMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) openMenu(false); });
+  [].slice.call(sheet.querySelectorAll('a')).forEach(function (a) { a.addEventListener('click', function () { openMenu(false); }); });
+  // The address says where we are: #tab-health (an area), #health-meals (a part, or a section inside one).
   function route() {
     var id = decodeURIComponent(location.hash.slice(1));
-    var el = id && document.getElementById(id);
+    if (ALIAS[id]) id = ALIAS[id];
+    var el = id ? document.getElementById(id) : null;
     var pane = el && (el.classList.contains('pane') ? el : el.closest('.pane'));
-    if (!pane) pane = document.getElementById('tab-' + document.body.getAttribute('data-tab')) || panes[0];
-    // A section opened from the menu (Apps, Security...) shows on its own, not the whole page of settings.
-    var section = el && el !== pane && el.tagName === 'SECTION' && el.parentNode === pane && (pane.id === 'tab-connections' || pane.id === 'tab-settings') ? el : null;
-    panes.forEach(function (p) { p.classList.toggle('on', p === pane); p.classList.toggle('focus', p === pane && !!section); });
-    [].slice.call(pane.querySelectorAll(':scope > section')).forEach(function (sct) { sct.classList.toggle('on', sct === section); });
-    links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + pane.id); });
-    var inMenu = false;
-    dlinks.forEach(function (a) { var on = a.getAttribute('href') === '#' + (section ? section.id : pane.id); a.classList.toggle('on', on); inMenu = inMenu || on; });
-    menuBtn.classList.toggle('on', inMenu);
-    if (el && el !== pane && !section) el.scrollIntoView(); else window.scrollTo(0, 0);
+    if (!pane) { pane = document.getElementById('tab-' + document.body.getAttribute('data-tab')) || panes[0]; el = null; }
+    var parts = [].slice.call(pane.querySelectorAll(':scope > .part'));
+    var part = (el && el !== pane && el.closest('.part')) || parts[0];
+    panes.forEach(function (p) { p.classList.toggle('on', p === pane); });
+    parts.forEach(function (p) { p.classList.toggle('on', p === part); });
+    var sec = null;
+    if (part && part.hasAttribute('data-one')) {
+      var secs = [].slice.call(part.querySelectorAll(':scope > section'));
+      var inner = el && el !== part ? (secs.indexOf(el) >= 0 ? el : el.closest('section')) : null;
+      sec = inner && secs.indexOf(inner) >= 0 ? inner : secs[0];
+      secs.forEach(function (s) { s.classList.toggle('on', s === sec); });
+      [].slice.call(part.querySelectorAll('.sub2 a')).forEach(function (a) { a.classList.toggle('on', !!sec && a.getAttribute('href') === '#' + sec.id); });
+    }
+    [].slice.call(pane.querySelectorAll(':scope > .sub a')).forEach(function (a) { a.classList.toggle('on', !!part && a.getAttribute('data-part') === part.getAttribute('data-part')); });
+    var inBar = false;
+    menuLinks.forEach(function (a) { var on = a.getAttribute('data-tab') === pane.id.slice(4); a.classList.toggle('on', on); if (on && a.closest('.bar')) inBar = true; });
+    moreBtn.classList.toggle('on', !inBar);
+    var first = part && (sec || part.querySelector(':scope > section'));
+    if (el && el !== pane && el !== part && el !== first) el.scrollIntoView(); else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
   route();
@@ -1016,6 +1100,7 @@ ${d.lock ? lockRow(d.lock) : ''}
 })();
 </script></body></html>`;
 }
+
 
 function musicSection(m: PanelData['music']): string {
   if (!m) return '';

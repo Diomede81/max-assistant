@@ -5,7 +5,7 @@ A **Health** tab on the control panel (next to My Day) with five parts: **Exerci
 
 ## You
 
-At the top of the Health tab, **You**: your age, sex (optional), height, fitness level (from "just starting"
+In the Health area, **You & diet**: your age, sex (optional), height, fitness level (from "just starting"
 to "athlete"), how active you are day to day, and any injuries, conditions or limits. Every plan matches your
 age and fitness level and works around your limits; with no profile, plans stay gentle. Max also works out
 your BMI (height and latest weight) and heart-rate zones for your age, and includes them in "how am I doing?".
@@ -31,7 +31,7 @@ In **Health → Plans**, create a plan:
   them (e.g. `menshealth.com/uk/workouts`). A list is followed: Max picks the workouts that fit your brief
   (4 for a day's plan, 7 for a week's), different ones from the last few plans, reads each and builds the
   plan from them, naming where each idea comes from. The plan shows which pages it was built from. With
-  Firecrawl set up (Connections → Web search) Max reads sites that block simple downloads (about 5
+  Firecrawl set up (Connections → Web & trains) Max reads sites that block simple downloads (about 5
   Firecrawl credits a plan); without it he reads them directly where the site allows.
 - **What you want**: your level, goal, equipment, time you have, injuries or foods to avoid.
 - **Covers** the day or the week ahead; **when** it's made and sent (days and time).
@@ -43,7 +43,7 @@ varies each plan from the last. Ask "what's my workout today?", or "make me a ne
 
 The plans are written by the model chosen in **Settings → AI models → Health plans** (e.g. DeepSeek); until
 you choose one, Max's main model writes them. A "thinking" model (e.g. DeepSeek's reasoner) gets plenty of room to think
-and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web search), Max can read
+and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web & trains), Max can read
 more websites (ones that need a browser).
 
 ## Weekly meals and the shopping list

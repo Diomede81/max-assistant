@@ -4,8 +4,13 @@
  * brand) through Home Assistant's own setup steps shown as plain forms. Everything else is one link away
  * in the full Home Assistant ("Advanced"). Drawn in the browser from /api/home (HomeService).
  */
-export function devicesPane(): string {
-  return `<section id="devices"><h2>Devices</h2>
+/** The Devices area as parts for the sub-menu: your devices, adding new ones, the full Home Assistant. */
+export function devicesParts(): { id: string; label: string; html: string }[] {
+  return [
+    {
+      id: 'devices',
+      label: 'Devices',
+      html: `<section id="devices"><h2>Devices</h2>
 <p class="meta" id="hStatus">Loading…</p>
 <p id="hMsg" role="status" hidden></p>
 <div id="hUpdate" class="hnote" hidden></div>
@@ -19,19 +24,33 @@ export function devicesPane(): string {
 <label><input type="checkbox" id="hOnlyCtl"> Only things I can control</label><label><input type="checkbox" id="hShowHidden"> Show hidden</label></div>
 <div id="hDevices" class="hgrid"></div>
 <div id="hParts"></div>
-</section>
-<section id="devices-add"><h2>Add devices and services</h2>
+</section>`,
+    },
+    {
+      id: 'add',
+      label: 'Add devices',
+      html: `<section id="devices-add"><h2>Add devices and services</h2>
 <div id="hFound"></div>
-<p class="meta">Most WiFi devices appear above by themselves once they're on your WiFi. Or search for the brand or service (Tado, Shelly, Philips Hue, Sonos…) and answer a few questions:</p>
+<p class="meta">Most WiFi devices appear by themselves once they're on your WiFi. Or search for the brand or service (Tado, Shelly, Philips Hue, Sonos…) and answer a few questions:</p>
 <input id="hSearch" class="hsearch" type="search" placeholder="Search brands and services, e.g. Tado, Shelly, Philips Hue" autocomplete="off">
 <ul id="hResults"></ul>
 <div id="hServices"></div>
-</section>
-<section id="devices-advanced"><h2>Advanced</h2>
-<p class="meta">For anything this page doesn't do (automations, energy, history), open the full Home Assistant running on your Max box.</p>
+</section>`,
+    },
+    {
+      id: 'advanced',
+      label: 'Advanced',
+      html: `<section id="devices-advanced"><h2>Advanced</h2>
+<p class="meta">For anything this page doesn't do (energy, history, add-ons), open the full Home Assistant running on your Max box.</p>
 <div id="hAdvanced"></div>
-</section>
-<div class="hmodal" id="hFlow" hidden><div class="hdialog" role="dialog" aria-modal="true" aria-labelledby="hFlowTitle"><h3 id="hFlowTitle"></h3><div id="hFlowBody"></div></div></div>
+</section>`,
+    },
+  ];
+}
+
+/** The device set-up dialog and the page's code: once per page, outside the parts. */
+export function devicesExtra(): string {
+  return `<div class="hmodal" id="hFlow" hidden><div class="hdialog" role="dialog" aria-modal="true" aria-labelledby="hFlowTitle"><h3 id="hFlowTitle"></h3><div id="hFlowBody"></div></div></div>
 <script>${SCRIPT}</script>`;
 }
 
@@ -61,7 +80,7 @@ export const DEVICES_CSS = `#hMsg{background:var(--errbg);color:var(--err);paddi
 .hdialog label.hcheck{display:flex;gap:8px;align-items:center}.hdialog .herr{background:var(--errbg);color:var(--err);padding:8px 10px;border-radius:8px}
 .hdialog .hacts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}.hdialog .hmenu{display:grid;gap:8px}
 .hpw{font-family:ui-monospace,monospace}
-@media (max-width:440px){.nav{gap:2px}.nav a,.nav .menu{padding:7px 10px;font-size:14px}.nav .menu{position:sticky;right:0;box-shadow:-10px 0 8px var(--bg)}}`;
+`;
 
 // The page's own code (runs in the browser). Kept as plain JavaScript so it needs no build step.
 const SCRIPT = String.raw`

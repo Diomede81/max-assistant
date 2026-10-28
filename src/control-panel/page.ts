@@ -712,7 +712,8 @@ function logSection(lines: NonNullable<PanelData['log']>): string {
     .join('');
   return `<section id="log"><h2>Log</h2>
 <p class="meta">What Max has been doing, newest first (the last ${shown.length} of ${lines.length} lines since he started${problems ? `; <span class="warntext">${problems} warnings or errors</span>` : ''}). The same lines as the box's own log: actions, timings and problems, never what was said. If something went wrong, download the log and send it to whoever helps you.</p>
-<div class="acts"><a class="btn secondary" href="/log.txt" download="max-log.txt">Download the log</a><a class="btn secondary" href="/#log">Refresh</a></div>
+<div class="acts"><a class="btn" href="/report.txt" download="max-report.txt">Download a support report</a><a class="btn secondary" href="/log.txt" download="max-log.txt">Download the log</a><a class="btn secondary" href="/#log">Refresh</a></div>
+<p class="meta">The support report is one file to send to whoever helps you: the version, the mode, each scheduled task's last runs (status, problems, how the result starts and ends), the WhatsApp and app connections, and this log. No API keys, no message text, nothing from memory.</p>
 <div class="logbox">${rows || '<p class="empty">Nothing yet.</p>'}</div></section>`;
 }
 

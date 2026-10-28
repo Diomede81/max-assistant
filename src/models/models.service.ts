@@ -218,7 +218,7 @@ export class ModelsService implements OnModuleInit {
    * One step of a job that uses Max's actions: the model answers or asks for actions (tool calls).
    * Falls back to the main model for this step if the chosen one fails.
    */
-  async step(task: Task, messages: ChatCompletionMessageParam[], tools: ChatCompletionTool[], opts: { maxTokens: number; timeoutMs: number; assignment?: Assignment }): Promise<{ content: string; toolCalls: ChatCompletionMessageToolCall[]; reasoning?: string }> {
+  async step(task: Task, messages: ChatCompletionMessageParam[], tools: ChatCompletionTool[], opts: { maxTokens: number; timeoutMs: number; assignment?: Assignment }): Promise<{ content: string; toolCalls: ChatCompletionMessageToolCall[]; reasoning?: string; /** The answer hit the token limit and stops mid-sentence. */ cut?: boolean }> {
     const run = async (a: Assignment) => {
       const main = a.provider === 'default';
       const res = await this.client(a.provider).chat.completions.create(
@@ -235,6 +235,7 @@ export class ModelsService implements OnModuleInit {
       const m = res.choices[0]?.message;
       return {
         content: m?.content ?? '',
+        cut: res.choices[0]?.finish_reason === 'length' || undefined,
         toolCalls: (m?.tool_calls ?? []) as ChatCompletionMessageToolCall[],
         // DeepSeek's thinking: sent back with the next request, or it refuses to carry on
         reasoning: (m as { reasoning_content?: string } | undefined)?.reasoning_content,

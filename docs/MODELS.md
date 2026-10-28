@@ -14,6 +14,8 @@ Max uses an AI model in two kinds of places:
 | Filing conversations | After each conversation, decides what to remember and where | Reliable and cheap; runs often |
 | Memory tidy-up | Rolls old notes into weekly and monthly digests | Cheap; runs in the background |
 | Complex tasks | Travel planning, calendar questions and other jobs with several steps, handed over by the conversation | A strong, careful model (e.g. DeepSeek); a task takes up to a minute |
+| Scheduled tasks | The tasks you schedule under Routines, unless a task names its own model | A strong, careful model; each task can also pick its own |
+| Health plans | Exercise routines and meal plans from the websites you chose | Good writing and care with dietary rules |
 
 By default every job uses the main model. Typically you'd pick a stronger model for website suggestions
 and news summaries, and keep a cheap fast one for filing.
@@ -44,8 +46,19 @@ Add its key to `.env` and restart Max. Keys only go in `.env`, never on the cont
 | Groq | `GROQ_API_KEY` | Very fast open models |
 | DeepSeek | `DEEPSEEK_API_KEY` | |
 | Mistral | `MISTRAL_API_KEY` | |
+| xAI (Grok) | `XAI_API_KEY` | |
+| Perplexity | `PERPLEXITY_API_KEY` | Models that search the web as they answer: good for scheduled research tasks |
+| Moonshot (Kimi) | `MOONSHOT_API_KEY` | |
+| Alibaba (Qwen) | `DASHSCOPE_API_KEY` | |
+| Z.ai (GLM) | `ZAI_API_KEY` | |
+| Together AI | `TOGETHER_API_KEY` | Open models (Llama, Qwen, DeepSeek…) hosted by Together |
+| Fireworks AI | `FIREWORKS_API_KEY` | Open models hosted by Fireworks |
+| Cerebras | `CEREBRAS_API_KEY` | Very fast open models |
+| Cohere | `COHERE_API_KEY` | |
+| Hugging Face | `HF_TOKEN` | Inference providers through the Hugging Face router |
 | Ollama | `OLLAMA_BASE_URL` | Models running on your own computer, e.g. `http://192.168.1.20:11434/v1`. Free and private |
 | Anything else | `CUSTOM_LLM_BASE_URL` (+ `CUSTOM_LLM_API_KEY`) | Any OpenAI-compatible service |
+| More of them | `CUSTOM_LLM_2_BASE_URL`, `_API_KEY` and `_NAME` (up to `_5`) | Up to four more OpenAI-compatible endpoints, shown by the name you give |
 
 Then on the control panel, for each job: pick the provider, pick the model (the list comes live from the
 provider, so it's always current; you can also type a name) and press **Save**. **Test** sends a tiny

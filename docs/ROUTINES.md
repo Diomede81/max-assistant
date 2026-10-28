@@ -1,7 +1,8 @@
-# Routines: the news briefing
+# Routines: the news briefing and scheduled tasks
 
-Routines are jobs Max does on a schedule, so the result is ready the moment you ask. The first one is
-the **news briefing**: you give Max a list of websites and what interests you; every morning (or
+Routines are jobs Max does on a schedule, so the result is ready the moment you ask. There are two kinds:
+the **news briefing** (below) and **[scheduled tasks](#scheduled-tasks)**, anything else you'd ask Max to
+do, done at a set time. The news briefing: you give Max a list of websites and what interests you; every morning (or
 whenever you choose) he gathers the news, picks the 5 or 6 articles that suit you best, reads them and
 prepares a short spoken summary of each.
 
@@ -82,3 +83,27 @@ Everything is stored encrypted next to Max's memory (`routines.vault`).
   address instead (often `site.com/feed` or `site.com/rss`), or set up Firecrawl.
 - **Articles don't match your interests**: make the interests more specific, and use *Leave out*.
 - **Nothing at the scheduled time**: check the time zone (`TZ` in `.env`) and that the routine is on.
+
+## Scheduled tasks
+
+Anything Max can do with his actions, done on his own at a set time: look things up on the web, check
+trains, the calendar or the news, compare prices, read your email, check your health numbers… Control
+panel → **Routines** → **Scheduled tasks** → *New scheduled task*, or by voice: "Hey Max, every morning
+at 7 check the trains to Bath and tell me if there are problems", "on the 1st of each month, look up the
+best energy tariffs for our usage", "on Friday at 6, find me three restaurants near the office for
+Saturday".
+
+| Field | What to put |
+| --- | --- |
+| What to do | In full, as you'd say it to Max: what, where, which dates, what matters to you. The more you say, the better the result |
+| When | On chosen days of the week, once on a date (it switches itself off afterwards), or monthly on a day (the 31st = the month's last day); and the time |
+| Effort | **Quick** (a look-up, about a minute), **Normal** (a few steps, up to 4 minutes), **Thorough** (research and comparisons, up to 10 minutes) |
+| Model | The model for this task, from any provider you've set up (see [MODELS.md](MODELS.md)); leave it on *Scheduled tasks model* to use the one chosen in Settings → AI models |
+| Result | Spoken and shown on the screen when done; emailed to you (the address from Health → Plans, through your Gmail or Outlook); sent to you on WhatsApp |
+| Whose | Personal, Work or Household: a work task is only spoken about in work mode (it still runs and is sent) |
+
+Each task keeps its last five results on the control panel. Ask "what did the flight check find?" or
+"run the energy task now". A task only finds out and reports: it never sends messages to anyone else,
+books, pays or deletes anything (those stay with you, in conversation, with your "yes"). If Max was
+off at the time, the task runs as soon as he's back, the same day.
+

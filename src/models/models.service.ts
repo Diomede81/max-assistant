@@ -14,6 +14,7 @@ export const TASKS = {
   tasks: { label: 'Complex tasks', help: 'Travel planning, calendar questions and other jobs with several steps: the conversation hands them to this model, which works them out with Max\'s actions. Pick a strong model (e.g. DeepSeek); until you do, the conversation does them itself.' },
   health: { label: 'Health plans', help: 'Writes your exercise routines and meal plans from the websites you chose: a strong model gives better plans.' },
   home: { label: 'Home automations', help: 'Turns an automation you describe ("when I\'m out and the alarm is on…") into one for Home Assistant.' },
+  jobs: { label: 'Scheduled tasks', help: 'Runs the tasks you schedule (Routines → Scheduled tasks) with Max\'s actions, unless a task names its own model. A strong, careful model does them best.' },
 } as const;
 export type Task = keyof typeof TASKS;
 
@@ -35,6 +36,16 @@ const KNOWN: Provider[] = [
   { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', setting: 'GROQ_API_KEY', where: 'https://console.groq.com/keys' },
   { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', setting: 'DEEPSEEK_API_KEY', where: 'https://platform.deepseek.com/api_keys' },
   { id: 'mistral', label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', setting: 'MISTRAL_API_KEY', where: 'https://console.mistral.ai/api-keys' },
+  { id: 'xai', label: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', setting: 'XAI_API_KEY', where: 'https://console.x.ai' },
+  { id: 'perplexity', label: 'Perplexity (web-searching models)', baseUrl: 'https://api.perplexity.ai', setting: 'PERPLEXITY_API_KEY', where: 'https://www.perplexity.ai/settings/api' },
+  { id: 'moonshot', label: 'Moonshot (Kimi)', baseUrl: 'https://api.moonshot.ai/v1', setting: 'MOONSHOT_API_KEY', where: 'https://platform.moonshot.ai' },
+  { id: 'qwen', label: 'Alibaba (Qwen)', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', setting: 'DASHSCOPE_API_KEY', where: 'https://modelstudio.console.alibabacloud.com' },
+  { id: 'zhipu', label: 'Z.ai (GLM)', baseUrl: 'https://api.z.ai/api/paas/v4', setting: 'ZAI_API_KEY', where: 'https://z.ai/manage-apikey/apikey-list' },
+  { id: 'together', label: 'Together AI (open models)', baseUrl: 'https://api.together.xyz/v1', setting: 'TOGETHER_API_KEY', where: 'https://api.together.ai/settings/api-keys' },
+  { id: 'fireworks', label: 'Fireworks AI (open models)', baseUrl: 'https://api.fireworks.ai/inference/v1', setting: 'FIREWORKS_API_KEY', where: 'https://fireworks.ai/account/api-keys' },
+  { id: 'cerebras', label: 'Cerebras (very fast open models)', baseUrl: 'https://api.cerebras.ai/v1', setting: 'CEREBRAS_API_KEY', where: 'https://cloud.cerebras.ai' },
+  { id: 'cohere', label: 'Cohere', baseUrl: 'https://api.cohere.ai/compatibility/v1', setting: 'COHERE_API_KEY', where: 'https://dashboard.cohere.com/api-keys' },
+  { id: 'huggingface', label: 'Hugging Face (inference providers)', baseUrl: 'https://router.huggingface.co/v1', setting: 'HF_TOKEN', where: 'https://huggingface.co/settings/tokens' },
 ];
 
 export interface Assignment {
@@ -92,6 +103,7 @@ export class ModelsService implements OnModuleInit {
       ...KNOWN.map((p) => ({ ...p, configured: Boolean(m.keys[p.id]) })),
       { id: 'ollama', label: 'Ollama (on your own computer)', baseUrl: m.ollamaUrl || 'http://127.0.0.1:11434/v1', setting: 'OLLAMA_BASE_URL', configured: Boolean(m.ollamaUrl), where: 'https://ollama.com' },
       { id: 'custom', label: 'Your own endpoint (OpenAI-compatible)', baseUrl: m.customUrl, setting: 'CUSTOM_LLM_BASE_URL', configured: Boolean(m.customUrl) },
+      ...m.extra.map((x, i) => ({ id: `custom${i + 2}`, label: `${x.name || `Endpoint ${i + 2}`} (OpenAI-compatible)`, baseUrl: x.url, setting: `CUSTOM_LLM_${i + 2}_BASE_URL`, configured: Boolean(x.url) })),
     ];
   }
 
@@ -103,7 +115,8 @@ export class ModelsService implements OnModuleInit {
     let c = this.clients.get(id);
     if (!c) {
       const p = this.provider(id)!;
-      const key = id === 'default' ? this.cfg.llm.apiKey : this.cfg.models.keys[id];
+      const extra = /^custom(\d+)$/.exec(id);
+      const key = id === 'default' ? this.cfg.llm.apiKey : extra ? this.cfg.models.extra[Number(extra[1]) - 2]?.key : this.cfg.models.keys[id];
       c = new OpenAI({ baseURL: p.baseUrl, apiKey: key || 'none' });
       this.clients.set(id, c);
     }
@@ -143,9 +156,15 @@ export class ModelsService implements OnModuleInit {
 
   // ---------- Jobs ----------
 
-  assignment(task: Task): Assignment {
-    const a = this.assignments[task];
+  assignment(task: Task, override?: Assignment): Assignment {
+    const a = override?.provider && override.provider !== 'default' && override.model && this.provider(override.provider)?.configured ? override : this.assignments[task];
     return a && this.provider(a.provider)?.configured ? a : { provider: 'default', model: '' };
+  }
+
+  /** "DeepSeek · deepseek-chat" for any assignment (a scheduled task's own model). */
+  describeAssignment(a: Assignment): string {
+    if (a.provider === 'default') return `Main model (${this.cfg.llm.model})`;
+    return `${this.provider(a.provider)?.label.replace(/ \(.*\)$/, '') ?? a.provider} · ${a.model}`;
   }
 
   /** "OpenAI · gpt-…" for the control panel and the logs. */
@@ -198,7 +217,7 @@ export class ModelsService implements OnModuleInit {
    * One step of a job that uses Max's actions: the model answers or asks for actions (tool calls).
    * Falls back to the main model for this step if the chosen one fails.
    */
-  async step(task: Task, messages: ChatCompletionMessageParam[], tools: ChatCompletionTool[], opts: { maxTokens: number; timeoutMs: number }): Promise<{ content: string; toolCalls: ChatCompletionMessageToolCall[]; reasoning?: string }> {
+  async step(task: Task, messages: ChatCompletionMessageParam[], tools: ChatCompletionTool[], opts: { maxTokens: number; timeoutMs: number; assignment?: Assignment }): Promise<{ content: string; toolCalls: ChatCompletionMessageToolCall[]; reasoning?: string }> {
     const run = async (a: Assignment) => {
       const main = a.provider === 'default';
       const res = await this.client(a.provider).chat.completions.create(
@@ -220,12 +239,12 @@ export class ModelsService implements OnModuleInit {
         reasoning: (m as { reasoning_content?: string } | undefined)?.reasoning_content,
       };
     };
-    const a = this.assignment(task);
+    const a = this.assignment(task, opts.assignment);
     try {
       return await run(a);
     } catch (err) {
       if (a.provider === 'default') throw err;
-      this.log.warn(`${TASKS[task].label}: ${this.describe(task)} failed (${(err as Error).message}); using the main model for this step`);
+      this.log.warn(`${TASKS[task].label}: ${this.describeAssignment(a)} failed (${(err as Error).message}); using the main model for this step`);
       return run({ provider: 'default', model: '' });
     }
   }

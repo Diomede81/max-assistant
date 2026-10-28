@@ -129,6 +129,10 @@ See [`deploy/max.service`](deploy/max.service).
   you ask "What's the news?". He can also suggest websites for your interests and find their news feeds.
   See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
 
+- **Scheduled tasks**: anything Max can do, done on his own at a set time (once, on chosen days or
+  monthly), with the effort and the AI model you choose: check trains, compare prices, research something,
+  read the news on a topic. The result is spoken, kept on the control panel, emailed or sent on WhatsApp.
+  See **[docs/ROUTINES.md](docs/ROUTINES.md)**.
 - **Bring your own AI model**: add keys for OpenAI, Anthropic, Gemini, OpenRouter, Groq, DeepSeek,
   Mistral, a local Ollama or any compatible service, then choose which model does each background job
   (news, suggestions, memory) on the control panel. See **[docs/MODELS.md](docs/MODELS.md)**.

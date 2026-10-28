@@ -10,6 +10,7 @@ import { WebModule } from './web/web.module';
 import { LocationModule } from './location/location.module';
 import { AboutModule } from './about/about.module';
 import { RoutinesModule } from './routines/routines.module';
+import { JobsModule } from './jobs/jobs.module';
 import { ModelsModule } from './models/models.module';
 import { DeviceModule } from './device/device.module';
 import { UpdatesModule } from './updates/updates.module';
@@ -23,7 +24,7 @@ import { WhatsAppChatModule } from './whatsapp/whatsapp-chat.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, AboutModule, WebModule, TrainsModule, MeetingsModule, WhatsAppModule, HealthModule, RoutinesModule, MusicModule, FaceModule, ConversationModule, WhatsAppChatModule, ControlPanelModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), LockModule, LiveVoiceModule, ModelsModule, DeviceModule, UpdatesModule, SoulModule, LocationModule, AboutModule, WebModule, TrainsModule, MeetingsModule, WhatsAppModule, HealthModule, RoutinesModule, JobsModule, MusicModule, FaceModule, ConversationModule, WhatsAppChatModule, ControlPanelModule],
   providers: [{ provide: APP_CONFIG, useFactory: loadConfig }],
   exports: [APP_CONFIG],
 })

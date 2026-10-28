@@ -1,5 +1,6 @@
 /** HTML for the control panel. Server-rendered, no external assets, works on a phone. */
 import { PanelRoutines, ROUTINES_CSS, routinesSection } from './routines-page';
+import { jobsSection, PanelJobs } from './jobs-page';
 import { MODELS_CSS, modelsSection, PanelModels } from './models-page';
 import { DEVICES_CSS, devicesExtra, devicesParts } from './devices-page';
 import { PanelScreen, SCREEN_CSS, screenSection } from './screen-page';
@@ -28,6 +29,8 @@ export interface PanelData {
   };
   voice: string;
   routines?: PanelRoutines;
+  /** Routines → Scheduled tasks. */
+  jobs?: PanelJobs;
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
   device?: {
@@ -656,7 +659,7 @@ const AREAS: { id: string; label: string; group: 'day' | 'setup'; about: string 
   { id: 'projects', label: 'Projects', group: 'day', about: 'Each project with its people, tasks and memory.' },
   { id: 'health', label: 'Health', group: 'day', about: 'Exercise, meals, heart, sleep and weight.' },
   { id: 'devices', label: 'Devices', group: 'day', about: 'Your lights, heating and devices, through Home Assistant on the box.' },
-  { id: 'routines', label: 'News briefing', group: 'day', about: 'Max reads the websites you choose and prepares your news.' },
+  { id: 'routines', label: 'Routines', group: 'day', about: 'Jobs Max does on a schedule: your news briefing and your own scheduled tasks.' },
   { id: 'max', label: "Max's memory & personality", group: 'setup', about: 'What Max knows about you, what he remembers, and who he is.' },
   { id: 'connections', label: 'Connections', group: 'setup', about: 'The accounts and services Max can use.' },
   { id: 'settings', label: 'Settings', group: 'setup', about: 'How the Max box behaves: its sound, voice, screen and software.' },
@@ -924,7 +927,7 @@ ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
     projects: [m && { id: 'projects', label: 'Projects', html: projectsSection(m) }],
     health: d.health ? healthParts(d.health, esc) : [],
     devices: d.homeDevices?.enabled ? [...devicesParts(), d.automations && { id: 'automations', label: 'Automations', html: automationsSection(d.automations) }] : [],
-    routines: [d.routines && { id: 'routines', label: 'News briefing', html: routinesSection(d.routines, esc) }],
+    routines: [d.routines && { id: 'routines', label: 'News briefing', html: routinesSection(d.routines, esc) }, d.jobs && { id: 'jobs', label: 'Scheduled tasks', html: jobsSection(d.jobs, esc) }],
     max: [d.about && { id: 'about', label: 'About you', html: aboutSection(d.about) }, m && { id: 'memory', label: 'Memory', html: memorySection(m), one: true }, d.soul && { id: 'soul', label: 'Personality', html: soulSection(d.soul) }],
     connections: [
       { id: 'apps', label: 'Apps', html: `<section id="apps"><h2>Apps</h2><ul>${apps}${hints}</ul>

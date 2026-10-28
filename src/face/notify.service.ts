@@ -16,6 +16,7 @@ import { Card, CardHandlers, CardLine } from './screen';
 import { TodoTicks } from './todo-ticks';
 import { LockService } from '../lock/lock.service';
 import { CIRCLES, Person, SocialService } from '../social/social.service';
+import { DeviceService } from '../device/device.service';
 
 const TICK_MS = 15_000;
 const TODO_MS = 60_000;
@@ -63,6 +64,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly timerService?: TimerService,
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly social?: SocialService,
+    @Optional() private readonly device?: DeviceService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'notifications');
   }
@@ -105,6 +107,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
   /** Shows the next waiting notification if now is a good moment. */
   deliver(): void {
     if (this.lock?.locked) return; // kept until the start-up code is entered
+    if (this.device?.nightNow) return; // night mode: kept until the morning
     if (this.guest) {
       const shown = this.face.info().card?.id;
       if (shown?.startsWith('notify-')) this.face.dismissCard(shown); // switched to guest mode while one showed

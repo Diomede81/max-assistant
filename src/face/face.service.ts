@@ -1,3 +1,4 @@
+import { DeviceService } from '../device/device.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PowerAction, requestPower } from './power';
 import { Card, CardHandlers, screen } from './screen';
@@ -123,6 +124,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     @Optional() private readonly toolRouter?: ToolRouterService,
     @Optional() private readonly ambient?: AmbientService,
     @Optional() private readonly actions?: BuiltinActionsService,
+    @Optional() private readonly device?: DeviceService,
     @Optional() private readonly screenTools?: ScreenToolsService,
     @Optional() private readonly lock?: LockService,
   ) {
@@ -314,7 +316,7 @@ export class FaceService extends EventEmitter implements OnModuleInit, OnModuleD
     let state: FaceState = this.wifi && this.wifi.state !== 'connected' ? 'setup' : this.speaking ? 'speaking' : this.base;
     const dancing = Boolean(this.music && this.ambient?.settings.dance !== false);
     // Music on in his sleep hours: someone's up, so is he.
-    if (state === 'idle' && this.inSleepHours() && !dancing) state = 'sleeping';
+    if (state === 'idle' && (this.inSleepHours() || this.device?.nightNow) && !dancing) state = 'sleeping';
     return {
       state,
       mode: this.modes?.mode ?? 'personal',

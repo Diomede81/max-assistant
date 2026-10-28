@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { APP_CONFIG, AppConfig } from '../config';
+import { timeZone } from '../actions/clock';
 import { SealedStore } from '../memory/sealed-store';
 
 const run = promisify(execFile);
@@ -26,6 +27,7 @@ export interface DeviceStatus {
   startSound?: boolean;
   /** How the speaker is tuned (see SPEAKER_TONES). */
   tone?: SpeakerTone;
+  night?: Night & { now: boolean };
 }
 
 /** Speaker tuning, applied on the box by max-sound.sh (an equaliser before the mic board). */
@@ -51,7 +53,9 @@ const GREET_AGAIN_MIN = 10;
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: SpeakerTone }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: SpeakerTone; night?: Night }>;
+  /** Night mode: between these times Max is muted (no wake word, no announcements, no screen notices). */
+  private nightSettings: Night = { on: false, from: '23:00', to: '07:00' };
   private level = 100;
   private voice: { greeting: string; greetAgainMin: number; startSound: boolean } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
   private speakerTone: SpeakerTone = 'flat';
@@ -66,6 +70,7 @@ export class DeviceService implements OnModuleInit {
       this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
       this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true };
       if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
+      if (saved?.night) this.nightSettings = { ...this.nightSettings, ...saved.night };
     } catch {
       // keep full brightness
     }
@@ -76,7 +81,30 @@ export class DeviceService implements OnModuleInit {
   }
 
   async status(): Promise<DeviceStatus> {
-    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone };
+    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone, night: { ...this.nightSettings, now: this.nightNow } };
+  }
+
+  // ---------- Night mode ----------
+
+  get night(): Night {
+    return this.nightSettings;
+  }
+
+  /** Whether it is night now: Max stays muted (switched off on the control panel at any time). */
+  get nightNow(): boolean {
+    const n = this.nightSettings;
+    if (!n.on) return false;
+    return inRange(n.from, n.to);
+  }
+
+  setNight(changes: { on: boolean; from?: string; to?: string }): string {
+    const ok = (t?: string) => t !== undefined && /^\d{2}:\d{2}$/.test(t);
+    if (changes.from !== undefined && !ok(changes.from)) return 'The "from" time should look like 23:00.';
+    if (changes.to !== undefined && !ok(changes.to)) return 'The "to" time should look like 07:00.';
+    this.nightSettings = { on: changes.on, from: changes.from ?? this.nightSettings.from, to: changes.to ?? this.nightSettings.to };
+    this.persist();
+    const n = this.nightSettings;
+    return n.on ? `Night mode: Max is muted from ${n.from} to ${n.to}${this.nightNow ? ' (that is now)' : ''}.` : 'Night mode is off.';
   }
 
   // ---------- Greeting and start-up sound ----------
@@ -106,7 +134,7 @@ export class DeviceService implements OnModuleInit {
 
   private persist(): void {
     this.store
-      .save({ brightness: this.level, ...this.voice, tone: this.speakerTone })
+      .save({ brightness: this.level, ...this.voice, tone: this.speakerTone, night: this.nightSettings })
       .catch((err) => this.log.warn(`Could not save the device settings: ${(err as Error).message}`));
   }
 
@@ -223,3 +251,21 @@ export class DeviceService implements OnModuleInit {
 }
 
 const clamp = (v: number, min: number) => Math.max(min, Math.min(100, Math.round(Number.isFinite(v) ? v : 100)));
+
+export interface Night {
+  on: boolean;
+  /** "HH:MM" local time; the range may cross midnight (23:00 to 07:00). */
+  from: string;
+  to: string;
+}
+
+/** Whether the local time is within from–to (crossing midnight allowed). */
+export function inRange(from: string, to: string, now = new Date()): boolean {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: timeZone(), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const mins = +(p.find((x) => x.type === 'hour')?.value ?? 0) * 60 + +(p.find((x) => x.type === 'minute')?.value ?? 0);
+  const [fh, fm] = from.split(':').map(Number);
+  const [th, tm] = to.split(':').map(Number);
+  const f = fh * 60 + fm, t = th * 60 + tm;
+  if (f === t) return false;
+  return f < t ? mins >= f && mins < t : mins >= f || mins < t;
+}

@@ -47,6 +47,8 @@ export interface PanelData {
     greetAgainMin?: number;
     startSound?: boolean;
     tone?: string;
+    /** Night mode: muted between these times. */
+    night?: { on: boolean; from: string; to: string; now: boolean };
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
@@ -378,6 +380,13 @@ function micSwitch(mic: { muted: boolean }, from: string): string {
   return `<div class="addfact"><div><b>Microphone ${mic.muted ? 'off' : 'on'}</b> <span class="badge ${mic.muted ? 'warn' : 'ok'}">${mic.muted ? "Max can't hear" : 'listening for "Hey Max"'}</span>
 <div class="meta">${mic.muted ? 'Nothing reaches Max until you turn it on (here, or the button on top of the box).' : 'Turn it off when you want privacy: Max hears nothing, the same as the button on top of the box.'}</div></div>
 ${post('/device/mute', { on: mic.muted ? '0' : '1', from }, mic.muted ? 'Turn the microphone on' : 'Turn the microphone off', mic.muted ? 'btn' : 'btn secondary')}</div>`;
+}
+
+/** Night mode: a time range in which Max is muted (no wake word, no announcements, no notices on the screen). */
+function nightRow(n: { on: boolean; from: string; to: string; now: boolean }): string {
+  return `<div class="addfact"><div><b>Night mode ${n.on ? (n.now ? '<span class="badge warn">muted now</span>' : '<span class="badge ok">on</span>') : '<span class="badge off">off</span>'}</b>
+<div class="meta">Between these times Max doesn't answer "Hey Max", says nothing (reminders wait for the morning) and shows no notices on his screen; his face sleeps. WhatsApp and the control panel still work. Switch it off here at any time.</div>
+<form class="addfact wrap" method="post" action="/device/night"><label class="meta"><input type="checkbox" name="on" value="yes" ${n.on ? 'checked' : ''}> Mute Max from</label><input type="time" name="from" value="${esc(n.from)}" required><label class="meta">to</label><input type="time" name="to" value="${esc(n.to)}" required><button class="btn secondary" type="submit">Save</button></form></div></div>`;
 }
 
 /** On the Home tab while the microphone is off, so it's never a surprise that Max doesn't answer. */
@@ -776,6 +785,7 @@ function attentionItems(d: PanelData): Attention[] {
     if (unverified) out.push({ area: 'max', href: '#memory', where: 'Max › Memory', text: `<b>${unverified} memor${unverified === 1 ? 'y' : 'ies'} to confirm</b> · saved right after Max read something: check ${unverified === 1 ? "it's" : "they're"} true` });
   }
   if (d.device?.mic?.muted) out.push({ area: 'overview', href: '#mode', where: 'Home', text: "<b>The microphone is off</b> · Max can't hear you" });
+  if (d.device?.night?.now) out.push({ area: 'settings', href: '#device', where: 'Settings › Device', text: `<b>Night mode</b> · Max is muted until ${esc(d.device.night.to)}` });
   if (d.music?.state === 'pairing') out.push({ area: 'connections', href: '#music', where: 'Connections › Music', text: "<b>Spotify needs a sign-in</b> · music by voice won't work until then" });
   if (d.composio.error) out.push({ area: 'connections', href: '#apps', where: 'Connections › Apps', text: `<b>Apps can't be reached</b> · ${esc(d.composio.error)}` });
   if (d.composio.notEnabled.length || d.composio.otherUser.length) out.push({ area: 'connections', href: '#apps', where: 'Connections › Apps', text: `<b>Some apps aren't usable yet</b> · ${esc([...d.composio.notEnabled, ...d.composio.otherUser].join(', '))}` });
@@ -948,6 +958,7 @@ export function renderPanel(d: PanelData): string {
   // Settings › Device: the box itself (microphone, sound, screen brightness, power).
   const deviceSection = `<section id="device"><h2>Device</h2>
 ${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
+${d.device?.night ? nightRow(d.device.night) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
 ${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>

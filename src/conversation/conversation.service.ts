@@ -141,12 +141,17 @@ export class ConversationService implements OnApplicationBootstrap {
     this.lock?.on('change', (locked: boolean) => {
       if (!locked && this.state === 'wake') void this.flushAnnouncements();
     });
+    // Night mode over: say what waited.
+    setInterval(() => {
+      if (this.device && !this.device.nightNow && this.pendingAnnouncements.length && this.state === 'wake') void this.flushAnnouncements();
+    }, 60_000).unref();
     void this.wake.checkConfiguredNames().then(() => this.waitForWakeWord());
   }
 
   private async flushAnnouncements(): Promise<void> {
     // Reminders can be personal: not until unlocked. Messages about the box itself (no WiFi) are said anyway.
-    const next = () => (this.lock?.locked ? this.pendingAnnouncements.findIndex((a) => a.system) : this.pendingAnnouncements.length ? 0 : -1);
+    // At night, nothing is said either (only the box's own messages): what's waiting is said in the morning.
+    const next = () => (this.lock?.locked || this.device?.nightNow ? this.pendingAnnouncements.findIndex((a) => a.system) : this.pendingAnnouncements.length ? 0 : -1);
     if (this.announcing || next() < 0) return;
     this.announcing = true;
     await this.music?.duckStart();
@@ -267,6 +272,12 @@ export class ConversationService implements OnApplicationBootstrap {
       return this.waitForWakeWord();
     }
 
+    if (this.device?.nightNow) {
+      // Night mode: not a word. (Switched off on the control panel; the microphone button on the box still mutes as before.)
+      if (!(await verified)) return this.waitForWakeWord();
+      this.log.log(`Wake word "${name}" detected, but it's night mode (muted until ${this.device.night.to})`);
+      return this.waitForWakeWord();
+    }
     this.log.log(`Wake word "${name}" detected - answering`);
     // Turn any music down while we talk (in parallel with the greeting, so no added delay).
     const ducked = this.music?.duckStart();

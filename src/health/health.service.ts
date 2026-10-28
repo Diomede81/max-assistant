@@ -7,6 +7,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { ModelsService } from '../models/models.service';
 import { McpServersService } from '../mcp/mcp-servers.service';
+import { selfEmailTool, sendSelfEmail } from '../mcp/self-email';
 import { WebService, clean } from '../web/web.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { local } from '../routines/routines.service';
@@ -130,8 +131,6 @@ const NOT_ARTICLE = /\/(tag|tags|topic|topics|author|authors|about|contact|priva
 const MAX_SOURCES = 5;
 const HISTORY = 20;
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-/** Sending email: the personal account's Gmail or Outlook action. */
-const SEND_EMAIL = /^(GMAIL_SEND_EMAIL|OUTLOOK_(OUTLOOK_)?SEND_EMAIL|OUTLOOK_SEND_MAIL)$/;
 
 const num = (v: unknown): number | undefined => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : NaN;
@@ -947,31 +946,13 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** The personal account's send-email action (Gmail or Outlook), if connected. */
-  private emailTool(): { server: NonNullable<ReturnType<McpServersService['serverFor']>>; tool: ChatCompletionTool } | undefined {
-    for (const s of this.mcp?.list ?? []) {
-      if (/work/i.test(s.config.name)) continue; // the work account never sends personal health plans
-      const tool = s.openAiTools.find((t) => t.type === 'function' && SEND_EMAIL.test(t.function.name));
-      if (tool) return { server: s, tool };
-    }
-    return undefined;
+  private emailTool(): ReturnType<typeof selfEmailTool> {
+    return selfEmailTool(this.mcp);
   }
 
   /** Emails the user's own address (set on the control panel), never anyone else. */
   private async sendEmail(subject: string, body: string): Promise<void> {
-    const to = this.data.emailTo;
-    if (!to) throw new Error('no email address set on the control panel');
-    const found = this.emailTool();
-    if (!found) throw new Error('no email account connected (Connections → Apps: Gmail or Outlook)');
-    const props = Object.keys((found.tool.type === 'function' ? (found.tool.function.parameters as { properties?: Record<string, unknown> })?.properties : undefined) ?? {});
-    const key = (names: string[]) => names.find((n) => props.includes(n));
-    const toKey = key(['recipient_email', 'to_email', 'to', 'recipient', 'to_address', 'email']);
-    if (!toKey) throw new Error('the email action has no recipient field');
-    const args: Record<string, unknown> = { [toKey]: to, [key(['subject', 'title']) ?? 'subject']: subject, [key(['body', 'message', 'content', 'text']) ?? 'body']: body };
-    if (props.includes('is_html')) args.is_html = false;
-    const name = found.tool.type === 'function' ? found.tool.function.name : '';
-    const out = await found.server.call(name, args);
-    if (/^error|"successful":\s*false|failed/i.test(out.slice(0, 200))) throw new Error(out.slice(0, 160));
+    await sendSelfEmail(this.mcp, this.data.emailTo, subject, body);
   }
 
   // ---------- Voice ----------

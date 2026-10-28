@@ -134,7 +134,7 @@ export class ToolRouterService {
     // Home Assistant: locks, doors, the garage and the alarm need the yes (the others run straight away).
     const ha = this.ha.openAiTools.map((t) => (t.type === 'function' && !HA_READ_ONLY.test(t.function.name) ? withConfirmParam(t, 'only for locks, doors, the garage, gates and the alarm') : t));
     const forget = (t: ChatCompletionTool) => (t.type === 'function' && t.function.name === 'forget' ? withConfirmParam(t, 'only when forgetting everything (all=true)') : t);
-    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...this.healthTools, ...ha, ...external, ...(this.taskAgent?.available ? [this.taskAgent.tool] : [])];
+    return [...this.builtin.tools.map(forget), ...(this.web?.tools ?? []), ...(this.trains?.tools ?? []), ...(this.routines?.tools ?? []), ...(this.jobs?.tools ?? []), ...(this.updates?.tools ?? []), ...(this.meetingTools), ...this.automationTools, ...(this.screenTools?.tools ?? []), ...(this.music?.tools ?? []), ...this.whatsappTools, ...this.healthTools, ...ha, ...external, ...(this.taskAgent?.available ? [this.taskAgent.tool] : [])];
   }
 
   /** Health records are personal: only when the personal vault is open (not in guest or work mode). */
@@ -185,7 +185,7 @@ export class ToolRouterService {
   }
 
   private isHaSensitive(name: string, args: Record<string, unknown>): boolean {
-    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name) || this.health?.has(name) || name === 'work_on_task') return false;
+    if (this.builtin.has(name) || this.web?.has(name) || this.trains?.has(name) || this.routines?.has(name) || this.jobs?.has(name) || this.updates?.has(name) || this.meetings?.has(name) || this.automations?.has(name) || this.cameras?.has(name) || this.deviceNames?.has(name) || this.screenTools?.has(name) || this.music?.has(name) || this.whatsapp?.has(name) || this.health?.has(name) || name === 'work_on_task') return false;
     if (HA_READ_ONLY.test(name)) return false;
     const { [CONFIRM_PARAM]: _c, ...rest } = args;
     return HA_SENSITIVE.test(`${name} ${JSON.stringify(rest)}`);
@@ -265,6 +265,8 @@ export class ToolRouterService {
   /** 'start' / 'end' (ActivityEvent) around every action that isn't instant. */
   /** Hard tasks handed to a stronger model (./task-agent.service); it registers itself. */
   taskAgent?: TaskAgentService;
+  /** Scheduled tasks (JobsService registers itself: its module imports this one). */
+  jobs?: { tools: ChatCompletionTool[]; has(name: string): boolean; call(name: string, args: Record<string, unknown>): Promise<string> };
 
   readonly activity = new EventEmitter();
   private activityId = 0;
@@ -376,6 +378,7 @@ export class ToolRouterService {
         return await this.web.call(name, args);
       }
       if (this.trains?.has(name)) return await this.trains.call(name, args);
+      if (this.jobs?.has(name)) return await this.jobs.call(name, args);
       if (this.routines?.has(name)) {
         if (name === 'news_briefing') this.externalContentAt = Date.now(); // summaries of web pages
         return await this.routines.call(name, args);

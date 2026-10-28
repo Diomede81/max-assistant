@@ -16,6 +16,7 @@ import { PanelAuth } from './panel-auth';
 import { localToday, ProjectsService, taskText, repeatText } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
+import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
 import { DeviceService } from '../device/device.service';
@@ -65,6 +66,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(MeetingLiveService) private readonly meetingsLive?: MeetingLiveService;
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
+  @Optional() @Inject(JobsService) private readonly jobs?: JobsService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
   @Optional() @Inject(DeviceService) private readonly device?: DeviceService;
   @Optional() @Inject(UpdatesService) private readonly updates?: UpdatesService;
@@ -289,6 +291,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       return this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#models`);
     }
     if (req.method === 'POST' && url.pathname.startsWith('/routines/') && this.routines) return this.routineAction(req, res, url.pathname.slice('/routines/'.length));
+    if (req.method === 'POST' && url.pathname.startsWith('/jobs/') && this.jobs) return this.jobAction(req, res, url.pathname.slice('/jobs/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/todo/')) return this.todoAction(req, res, url.pathname.slice('/todo/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/projects/')) return this.projectAction(req, res, url.pathname.slice('/projects/'.length));
     if (req.method === 'GET' && url.pathname === '/api/projects') {
@@ -580,6 +583,54 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     return back('Unknown action.', false);
   }
 
+  private async jobAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
+    const js = this.jobs!;
+    const f = await readForm(req);
+    const get = (k: string) => (f.get(k) ?? '').trim();
+    const id = get('id');
+    const back = (msg: string, ok = true, anchor = id ? `job-${id}` : 'jobs') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    const job = js.jobs.find((x) => x.id === id);
+    if (action !== 'save' && !job) return back('That scheduled task no longer exists.', false, 'jobs');
+    switch (action) {
+      case 'save': {
+        const kind = get('kind');
+        const msg = js.save(
+          {
+            name: get('name'),
+            brief: get('brief'),
+            time: get('time'),
+            days: kind === 'days' ? f.getAll('days').map(Number) : undefined,
+            once: kind === 'once' ? get('once') : undefined,
+            monthDay: kind === 'month' ? Number(get('monthDay')) : undefined,
+            effort: get('effort'),
+            provider: get('provider'),
+            model: get('model'),
+            say: f.get('say') === 'yes',
+            email: f.get('email') === 'yes',
+            whatsapp: f.get('whatsapp') === 'yes',
+            vault: get('vault'),
+            ...(id ? { enabled: f.get('enabled') === 'yes' } : {}),
+          },
+          id || undefined,
+        );
+        const ok = /^(Created|Saved)/.test(msg);
+        const created = !id && ok ? js.jobs[js.jobs.length - 1] : undefined;
+        return back(msg, ok, created ? `job-${created.id}` : id ? `job-${id}` : 'job-new');
+      }
+      case 'run':
+        void js.run(job!.id, true);
+        return back(`Running ${job!.name}: ${EFFORTS[job!.effort].help}. Refresh this page to see the result.`);
+      case 'toggle':
+        return back(js.save({ enabled: !job!.enabled }, job!.id).replace(/^Saved/, job!.enabled ? 'Paused' : 'Resumed'));
+      case 'delete':
+        if (get('confirm') !== 'yes') return back('Tick the box to confirm deleting the task.', false);
+        js.remove(job!.id);
+        return back(`Deleted ${job!.name}.`, true, 'jobs');
+      default:
+        res.writeHead(404).end();
+    }
+  }
+
   private async routineAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
     const r = this.routines!;
     const f = await readForm(req);
@@ -823,6 +874,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               briefing: this.routines!.briefings[x.id],
               suggestions: this.routines!.suggestions(x.id),
             })),
+          }
+        : undefined,
+      jobs: this.jobs && this.memory.enabled && this.models
+        ? {
+            list: this.jobs.jobs.map((x) => ({ ...x, modelText: this.jobs!.modelText(x), scheduleText: scheduleText(x), running: this.jobs!.isRunning(x.id) })),
+            providers: this.models.providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured, setting: p.setting })),
+            defaultModel: this.models.describe('jobs'),
+            efforts: Object.entries(EFFORTS).map(([id, e]) => ({ id, label: e.label, help: e.help })),
+            emailReady: this.jobs.emailReady,
+            emailTo: this.health?.emailTo,
+            whatsappReady: this.jobs.whatsappReady,
           }
         : undefined,
       models: this.models && (await this.modelsData(this.models)),

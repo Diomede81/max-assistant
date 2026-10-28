@@ -113,7 +113,8 @@ export interface AppConfig {
    * Extra AI providers for background jobs (news briefings, memory filing...): one key per
    * provider in .env; which model does which job is chosen on the control panel.
    */
-  models: { keys: Record<string, string>; ollamaUrl: string; customUrl: string };
+  /** extra: more OpenAI-compatible endpoints (CUSTOM_LLM_2_BASE_URL, _3…), shown by the name given (CUSTOM_LLM_2_NAME). */
+  models: { keys: Record<string, string>; ollamaUrl: string; customUrl: string; extra: { name: string; url: string; key: string }[] };
   /** Default home location (the control panel's setting wins): town/area and ISO country code. */
   location: { place: string; country: string };
   /** password: when set, the control panel asks for it (it shows Max's memory). */
@@ -284,10 +285,21 @@ export function loadConfig(): AppConfig {
         groq: env.GROQ_API_KEY ?? '',
         deepseek: env.DEEPSEEK_API_KEY ?? '',
         mistral: env.MISTRAL_API_KEY ?? '',
+        xai: env.XAI_API_KEY ?? '',
+        perplexity: env.PERPLEXITY_API_KEY ?? '',
+        moonshot: env.MOONSHOT_API_KEY ?? '',
+        qwen: env.DASHSCOPE_API_KEY ?? '',
+        zhipu: env.ZAI_API_KEY || env.ZHIPU_API_KEY || '',
+        together: env.TOGETHER_API_KEY ?? '',
+        fireworks: env.FIREWORKS_API_KEY ?? '',
+        cerebras: env.CEREBRAS_API_KEY ?? '',
+        cohere: env.COHERE_API_KEY ?? '',
+        huggingface: env.HF_TOKEN || env.HUGGINGFACE_API_KEY || '',
         custom: env.CUSTOM_LLM_API_KEY ?? '',
       },
       ollamaUrl: env.OLLAMA_BASE_URL ?? '',
       customUrl: env.CUSTOM_LLM_BASE_URL ?? '',
+      extra: [2, 3, 4, 5].map((n) => ({ name: env[`CUSTOM_LLM_${n}_NAME`] ?? '', url: env[`CUSTOM_LLM_${n}_BASE_URL`] ?? '', key: env[`CUSTOM_LLM_${n}_API_KEY`] ?? '' })).filter((x) => x.url),
     },
     firecrawl: {
       apiKey: env.FIRECRAWL_API_KEY ?? '',

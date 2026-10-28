@@ -61,6 +61,8 @@ export interface ChatRequest {
   maxTokens: number;
   temperature?: number;
   timeoutMs?: number;
+  /** A retry after the model spent its room thinking: ask it to think less. */
+  lessThinking?: boolean;
 }
 
 const LIST_CACHE_MS = 10 * 60_000;
@@ -194,12 +196,25 @@ export class ModelsService implements OnModuleInit {
    */
   async complete(task: Task, req: ChatRequest): Promise<string> {
     const a = this.assignment(task);
+    const tooLong = (m: string) => /max[_ ]?(completion[_ ])?tokens|maximum.*tokens|too (large|many)/i.test(m);
     try {
       try {
         return await this.call(a, req);
       } catch (err) {
+        const m = (err as Error).message;
         // a long answer asked of a model that allows less (many cap answers at 8192 tokens): same model, its limit
-        if (req.maxTokens > 8192 && /max[_ ]?(completion[_ ])?tokens|maximum.*tokens|too (large|many)/i.test((err as Error).message)) return await this.call(a, { ...req, maxTokens: 8192 });
+        if (req.maxTokens > 8192 && tooLong(m)) return await this.call(a, { ...req, maxTokens: 8192 });
+        // a thinking model that spent all its room thinking: once more with three times the room and less thinking
+        if (/used all its room/.test(m)) {
+          const more = Math.min(32_000, req.maxTokens * 3);
+          this.log.warn(`${TASKS[task].label}: ${this.describe(task)} ran out of room thinking (${req.maxTokens} tokens); trying again with ${more} and less thinking`);
+          try {
+            return await this.call(a, { ...req, maxTokens: more, lessThinking: true });
+          } catch (err2) {
+            if (more > 8192 && tooLong((err2 as Error).message)) return await this.call(a, { ...req, maxTokens: 8192, lessThinking: true });
+            throw err2;
+          }
+        }
         throw err;
       }
     } catch (err) {
@@ -269,8 +284,8 @@ export class ModelsService implements OnModuleInit {
         model: main ? this.cfg.llm.model : a.model,
         temperature: req.temperature ?? 0.2,
         max_tokens: req.maxTokens,
-        // Only Max's main model has a configured thinking setting (LLM_REASONING_EFFORT).
-        ...(main && this.cfg.llm.reasoningEffort ? { reasoning_effort: this.cfg.llm.reasoningEffort as 'low' } : {}),
+        // Only Max's main model has a configured thinking setting (LLM_REASONING_EFFORT); a retry after running out of room asks for less.
+        ...(req.lessThinking ? { reasoning_effort: 'low' as const } : main && this.cfg.llm.reasoningEffort ? { reasoning_effort: this.cfg.llm.reasoningEffort as 'low' } : {}),
         messages: [
           { role: 'system', content: req.system },
           { role: 'user', content: req.user },

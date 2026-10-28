@@ -13,7 +13,7 @@ import { McpServersService } from '../mcp/mcp-servers.service';
 import { KINDS, Kind, MemoryService } from '../memory/memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from '../memory/modes.service';
 import { PanelAuth } from './panel-auth';
-import { localToday, ProjectsService, taskText } from '../memory/projects.service';
+import { localToday, ProjectsService, taskText, repeatText } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
@@ -640,7 +640,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const due = get('date') ? (get('time') ? `${get('date')}T${get('time')}` : get('date')) : '';
     const project = get('project') ? this.projects.byId(get('project')) : undefined;
     if (action === 'add') {
-      const msg = this.todos.add({ title: get('title'), priority: get('priority'), criticality: get('criticality'), due: due || undefined, project, vault: get('vault'), assignee: get('assignee') }, true);
+      const msg = this.todos.add({ title: get('title'), priority: get('priority'), criticality: get('criticality'), due: due || undefined, project, vault: get('vault'), assignee: get('assignee'), repeat: get('repeat') || undefined }, true);
       return back(msg, msg.startsWith('Added'));
     }
     const item = this.todos.byId(get('id'));
@@ -655,7 +655,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'update': {
         const msg = this.todos.update(
           item,
-          { priority: get('priority'), criticality: get('criticality'), due: f.has('date') ? due : undefined, moveTo: get('project') === 'none' ? 'none' : (project ?? undefined) },
+          { priority: get('priority'), criticality: get('criticality'), due: f.has('date') ? due : undefined, moveTo: get('project') === 'none' ? 'none' : (project ?? undefined), repeat: f.has('repeat') ? get('repeat') || 'none' : undefined },
           true,
         );
         return back(msg, msg.startsWith('Updated'));
@@ -876,6 +876,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
                 criticality: t.criticality ?? 'routine',
                 due: t.due,
                 assignee: t.assignee,
+                repeat: t.repeat ? `${t.repeat.unit}:${t.repeat.every}` : undefined,
+                repeatText: t.repeat ? repeatText(t.repeat) : undefined,
                 done: t.status === 'done',
               })),
             projects: this.projects.all().map((p) => {

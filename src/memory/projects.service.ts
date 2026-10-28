@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { timeZone } from '../actions/clock';
-import { MemoryService, normalise, Project, ProjectPerson, Task } from './memory.service';
+import { MemoryService, normalise, Project, ProjectPerson, Repeat, Task } from './memory.service';
 import { label, ModesService, VaultName, VAULTS } from './modes.service';
 import { said } from '../log-content';
 
@@ -188,7 +188,7 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
 
   // ---------- Tasks ----------
 
-  addTask(p: Project, t: { title: string; due?: string; assignee?: string; priority?: string; criticality?: string; remind?: boolean }): string {
+  addTask(p: Project, t: { title: string; due?: string; assignee?: string; priority?: string; criticality?: string; remind?: boolean; repeat?: Repeat }): string {
     const title = t.title.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!title) return 'What is the task?';
     const due = validDue(t.due);
@@ -201,9 +201,11 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
       priority: priorityOf(t.priority),
       criticality: criticalityOf(t.criticality),
       status: 'open',
-      remind: t.remind ?? (!!due && due.includes('T')),
+      remind: t.remind ?? (!!due && (due.includes('T') || !!t.repeat)),
+      repeat: t.repeat,
       createdAt: new Date().toISOString(),
     };
+    if (task.repeat && !task.due) return 'A repeating task needs the date it is first due.';
     p.tasks.push(task);
     if (task.assignee && !p.people.some((x) => normalise(x.name) === normalise(task.assignee!))) p.people.push({ name: task.assignee });
     this.memory.touchProject(p);
@@ -228,6 +230,12 @@ export class ProjectsService extends EventEmitter implements OnModuleInit, OnMod
   }
 
   completeTask(project: Project, task: Task): string {
+    if (task.repeat && task.due) {
+      rollForward(task);
+      this.memory.touchProject(project);
+      this.memory.activity('updated', `Project ${project.name}: task done (repeats)`, [project.vault], [task.title]);
+      return `Done: ${task.title}. It comes round again: next due ${dueText(task.due)}.`;
+    }
     task.status = 'done';
     task.doneAt = new Date().toISOString();
     this.memory.touchProject(project);
@@ -406,11 +414,77 @@ export function dueText(due: string): string {
   return t ? `${day} at ${t}` : day;
 }
 
+/** "daily", "every 2 weeks", "monthly", "weekdays"… → how often, or undefined when it doesn't repeat. */
+export function repeatOf(s?: string, every?: number): Repeat | undefined {
+  const t = (s ?? '').toLowerCase().trim();
+  if (!t || /^(none|never|no|once|off)$/.test(t)) return undefined;
+  const n = Math.max(1, Math.min(99, Math.round(Number(every) || Number(/\d+/.exec(t)?.[0]) || 1)));
+  const unit: Repeat['unit'] | undefined = /weekday|working day|work day|mon(day)? to fri/.test(t)
+    ? 'weekday'
+    : /dai|day/.test(t)
+      ? 'day'
+      : /week|fortnight/.test(t)
+        ? 'week'
+        : /month/.test(t)
+          ? 'month'
+          : /year|annual/.test(t)
+            ? 'year'
+            : undefined;
+  return unit ? { unit, every: /fortnight/.test(t) ? 2 : n } : undefined;
+}
+
+/** "every day", "every weekday", "every 2 weeks", "every month"… */
+export function repeatText(r: Repeat): string {
+  if (r.unit === 'weekday') return 'every weekday';
+  return r.every === 1 ? `every ${r.unit}` : `every ${r.every} ${r.unit}s`;
+}
+
+/**
+ * The next time a repeating to-do is due, after `due`: the same time of day, on or after `today`
+ * (missed turns are skipped, so a monthly bill ticked off late comes round next month, not twice).
+ * Monthly and yearly keep the day of the month (the 31st becomes the month's last day).
+ */
+export function nextDue(due: string, r: Repeat, today = localToday()): string {
+  const [d0, time] = due.split('T');
+  let d = d0;
+  for (let i = 1; i < 400; i++) {
+    d = stepDate(d, r, d0, i);
+    if (d >= today && d > d0) break;
+  }
+  return time ? `${d}T${time}` : d;
+}
+
+/** The `n`-th repeat after the original date `d0` (counted from the original, so months don't drift). */
+function stepDate(d: string, r: Repeat, d0: string, n: number): string {
+  if (r.unit === 'day') return addDays(d0, n * r.every);
+  if (r.unit === 'week') return addDays(d0, n * 7 * r.every);
+  if (r.unit === 'weekday') {
+    let x = d;
+    do x = addDays(x, 1);
+    while ([0, 6].includes(new Date(`${x}T12:00:00Z`).getUTCDay()));
+    return x;
+  }
+  const [y, m, day] = d0.split('-').map(Number);
+  const months = r.unit === 'year' ? n * 12 * r.every : n * r.every;
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(day, last))).toISOString().slice(0, 10);
+}
+
+/** A repeating to-do ticked off: on to the next date, open again, reminder armed. */
+export function rollForward(t: Task): void {
+  t.lastDoneAt = new Date().toISOString();
+  t.due = nextDue(t.due!, t.repeat!);
+  t.status = 'open';
+  t.doneAt = undefined;
+  t.reminded = false;
+}
+
 export function taskText(t: Task): string {
   const level = [t.criticality && t.criticality !== 'routine' ? t.criticality : '', t.priority === 'high' || t.priority === 'low' ? `${t.priority} priority` : '']
     .filter(Boolean)
     .join(', ');
-  return `${t.title}${t.due ? `, due ${dueText(t.due)}` : ''}${t.assignee ? `, ${t.assignee}` : ''}${level ? `, ${level}` : ''}${t.status === 'done' ? ' (done)' : ''}`;
+  return `${t.title}${t.due ? `, due ${dueText(t.due)}` : ''}${t.repeat ? ` (${repeatText(t.repeat)})` : ''}${t.assignee ? `, ${t.assignee}` : ''}${level ? `, ${level}` : ''}${t.status === 'done' ? ' (done)' : ''}`;
 }
 
 const CRIT_RANK = { critical: 0, important: 1, routine: 2 };

@@ -94,6 +94,10 @@ One list for everything you need to do. Every item has:
 - Optionally a **project**: the item then also shows up as one of that project's tasks, and you can move
   it between projects (or out of one) at any time.
 - Optionally a due date (with a time, Max announces it when due) and who does it.
+- Optionally a **repeat**: every day, weekdays, every week (or every 2), every month (or every 3), every
+  year. A repeating to-do needs the date it is first due; when you tick it off it comes straight back with
+  the next date (a monthly bill ticked off late comes round next month, not twice), and Max reminds you
+  each time: at the time you gave, or in the morning on the day.
 
 If you don't say the priority or criticality, Max asks once ("How soon, and how critical is it?"). Say
 "doesn't matter" and he uses medium and routine.
@@ -111,6 +115,8 @@ work mode.
 | "What's going on in my day?" / "Brief me" | Today's calendar events, reminders and to-dos, with what's critical or overdue called out |
 | "What's critical?" / "What's overdue?" / "What's on my list this week?" | Lists them, most pressing first |
 | "The insurance is done" | Ticks it off |
+| "Remind me every Monday at 9 to send the timesheet" / "Add a monthly to-do: pay the rent on the 1st" | Adds a repeating to-do; it comes back with the next date each time it's done |
+| "Stop repeating the timesheet" / "Make the rent quarterly" | Changes how often |
 
 **The daily briefing** combines your calendar (from the connected Outlook or Google calendar of the current
 mode, when there is one), today's reminders, and the to-dos that are overdue ("should already have been

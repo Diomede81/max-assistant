@@ -190,8 +190,11 @@ export class BuiltinActionsService implements OnModuleInit {
                 'should be done) and a CRITICALITY (critical, important, routine: what is at stake if it slips), and can belong ' +
                 'to a project. add: needs the item, its priority and its criticality; if the user did not say them, ask once, ' +
                 'in one short question, before adding ("How soon, and how critical is it?"). Optional: due date, project, who ' +
-                'does it. complete, update (change priority, criticality, due date; move it to a project with move_to, or ' +
-                'move_to "none"), delete, list (when: today, week, overdue, critical or all; optionally one project).',
+                'does it. REPEATING to-dos ("every day", "every Monday", "monthly", "every 3 months"): set repeat (and every ' +
+                'for "every 2 weeks") plus the due date of the FIRST time; once ticked off it moves to the next date by itself, ' +
+                'and the user is reminded each time (at the time given, or in the morning). complete, update (change priority, ' +
+                'criticality, due date or repeat; move it to a project with move_to, or move_to "none"), delete, list (when: ' +
+                'today, week, overdue, critical or all; optionally one project).',
               {
                 action: { type: 'string', enum: ['add', 'complete', 'update', 'delete', 'list'] },
                 item: { type: 'string', description: 'For add: the to-do, e.g. "renew the car insurance". Otherwise: words from it' },
@@ -203,6 +206,8 @@ export class BuiltinActionsService implements OnModuleInit {
                 list: { type: 'string', enum: ['personal', 'work', 'household'], description: 'For add without a project: which list (default: the current mode\'s own; household = shared)' },
                 assignee: { type: 'string', description: 'Who does it (optional)' },
                 remind: { type: 'boolean', description: 'Say it out loud when due (default: yes when a time is given)' },
+                repeat: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'yearly', 'none'], description: 'How often it comes round (optional; "none" stops it repeating)' },
+                every: { type: 'integer', description: 'With repeat: every N days/weeks/months/years, e.g. 2 for every other week (default 1)' },
                 when: { type: 'string', enum: ['today', 'week', 'overdue', 'critical', 'all'], description: 'For list (default all)' },
                 rename: { type: 'string', description: 'For update: new wording' },
                 reopen: { type: 'boolean', description: 'For update: mark a finished to-do as open again' },
@@ -400,6 +405,8 @@ export class BuiltinActionsService implements OnModuleInit {
         vault: str(a.list),
         assignee: str(a.assignee),
         remind: typeof a.remind === 'boolean' ? a.remind : undefined,
+        repeat: str(a.repeat),
+        every: typeof a.every === 'number' ? a.every : undefined,
       });
     }
     let project;
@@ -427,6 +434,8 @@ export class BuiltinActionsService implements OnModuleInit {
           criticality: str(a.criticality),
           reopen: a.reopen === true,
           moveTo: str(a.move_to),
+          repeat: str(a.repeat),
+          every: typeof a.every === 'number' ? a.every : undefined,
         });
       case 'delete':
         return t.delete(item);

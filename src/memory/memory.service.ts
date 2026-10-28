@@ -59,8 +59,18 @@ export interface Task {
   /** Say it out loud when it's due (tasks with a time are reminded by default). */
   remind?: boolean;
   reminded?: boolean;
+  /** A repeating to-do: once done, it moves on to the next date instead of staying done. */
+  repeat?: Repeat;
+  /** When a repeating to-do was last ticked off. */
+  lastDoneAt?: string;
   createdAt: string;
   doneAt?: string;
+}
+
+/** How often a to-do comes round: every N days, weekdays, weeks, months or years. */
+export interface Repeat {
+  unit: 'day' | 'weekday' | 'week' | 'month' | 'year';
+  every: number;
 }
 
 export interface Project {

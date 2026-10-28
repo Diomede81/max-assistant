@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { MemoryService, normalise, Project, Task } from './memory.service';
 import { label, ModesService, VaultName, VAULTS } from './modes.service';
-import { addDays, byUrgency, criticalityOf, dueText, localToday, priorityOf, ProjectsService, taskText, validDue } from './projects.service';
+import { addDays, byUrgency, criticalityOf, dueText, localToday, priorityOf, ProjectsService, repeatOf, repeatText, rollForward, taskText, validDue } from './projects.service';
 
 /** One to-do, wherever it lives: on its own in a vault, or as a task of a project. */
 export interface TodoItem {
@@ -18,12 +18,17 @@ export interface TodoInput {
   due?: string;
   assignee?: string;
   remind?: boolean;
+  /** How often it comes round ("daily", "weekly", "monthly", "weekdays"…), with `every` for "every 2 weeks". */
+  repeat?: string;
+  every?: number;
   /** Project name (voice) or the project itself (control panel). */
   project?: string | Project;
   vault?: string;
 }
 
 const SOON_DAYS = 7;
+/** Words that mean "stop repeating". */
+const NO_REPEAT = /^\s*(none|never|no|once|off|stop)\s*$/i;
 const PROMPT_ITEMS = 12;
 
 /**
@@ -93,12 +98,15 @@ export class TodoService {
     }
     const due = validDue(input.due);
     if (input.due && !due) return `I couldn't read the due date "${input.due}". Use YYYY-MM-DD, optionally with THH:MM.`;
+    const repeat = repeatOf(input.repeat, input.every);
+    if (input.repeat && !repeat && !NO_REPEAT.test(input.repeat)) return `I couldn't read how often "${input.repeat}" repeats: say daily, weekdays, weekly, monthly or yearly (or every 2 weeks).`;
+    if (repeat && !due) return `A repeating to-do needs the date it is first due: ask the user when "${title}" is next due, then call again.`;
 
     const project = this.resolveProject(input.project);
     if (typeof project === 'string') return project;
     if (project) {
       if (!fromPanel && !this.modes.writable().includes(project.vault)) return `${project.name} is in the ${project.vault} vault, which is read-only in ${label(this.modes.mode).toLowerCase()}.`;
-      return this.projects.addTask(project, { title, due, assignee: input.assignee, priority, criticality, remind: input.remind });
+      return this.projects.addTask(project, { title, due, assignee: input.assignee, priority, criticality, remind: input.remind, repeat });
     }
 
     const where = this.vaultFor(input.vault, fromPanel);
@@ -112,16 +120,23 @@ export class TodoService {
       priority,
       criticality,
       status: 'open',
-      remind: input.remind ?? (!!due && due.includes('T')),
+      remind: input.remind ?? (!!due && (due.includes('T') || !!repeat)),
+      repeat,
       createdAt: new Date().toISOString(),
     };
     if (!this.memory.addTodo(vault, task)) return `The ${vault} vault can't be opened right now, so the to-do wasn't saved.`;
     this.memory.activity('saved', 'New to-do', [vault], [taskText(task)]);
     this.log.log(`To-do added (${vault}): ${taskText(task)}`);
-    return `Added to your ${vault === 'household' ? 'household' : vault} to-do list: ${taskText(task)}${task.remind && due ? ' (I will remind you when it is due)' : ''}.`;
+    return `Added to your ${vault === 'household' ? 'household' : vault} to-do list: ${taskText(task)}${task.remind && due ? ` (I will remind you ${repeat ? 'each time' : 'when'} it is due${due.includes('T') ? '' : ', in the morning'})` : ''}.`;
   }
 
   complete(item: TodoItem): string {
+    if (item.task.repeat && item.task.due) {
+      rollForward(item.task);
+      this.save(item);
+      this.memory.activity('updated', 'To-do done (repeats)', [item.vault], [item.task.title]);
+      return `Done: ${item.task.title}. It comes round again: next due ${dueText(item.task.due)}.`;
+    }
     item.task.status = 'done';
     item.task.doneAt = new Date().toISOString();
     this.save(item);
@@ -132,7 +147,7 @@ export class TodoService {
 
   update(
     item: TodoItem,
-    c: { title?: string; due?: string; assignee?: string; priority?: string; criticality?: string; reopen?: boolean; moveTo?: string | Project },
+    c: { title?: string; due?: string; assignee?: string; priority?: string; criticality?: string; reopen?: boolean; moveTo?: string | Project; repeat?: string; every?: number },
     fromPanel = false,
   ): string {
     const t = item.task;
@@ -142,6 +157,13 @@ export class TodoService {
       t.due = due;
       t.reminded = false;
       if (due?.includes('T')) t.remind = true;
+    }
+    if (c.repeat) {
+      const repeat = repeatOf(c.repeat, c.every);
+      if (!repeat && !NO_REPEAT.test(c.repeat)) return `I couldn't read how often "${c.repeat}" repeats: say daily, weekdays, weekly, monthly or yearly.`;
+      if (repeat && !t.due) return `To repeat, "${t.title}" needs a due date first: when is it next due?`;
+      t.repeat = repeat;
+      if (repeat && t.remind === undefined) t.remind = true;
     }
     if (c.title?.trim()) t.title = c.title.trim().slice(0, 200);
     if (c.assignee !== undefined) t.assignee = c.assignee.trim() || undefined;
@@ -283,5 +305,5 @@ function line(x: TodoItem, today: string): string {
   const late = t.due && t.due.slice(0, 10) < today ? `OVERDUE since ${dueText(t.due)}: ` : '';
   const crit = t.criticality ?? 'routine';
   const prio = t.priority === 'normal' ? 'medium' : (t.priority ?? 'medium');
-  return `${late}${t.title}${t.due && !late ? ` (due ${dueText(t.due)})` : ''} [${crit}, ${prio} priority${x.project ? `, project ${x.project.name}` : ''}${t.assignee ? `, ${t.assignee}` : ''}]`;
+  return `${late}${t.title}${t.due && !late ? ` (due ${dueText(t.due)})` : ''}${t.repeat ? ` (repeats ${repeatText(t.repeat)})` : ''} [${crit}, ${prio} priority${x.project ? `, project ${x.project.name}` : ''}${t.assignee ? `, ${t.assignee}` : ''}]`;
 }

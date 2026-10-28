@@ -160,6 +160,9 @@ export interface PanelTodo {
   criticality: string;
   due?: string;
   assignee?: string;
+  /** "week:1" (unit:every) for a repeating to-do, and its words ("every week"). */
+  repeat?: string;
+  repeatText?: string;
   done: boolean;
 }
 
@@ -498,6 +501,11 @@ const levelSelects = (priority = 'medium', criticality = 'routine') =>
   `<select name="priority" aria-label="Priority" title="Priority: how soon">${opts(PRIORITIES, priority, (v) => `${v} priority`)}</select>` +
   `<select name="criticality" aria-label="Criticality" title="Criticality: what's at stake if it slips">${opts(CRITICALITIES, criticality)}</select>`;
 
+/** How often a to-do comes round (the add and change forms); the panel's own forms take "unit:every". */
+const REPEATS: [string, string][] = [['', 'Once'], ['day:1', 'Every day'], ['weekday:1', 'Weekdays'], ['week:1', 'Every week'], ['week:2', 'Every 2 weeks'], ['month:1', 'Every month'], ['month:3', 'Every 3 months'], ['year:1', 'Every year']];
+const repeatSelect = (cur = '') =>
+  `<select name="repeat" aria-label="Repeats" title="Repeats">${REPEATS.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+
 const shortDate = (due: string) => {
   const [d, t] = due.split('T');
   return `${new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}${t ? ` ${t}` : ''}`;
@@ -520,12 +528,12 @@ function myDaySection(m: NonNullable<PanelData['memory']>): string {
       (t.criticality === 'critical' ? ' <span class="badge warn">critical</span>' : t.criticality === 'important' ? ' <span class="badge imp">important</span>' : '') +
       (t.priority === 'high' ? ' <span class="badge warn">high priority</span>' : t.priority === 'low' ? ' <span class="badge off">low priority</span>' : '') +
       (late ? ' <span class="badge warn">overdue</span>' : '');
-    const meta = [t.due ? `${late ? 'was due' : 'due'} ${shortDate(t.due)}` : '', t.projectName ? `📁 ${esc(t.projectName)}` : `${VAULT_LABEL[t.vault]} list`, t.assignee ? esc(t.assignee) : '']
+    const meta = [t.due ? `${late ? 'was due' : 'due'} ${shortDate(t.due)}` : '', t.repeatText ? `🔁 ${esc(t.repeatText)}` : '', t.projectName ? `📁 ${esc(t.projectName)}` : `${VAULT_LABEL[t.vault]} list`, t.assignee ? esc(t.assignee) : '']
       .filter(Boolean)
       .join(' · ');
     const [date, time] = (t.due ?? '').split('T');
     return `<li class="row"><div style="flex:1;min-width:0"><div>${esc(t.title)}${badges}</div><div class="meta">${meta}</div>
-<details><summary class="meta">Change</summary><form class="addfact edit" method="post" action="/todo/update">${hidden('id', t.id)}${levelSelects(t.priority, t.criticality)}
+<details><summary class="meta">Change</summary><form class="addfact edit" method="post" action="/todo/update">${hidden('id', t.id)}${levelSelects(t.priority, t.criticality)}${repeatSelect(t.repeat ?? '')}
 <select name="project" aria-label="Project"><option value="none" ${t.projectId ? '' : 'selected'}>No project</option>${projectOpts(t.projectId)}</select>
 <input type="date" name="date" value="${esc(date ?? '')}" aria-label="Due date"><input type="time" name="time" value="${esc(time ?? '')}" aria-label="Time"><button class="btn secondary" type="submit">Save</button></form></details></div>
 <div class="acts">${post('/todo/done', { id: t.id }, 'Done', 'btn')}${post('/todo/delete', { id: t.id }, 'Delete')}</div></li>`;
@@ -543,10 +551,10 @@ function myDaySection(m: NonNullable<PanelData['memory']>): string {
     ? `<details><summary class="meta">${done.length} done in the last 2 weeks</summary><ul>${done.map((t) => `<li class="row"><div class="meta">${esc(t.title)}${t.projectName ? ` · ${esc(t.projectName)}` : ''}</div>${post('/todo/reopen', { id: t.id }, 'Reopen')}</li>`).join('')}</ul></details>`
     : '';
   return `<section id="myday"><h2>My Day</h2>
-<p class="meta">${summary}. Ask Max "what's going on in my day?" for a briefing with your calendar. <b>Priority</b> = how soon; <b>criticality</b> = what's at stake if it slips.</p>
+<p class="meta">${summary}. Ask Max "what's going on in my day?" for a briefing with your calendar. <b>Priority</b> = how soon; <b>criticality</b> = what's at stake if it slips. A repeating to-do (every day, week, month…) comes back with its next date when you tick it off, and Max reminds you each time.</p>
 <form class="stack" method="post" action="/todo/add">
 <div class="addfact"><input name="title" maxlength="200" required placeholder="New to-do, e.g. Renew the car insurance"></div>
-<div class="addfact wrap">${levelSelects()}<input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)">
+<div class="addfact wrap">${levelSelects()}${repeatSelect()}<input type="date" name="date" aria-label="Due date"><input type="time" name="time" aria-label="Time (optional, for a spoken reminder)">
 <select name="project" aria-label="Project"><option value="">No project</option>${projectOpts()}</select>
 <select name="vault" aria-label="List" title="Which list, when it has no project"><option value="personal">Personal list</option><option value="work">Work list</option><option value="household">Household list</option></select>
 <button class="btn" type="submit">Add</button></div></form>

@@ -336,10 +336,10 @@ const SCRIPT = String.raw`
       return;
     }
     if (t.dataset.domain) { start(t.dataset.domain); return; }
-    if (t.id === 'hCopyPw' && data && data.login) { copy(data.login.password); return; }
+    if (t.id === 'hCopyPw' && data && data.login) { post('/home/password/show', {}).then(function (r) { if (r.password) copy(r.password); else $('hPwMsg').textContent = r.message; }); return; }
     if (t.hasAttribute('data-ha-update')) { if (!confirm('Update Home Assistant now? It restarts, so your devices are unavailable for a few minutes.')) return; t.disabled = true; post('/home/update', {}).then(function (r) { updDrawn = ''; load().then(function () { var m = $('hUpdateMsg'); if (m) m.textContent = r.message; }); }); return; }
     if (t.id === 'hNewPw') { if (!confirm('Make a new password for this account? The old one stops working.')) return; post('/home/password', {}).then(function (r) { advDrawn = ''; load().then(function () { var m = $('hPwMsg'); if (m) m.textContent = r.message; }); }); return; }
-    if (t.id === 'hShowPw' && data && data.login) { var pw = $('hPw'); var hidden = pw.textContent.indexOf('•') === 0; pw.textContent = hidden ? data.login.password : '••••••••'; t.textContent = hidden ? 'Hide' : 'Show'; return; }
+    if (t.id === 'hShowPw' && data && data.login) { var pw = $('hPw'); var hidden = pw.textContent.indexOf('•') === 0; if (!hidden) { pw.textContent = '••••••••'; t.textContent = 'Show'; return; } post('/home/password/show', {}).then(function (r) { if (r.password) { pw.textContent = r.password; t.textContent = 'Hide'; } else $('hPwMsg').textContent = r.message; }); return; }
     if (t.hasAttribute('data-flow-cancel')) { closeFlow(true); return; }
     if (t.hasAttribute('data-flow-close')) { closeFlow(false); return; }
     if (t.hasAttribute('data-flow-check')) { fetch('/api/home/flow?id=' + encodeURIComponent(flow.flowId)).then(function (r) { return r.json(); }).then(showStep); return; }

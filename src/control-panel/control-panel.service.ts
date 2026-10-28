@@ -1266,6 +1266,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         if (p === '/home/edit') return this.json(res, { message: await home.editDevice(f.get('device') ?? '', f.get('name') ?? undefined, f.get('room') ?? undefined) });
         if (p === '/home/update') return this.json(res, { message: await home.requestUpdate() });
         if (p === '/home/password') return this.json(res, { message: await home.resetPassword() });
+        if (p === '/home/password/show') return this.json(res, home.showPassword() ?? { message: 'Max did not make this account, so it has no password to show.' });
         if (p === '/home/login') return this.json(res, { message: await home.login(f.get('username') ?? '', f.get('password') ?? '') });
         if (p === '/home/flow/start') return this.json(res, await home.startFlow(f.get('domain') ?? ''));
         if (p === '/home/flow/next') {
@@ -1296,7 +1297,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   }
 
   private json(res: ServerResponse, body: unknown): void {
-    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body, null, 2));
+    // Never cached: these answers carry personal data (and the dashboard always wants the latest anyway).
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body, null, 2));
   }
 
   private redirect(res: ServerResponse, to: string): void {

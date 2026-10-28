@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { spawn } from 'node:child_process';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import QRCode from 'qrcode';
 import { APP_CONFIG, AppConfig } from '../config';
@@ -6,6 +7,7 @@ import { memorySecret, SealedStore } from '../memory/sealed-store';
 import { showCard } from '../face/screen';
 import type { CardLine } from '../face/screen';
 import { AllowedContact, bestMatch, normaliseNumber, showNumber } from './contacts';
+import { SttService } from '../stt/stt.service';
 
 type Baileys = typeof import('@whiskeysockets/baileys');
 type Socket = ReturnType<Baileys['makeWASocket']>;
@@ -168,7 +170,13 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private retry = 0;
   private stopping = false;
 
-  constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
+  /** Voice notes already turned into words (by message id), for keep() and the chat with Max. */
+  private readonly transcripts = new Map<string, string>();
+
+  constructor(
+    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
+    @Optional() private readonly stt?: SttService,
+  ) {
     const secret = memorySecret(cfg);
     this.authStore = new SealedStore(cfg.memory.dir, 'whatsapp-auth', secret);
     this.settingsStore = new SealedStore(cfg.memory.dir, 'whatsapp', secret);
@@ -607,6 +615,69 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (this.sentByMax.size > 300) this.sentByMax.delete(this.sentByMax.values().next().value!);
   }
 
+  /** A message's words: a voice note's transcript when Max has one, else the text (or what the message is). */
+  private textOf(m: WAMessage): string {
+    const t = m.key.id ? this.transcripts.get(m.key.id) : undefined;
+    return t ?? messageText(this.lib!, m);
+  }
+
+  /**
+   * Voice notes in chats Max may see (and in your own chat, so you can talk to him): downloaded, turned into
+   * 16 kHz audio with ffmpeg and into words by Max's own speech-to-text (the same local Whisper he listens
+   * with), language detected. The audio is never kept; the words are, like any message. Up to 3 minutes each.
+   */
+  private async transcribeAll(messages: WAMessage[]): Promise<void> {
+    const B = this.lib;
+    if (!B || !this.stt) return;
+    const notes = messages.filter((m) => {
+      const a = B.normalizeMessageContent(m.message)?.audioMessage;
+      if (!a || !m.key.id || !m.key.remoteJid || this.transcripts.has(m.key.id)) return false;
+      const raw = bare(m.key.remoteJid);
+      const alt = m.key.remoteJidAlt ? bare(m.key.remoteJidAlt) : undefined;
+      return this.visible(raw, alt, this.chatKey(raw)) || raw === this.selfLid;
+    });
+    for (const m of notes.slice(0, 5)) {
+      const a = B.normalizeMessageContent(m.message)!.audioMessage!;
+      const id = m.key.id!;
+      if ((a.seconds ?? 0) > 180) {
+        this.transcripts.set(id, `[voice message, ${Math.round((a.seconds ?? 0) / 60)} minutes: too long for Max to listen to]`);
+        continue;
+      }
+      try {
+        const audio = await B.downloadMediaMessage(m, 'buffer', {});
+        const words = await this.listen(audio);
+        this.transcripts.set(id, words ? `[voice message] ${words}` : '[voice message: nothing could be made out]');
+        this.log.log(`WhatsApp: listened to a voice message (${a.seconds ?? '?'}s)`);
+      } catch (err) {
+        this.log.warn(`WhatsApp: couldn't listen to a voice message: ${(err as Error).message}`);
+        this.transcripts.set(id, '[voice message: could not be listened to]');
+      }
+    }
+    if (this.transcripts.size > 500) for (const k of [...this.transcripts.keys()].slice(0, 200)) this.transcripts.delete(k);
+  }
+
+  /** Any audio → words, through ffmpeg (16 kHz mono) and the speech-to-text service. */
+  private async listen(audio: Buffer): Promise<string> {
+    const pcm = await new Promise<Buffer>((resolve, reject) => {
+      const ff = spawn('ffmpeg', ['-loglevel', 'error', '-i', 'pipe:0', '-f', 's16le', '-ar', '16000', '-ac', '1', 'pipe:1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      const out: Buffer[] = [];
+      let err = '';
+      ff.stdout.on('data', (c: Buffer) => out.push(c));
+      ff.stderr.on('data', (c: Buffer) => (err += c.toString()));
+      ff.on('error', reject);
+      ff.on('close', (code) => (code === 0 && out.length ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg: ${err.trim().slice(0, 160) || `exit ${code}`}`))));
+      ff.stdin.on('error', () => undefined);
+      ff.stdin.end(audio);
+    });
+    const session = await this.stt!.open({ rate: 16000, width: 2, channels: 1 }, { detectLanguage: true });
+    for (let i = 0; i < pcm.length; i += 32_000) session.write(pcm.subarray(i, i + 32_000));
+    const text = await Promise.race([session.finish(), new Promise<string>((_, rej) => setTimeout(() => rej(new Error('speech-to-text took too long')), 90_000).unref())]).catch((e) => {
+      session.abort();
+      throw e;
+    });
+    return text.trim();
+  }
+
   /** A message the user just wrote in their own chat, for Max to answer (not his own, not an old one). */
   private fromUserToMax(m: WAMessage): string | undefined {
     if (!m.key.fromMe || !m.key.remoteJid || !m.key.id || this.sentByMax.has(m.key.id)) return undefined;
@@ -614,8 +685,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (raw !== this.selfKey && raw !== this.selfLid) return undefined;
     const at = Number(m.messageTimestamp ?? 0) * 1000;
     if (!at || Date.now() - at > 2 * 60_000) return undefined; // only what was just written
-    const text = messageText(this.lib!, m).trim();
-    if (!text || text.startsWith('🤖') || text.startsWith('[')) return undefined; // Max's own, or a photo/voice note
+    const text = this.textOf(m).trim().replace(/^\[voice message\] /, ''); // a voice note's words count as written
+    if (!text || text.startsWith('🤖') || text.startsWith('[')) return undefined; // Max's own, or a photo
     return text;
   }
 
@@ -860,6 +931,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         }
       }
       await this.resolveAll(messages);
+      await this.transcribeAll(messages);
       const toMax: string[] = [];
       for (const m of messages) {
         const ask = this.fromUserToMax(m);
@@ -1007,7 +1079,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const raw = m.key.remoteJid ? bare(m.key.remoteJid) : '';
     if (!raw || raw === 'status@broadcast' || raw.endsWith('@newsletter') || raw.endsWith('@broadcast')) return false;
     const alt = m.key.remoteJidAlt ? bare(m.key.remoteJidAlt) : undefined;
-    const text = messageText(B, m);
+    const text = this.textOf(m);
     if (!text) {
       if (!old && !m.messageStubType) this.traced(raw, alt, 'no text (a reaction, a deleted message, a system notice)');
       return false;

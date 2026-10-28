@@ -12,7 +12,8 @@ import { WyomingClient } from '../wyoming/wyoming-client';
 export class SttService {
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {}
 
-  async open(format: { rate: number; width: number; channels: number }) {
+  /** `detectLanguage`: let the model work out the language (a voice note may not be in the usual one). */
+  async open(format: { rate: number; width: number; channels: number }, opts: { detectLanguage?: boolean } = {}) {
     const client = new WyomingClient(this.cfg.stt.host, this.cfg.stt.port);
     await client.connect();
     const transcript = new Promise<string>((resolve, reject) => {
@@ -24,7 +25,7 @@ export class SttService {
       });
       client.on('error', reject);
     });
-    client.send('transcribe', { language: this.cfg.stt.language });
+    client.send('transcribe', opts.detectLanguage ? {} : { language: this.cfg.stt.language });
     client.send('audio-start', { ...format, timestamp: 0 });
     return {
       write: (chunk: Buffer) => client.send('audio-chunk', { ...format }, chunk),

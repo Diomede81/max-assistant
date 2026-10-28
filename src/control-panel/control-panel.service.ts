@@ -37,6 +37,7 @@ import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
 import { MicrophoneService } from '../audio/microphone.service';
 import { wakeLog } from '../wake-word/wake-log';
+import { recentLog } from '../log-buffer';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
@@ -172,6 +173,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url, req);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (req.method === 'GET' && url.pathname === '/log.txt') {
+      const text = recentLog().map((l) => `${new Date(l.at).toISOString()} ${l.level.toUpperCase().padEnd(5)} [${l.context}] ${l.message}`).join('\n');
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="max-log.txt"', 'Cache-Control': 'no-store' });
+      res.end(text + '\n');
+      return;
+    }
     if (this.home?.enabled && (url.pathname.startsWith('/api/home') || url.pathname.startsWith('/home/'))) return this.homeRoute(req, res, url);
     if (req.method === 'POST' && (url.pathname === '/music/airplay' || url.pathname === '/music/airplay-code') && this.airplay) {
       const f = await readForm(req);
@@ -821,6 +828,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       models: this.models && (await this.modelsData(this.models)),
       onBox: this.cfg.face.onBox,
       device: this.device && { ...(await this.device.status()), mic: this.mic?.canMute ? { muted: this.mic.muted } : undefined },
+      log: recentLog(),
       wakeUps: { list: wakeLog(), verify: this.cfg.wakeWord.verify, channel: this.cfg.audio.inputChannel },
       wakeWords: this.wakeWords && (await Promise.race([this.wakeWords.availableNames(), new Promise<string[]>((_, no) => setTimeout(() => no(new Error('no answer in 2 s')), 2000))]).then((available) => ({ available, active: this.wakeWords!.names })).catch((err: Error) => ({ available: [], active: [], error: err.message }))),
       liveVoice: this.liveVoice

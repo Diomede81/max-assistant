@@ -45,6 +45,9 @@ const HA_READ_ONLY = /(get|state|status|list|search|context)/i;
 /** Links Max may open with read_webpage: seen in what he read (search results, briefing, email) this recently. */
 const LINK_MEMORY_MS = 3600_000;
 const URL_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
+/** How long an action may take before Max stops waiting for it (some do more work: a task, a meal plan). */
+const DEFAULT_TIME_LIMIT_MS = 45_000;
+export const TIME_LIMIT_MS: Record<string, number> = { work_on_task: 120_000, health_plan: 300_000, plan_train_journey: 60_000, software_update: 60_000 };
 /** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
 const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 /** "Remember that…", "don't forget…", "make a note…" (and Italian): the user asking Max to save something. */
@@ -270,14 +273,39 @@ export class ToolRouterService {
     // Belt and braces: nothing runs while the start-up code hasn't been entered.
     if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
     const what = describeActivity(name);
-    if (!what) return this.rememberLinks(await this.run(name, args));
+    if (!what) return this.rememberLinks(await this.timed(name, args));
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };
     this.activity.emit('start', ev);
-    const out = await this.run(name, args);
+    const out = await this.timed(name, args);
     this.rememberLinks(out);
     this.activity.emit('end', { ...ev, ok: !/^Error:|^Could not do that/.test(out) });
     this.activity.emit('result', { name, out });
     return out;
+  }
+
+  /**
+   * An action, within its time limit: one that hangs (a service that never answers, a slow AI model)
+   * must never leave Max spinning, unable to listen. Past the limit Max answers without it (the action
+   * itself may still finish in the background; its result is then ignored).
+   */
+  private async timed(name: string, args: Record<string, unknown>): Promise<string> {
+    const limit = TIME_LIMIT_MS[name] ?? DEFAULT_TIME_LIMIT_MS;
+    const started = Date.now();
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<string>((resolve) => {
+      timer = setTimeout(() => {
+        this.log.warn(`${name} took more than ${Math.round(limit / 1000)}s: stopped waiting for it`);
+        resolve(`Error: that took too long (more than ${Math.round(limit / 1000)} seconds), so I stopped waiting. Tell the user briefly and offer to try again.`);
+      }, limit);
+    });
+    try {
+      const out = await Promise.race([this.run(name, args), late]);
+      const ms = Date.now() - started;
+      if (ms > 10_000) this.log.log(`${name} took ${Math.round(ms / 1000)}s`);
+      return out;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Remembers the links in an action's result (they may be opened with read_webpage). Returns the result. */

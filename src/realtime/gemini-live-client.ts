@@ -162,6 +162,8 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
         this.outstanding.delete(id);
         this.toolNames.delete(id);
       }
+      // the conversation stops waiting for them
+      this.emit('tool-cancelled', m.toolCallCancellation.ids as string[]);
       this.results = this.results.filter((r) => !(m.toolCallCancellation.ids as string[]).includes(r.id));
       if (!this.outstanding.size && this.results.length) this.flushTimer = setTimeout(() => this.flushResults(), TOOL_BATCH_MS);
     }

@@ -29,6 +29,8 @@ const CHIME_SKIP_MS = 400;
 const FIRST_TURN_WAIT_MS = 7000;
 /** If a provider never answers after the user spoke, stop waiting (keeps sessions from hanging open). */
 const NO_ANSWER_MS = 15000;
+/** The longest the conversation waits for a running action before going back to normal. */
+const RUNNING_MAX_MS = 150_000;
 /** After an interruption, listen again almost immediately (Max's audio has been cut). */
 const INTERRUPT_REOPEN_MS = 250;
 
@@ -170,7 +172,8 @@ export class RealtimeConversationService {
     let player: AsyncQueue<Buffer> | undefined;
     let playing: Promise<void> = Promise.resolve();
     let pendingTools: Promise<void>[] = [];
-    let toolsRunning = 0;
+    /** Actions still running (call id → when they started). */
+    const running = new Map<string, number>();
     let userSpeaking = false;
     let busy = false;
     let turns = 0;
@@ -267,13 +270,13 @@ export class RealtimeConversationService {
       responseActive = true;
       transcript.push({ who: 'action', text: c.name });
       // While actions run (a task worked out by the thinking model takes up to a minute), the conversation stays open.
-      toolsRunning++;
+      running.set(c.callId, Date.now());
       pendingTools.push(
         this.tools
           .call(c.name, c.args)
           .then((out) => client.sendToolResult(c.callId, out))
           .finally(() => {
-            toolsRunning--;
+            running.delete(c.callId);
             lastActivity = Date.now();
           }),
       );
@@ -336,6 +339,11 @@ export class RealtimeConversationService {
       }
     });
     client.on('close', () => (closed = true));
+    // Gemini dropped actions it no longer needs (e.g. the user spoke over it): stop waiting for them
+    client.on('tool-cancelled', (ids: string[]) => {
+      for (const id of ids) running.delete(id);
+      if (ids.length) this.log.log(`${ids.length} action${ids.length === 1 ? '' : 's'} cancelled by the voice model`);
+    });
 
     // Stay open while the conversation is alive; close after a quiet spell.
     const reason = await new Promise<string>((resolve) => {
@@ -351,7 +359,9 @@ export class RealtimeConversationService {
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;
         else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
-        else if (toolsRunning > 0) lastActivity = now; // an action is still working: not "no answer", not quiet
+        // an action is still working: not "no answer", not quiet (but never more than RUNNING_MAX_MS: a hung one
+        // must not leave Max deaf; the action router's own limits normally end it well before)
+        else if ([...running.values()].some((t) => now - t < RUNNING_MAX_MS)) lastActivity = now;
         else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
           lastActivity = now;

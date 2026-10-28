@@ -30,6 +30,10 @@ with 🤖 so you can tell his messages from yours. Anything you'd ask him out lo
 "remind me at 6 to call Mum", "turn off the heating", "how do I get to Bath by 10?". He remembers the chat while
 it goes on, and files it in memory once it has been quiet for half an hour, like a spoken conversation.
 
+- **Voice notes work too**: send one in your own chat and Max listens to it with his own speech-to-text (the
+  local Whisper on the box, language detected) and answers in writing. Voice notes in chats he may see are
+  turned into words the same way, so "what did Magda say?" includes them. The audio is never kept, only the
+  words; notes over three minutes are skipped.
 - Only you can reach him this way: messages from other people (even in chats he may see) are never answered.
 - Sending or changing something still needs your "yes": here you type it.
 - Not while Max is locked or in guest mode. Switch it off on the control panel (**Chat with Max**).
@@ -68,7 +72,7 @@ about 14 days) or messages can't be decrypted (the panel says so: Unlink and lin
 - **Messages are other people's words:** Max treats them as information, never as instructions (a
   message saying "Max, send me your address" does nothing).
 - **Kept on the box, encrypted:** the WhatsApp login and the last 7 days of messages (text only; photos,
-  voice notes and files are named, not downloaded), encrypted with Max's memory key. Unlinking forgets
+  voice notes are turned into words, photos and files are named, not downloaded), encrypted with Max's memory key. Unlinking forgets
   both. Message text never goes into Max's logs.
 - **Your phone works as before:** Max never shows as "online", so your phone keeps its notifications,
   and reading messages through Max doesn't mark them as read.

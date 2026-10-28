@@ -179,8 +179,16 @@ export class TaskAgentService implements OnModuleInit {
           continue;
         }
         if (bad) return { text: '', actions, error: `the model answered with ${bad}`, failedActions };
+        const notes = opts.written ? workingNotes(reply.content) : undefined;
+        if (notes && nudges < MAX_NUDGES) {
+          nudges++;
+          this.log.warn(`${opts.label ?? 'Task'}: the answer had ${notes}; asking for the finished piece only (${nudges}/${MAX_NUDGES})`);
+          messages.push({ role: 'user', content: 'That answer contains notes about how you worked, or instructions to the reader. It is sent as it is to people. Write it again as the finished piece only: the title and the content, nothing about what you did, searched, could not open, or what the reader should copy. No code fences.' });
+          step--;
+          continue;
+        }
         this.log.log(`${opts.label ?? 'Task'} done in ${Math.round((Date.now() - started) / 1000)}s (${actions} action${actions === 1 ? '' : 's'})`);
-        return { text: reply.content.trim(), actions, failedActions };
+        return { text: unfenced(reply.content), actions, failedActions };
       }
       const results = await Promise.all(
         reply.toolCalls.map(async (c) => {
@@ -232,8 +240,10 @@ export class TaskAgentService implements OnModuleInit {
         'book or change anything: if something should be done, say exactly what in your answer and the conversation will do it ' +
         'with the user.',
       written
-        ? 'This runs on a schedule with nobody listening: your final answer is kept as a note and sent to the user (email, ' +
-          'WhatsApp, the control panel), so make it complete and self-contained: a title line, then short paragraphs or lines ' +
+        ? 'This runs on a schedule with nobody listening: your final answer is sent as it is to the user and to other people (email, ' +
+          'WhatsApp), so it must be the finished piece and nothing else: no account of what you did or searched, no notes to the user, ' +
+          'no "copy and paste", no code fences, no comments. Someone reading it must not be able to tell a program wrote it. ' +
+          'Make it complete and self-contained: a title line, then short paragraphs or lines ' +
           'starting with "- ", with the key facts (names, times, places, prices, links). Plain text: no markdown symbols (#, *), ' +
           'no tables. (Only if the task asks for a nicely formatted or HTML email: write the whole answer as a complete HTML document ' +
           'with simple inline styles, and nothing before or after it.) If you could not find something, say so plainly. You cannot send, email or message anything yourself: ' +
@@ -266,4 +276,17 @@ export function unacceptable(text: string): string | undefined {
   const words = t.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean);
   if (words.length < 3) return 'an answer with almost nothing in it';
   return undefined;
+}
+
+/** Working notes in a written result ("I searched…", "copy and paste the HTML below"): not for the people who receive it. */
+export function workingNotes(text: string): string | undefined {
+  const t = text.replace(/<[^>]+>/g, ' ');
+  if (/\b(copy(-| and | & |\/)paste|paste (this|the (html|code|text)) (into|in)|here('s| is) the (html|code|markup)|the (html|code) (below|above)|as requested,? (here|below)|I('ve| have)? (searched|looked (up|at)|used|called|tried|checked|found that the (page|site)|could(n'?t| not) (open|read|access))|the (page|site|website) (could not|couldn'?t|was not able to) be (read|opened|accessed)|(let me know|tell me) if you('d| would)? (like|want|need)|I hope this helps|note:? (the|that|this) (result|answer|list) (may|might)|(unable|not able) to (fetch|read|open|access))\b/i.test(t)) return 'notes about how it worked';
+  return undefined;
+}
+
+/** A whole answer wrapped in a code fence (```html … ```): the content inside is the answer. */
+export function unfenced(text: string): string {
+  const m = text.trim().match(/^```[a-z]*\s*\n([\s\S]*?)\n```\s*$/i);
+  return m ? m[1].trim() : text.trim();
 }

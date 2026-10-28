@@ -18,12 +18,14 @@ export interface Timer {
   say?: string;
   /** About the box itself (e.g. no WiFi): said even while Max is locked, in the voice that works offline. */
   system?: boolean;
+  /** Came due while Max was switched off: kept, and said (and shown) once he's back, like any other. */
+  missed?: boolean;
 }
 
 /** Reminders can be set up to a year ahead ("remind me on 3 March to renew the insurance"). */
 const MAX_SECONDS = 366 * 24 * 3600;
 /** After a restart: reminders missed by less than this are still announced ("while I was off..."). */
-const MISSED_REMINDER_MS = 24 * 3600_000;
+const MISSED_REMINDER_MS = 3 * 24 * 3600_000;
 /** ...and kitchen timers only if they finished very recently. */
 const MISSED_TIMER_MS = 30 * 60_000;
 /** Give the rest of Max a moment to start listening before announcing missed ones. */
@@ -43,6 +45,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
   private ticker?: NodeJS.Timeout;
   private startup?: NodeJS.Timeout;
   private store?: SealedStore<{ nextId: number; timers: Timer[] }>;
+  private readonly startedAt = Date.now();
 
   constructor(
     @Optional() @Inject(APP_CONFIG) private readonly cfg?: AppConfig,
@@ -107,6 +110,16 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
     return victims;
   }
 
+  /** Cancels one by its id (the control panel). */
+  cancelById(id: number): boolean {
+    const t = this.timers.get(id);
+    if (!t) return false;
+    this.timers.delete(id);
+    this.log.log(`Timer #${id} cancelled (${forLog(t)})`);
+    this.persist();
+    return true;
+  }
+
   /** Says something out loud like a reminder (e.g. a project task falling due). */
   announce(text: string, system = false): void {
     this.emit('fired', { id: 0, say: text, durationSeconds: 0, endsAt: Date.now(), system } as Timer);
@@ -114,6 +127,7 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
 
   private tick(): void {
     const now = Date.now();
+    if (now - this.startedAt < STARTUP_ANNOUNCE_MS) return; // the rest of Max is still starting: nothing would be heard
     const due = this.list().filter((t) => t.endsAt <= now);
     if (!due.length) return;
     for (const t of due) {
@@ -135,24 +149,24 @@ export class TimerService extends EventEmitter implements OnModuleInit, OnModule
     }
     if (!saved?.timers?.length) return;
     const now = Date.now();
-    const missed: string[] = [];
+    let missed = 0;
     for (const t of saved.timers) {
       if (!t || typeof t.endsAt !== 'number') continue;
       if (t.endsAt > now) {
         this.timers.set(t.id, t);
         continue;
       }
+      // Came due while Max was off: kept as it is, marked missed, and fired like any other once the rest of Max is
+      // listening (said out loud, shown on the screen with Done). Nothing is thrown away before it has been delivered.
       const late = now - t.endsAt;
-      if (t.reminder && late < MISSED_REMINDER_MS) missed.push(`your reminder "${t.reminder.replace(/\.$/, '')}"`);
-      else if (!t.reminder && late < MISSED_TIMER_MS) missed.push(`your ${t.name ? `${t.name} ` : ''}timer`);
-      this.log.log(`Timer #${t.id} (${forLog(t)}) came due while Max was off`);
+      if ((t.reminder && late < MISSED_REMINDER_MS) || (!t.reminder && late < MISSED_TIMER_MS)) {
+        this.timers.set(t.id, { ...t, missed: true });
+        missed++;
+      }
+      this.log.log(`Timer #${t.id} (${forLog(t)}) came due while Max was off${late < (t.reminder ? MISSED_REMINDER_MS : MISSED_TIMER_MS) ? ': will be announced' : ' (too long ago)'}`);
     }
     this.nextId = Math.max(saved.nextId || 1, ...saved.timers.map((t) => (t?.id ?? 0) + 1));
-    this.log.log(`Restored ${this.timers.size} timer${this.timers.size === 1 ? '' : 's'} and reminder${this.timers.size === 1 ? '' : 's'}`);
-    if (missed.length) {
-      const list = missed.length > 1 ? `${missed.slice(0, -1).join(', ')} and ${missed[missed.length - 1]}` : missed[0];
-      this.startup = setTimeout(() => this.announce(`While I was switched off, I missed ${list}.`), STARTUP_ANNOUNCE_MS);
-    }
+    this.log.log(`Restored ${this.timers.size} timer${this.timers.size === 1 ? '' : 's'} and reminder${this.timers.size === 1 ? '' : 's'}${missed ? ` (${missed} came due while Max was off)` : ''}`);
     this.persist();
   }
 
@@ -179,6 +193,7 @@ export function describe(t: Pick<Timer, 'name' | 'reminder'>): string {
 /** What Max says when a timer goes off. */
 export function announcement(t: Timer): string {
   if (t.say) return t.say;
+  if (t.missed) return t.reminder ? `While I was switched off, I missed your reminder: ${t.reminder.replace(/\.$/, '')}.` : `While I was switched off, your ${t.name ? `${t.name} ` : ''}timer finished.`;
   if (t.reminder) return `Reminder: ${t.reminder}.`;
   return t.name ? `Your ${t.name} timer is done.` : `Time's up. The timer you set for ${spokenDuration(t.durationSeconds)} is done.`;
 }

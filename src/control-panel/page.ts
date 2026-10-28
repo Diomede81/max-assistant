@@ -35,6 +35,8 @@ export interface PanelData {
   routines?: PanelRoutines;
   /** Routines → Scheduled tasks. */
   jobs?: PanelJobs;
+  /** Timers and reminders waiting to go off (My Day). */
+  timers?: { id: number; text: string; at: number; missed?: boolean }[];
   /** Running on the Max box: the Device section can turn it off or restart it. */
   onBox?: boolean;
   device?: {
@@ -717,6 +719,17 @@ function logSection(lines: NonNullable<PanelData['log']>): string {
 <div class="logbox">${rows || '<p class="empty">Nothing yet.</p>'}</div></section>`;
 }
 
+/** My Day › Reminders: what Max will say, and when; kept on the box through restarts. */
+function remindersSection(timers: NonNullable<PanelData['timers']>): string {
+  const when = (ms: number) => new Date(ms).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const rows = timers
+    .map((t) => `<li class="row"><div><div class="name">${esc(t.text)}${t.missed ? ' <span class="badge warn">missed while off: about to be said</span>' : ''}</div><div class="meta">${esc(when(t.at))}</div></div><form method="post" action="/timers/cancel"><input type="hidden" name="id" value="${t.id}"><button class="btn secondary small" type="submit">Cancel</button></form></li>`)
+    .join('');
+  return `<section id="reminders"><h2>Reminders and timers</h2>
+<p class="meta">"Remind me at 6 to call Mum", "remind me on 3 March to renew the insurance", "set a timer for 10 minutes". Kept on the box, encrypted, through restarts and updates; one that falls due while Max is off is said and shown once he's back.</p>
+${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing waiting.</p>'}</section>`;
+}
+
 function updatesSection(u: NonNullable<PanelData['updates']>): string {
   if (!u.onBox) return '<section id="updates"><h2>Updates</h2><p class="meta">One-click updates work when Max runs on the Max box (Raspberry Pi).</p></section>';
   const v = u.version;
@@ -971,7 +984,7 @@ ${d.liveVoice ? liveVoiceForm(d.liveVoice) : ''}
 
   const parts: Record<string, (Part | false | undefined | '')[]> = {
     overview: [{ id: 'home', label: 'Home', html: overview(d, items) }],
-    myday: [m && { id: 'todo', label: 'To-do list', html: myDaySection(m) }, d.meetings && { id: 'meetings', label: 'Meetings', html: meetingsSection(d.meetings) }],
+    myday: [m && { id: 'todo', label: 'To-do list', html: myDaySection(m) }, d.timers && { id: 'reminders', label: 'Reminders', html: remindersSection(d.timers) }, d.meetings && { id: 'meetings', label: 'Meetings', html: meetingsSection(d.meetings) }],
     projects: [m && { id: 'projects', label: 'Projects', html: projectsSection(m) }],
     health: d.health ? healthParts(d.health, esc) : [],
     people: d.people ? peopleParts(d.people, esc) : [],

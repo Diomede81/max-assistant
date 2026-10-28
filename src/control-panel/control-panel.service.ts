@@ -17,6 +17,7 @@ import { localToday, ProjectsService, taskText, repeatText } from '../memory/pro
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
+import { describe as describeTimer, TimerService } from '../actions/timer.service';
 import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
 import { JournalService, MOODS } from '../journal/journal.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
@@ -71,6 +72,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(JobsService) private readonly jobs?: JobsService;
+  @Optional() @Inject(TimerService) private readonly timerService?: TimerService;
   @Optional() @Inject(SocialService) private readonly social?: SocialService;
   @Optional() @Inject(JournalService) private readonly journal?: JournalService;
   @Optional() @Inject(ModelsService) private readonly models?: ModelsService;
@@ -235,6 +237,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     if (req.method === 'POST' && url.pathname.startsWith('/memory/')) return this.memoryAction(req, res, url.pathname.slice('/memory/'.length));
     if (req.method === 'POST' && url.pathname.startsWith('/soul/')) return this.soulAction(req, res, url.pathname.slice('/soul/'.length));
     if (url.pathname.startsWith('/backup/') && this.backup) return this.backupRoute(req, res, url);
+    if (req.method === 'POST' && url.pathname === '/timers/cancel' && this.timerService) {
+      const f = await readForm(req);
+      const gone = this.timerService.cancelById(Number(f.get('id')));
+      return this.redirect(res, `/?${gone ? 'ok=Cancelled.' : 'error=Already%20gone.'}#reminders`);
+    }
     if (req.method === 'POST' && url.pathname.startsWith('/updates/') && this.updates) {
       const f = await readForm(req);
       const u = this.updates;
@@ -1010,6 +1017,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             screen: this.cfg.face.enabled,
           }
         : undefined,
+      timers: this.timerService?.list().map((t) => ({ id: t.id, text: describeTimer(t).replace(/^reminder "(.*)"$/, 'Reminder: $1'), at: t.endsAt, missed: t.missed })),
       jobs: this.jobs && this.memory.enabled && this.models
         ? {
             list: this.jobs.jobs.map((x) => ({ ...x, modelText: this.jobs!.modelText(x), scheduleText: scheduleText(x), running: this.jobs!.isRunning(x.id), retryAt: x.retryAt })),

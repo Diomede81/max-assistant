@@ -6,8 +6,9 @@
 /** Someone Max may send WhatsApp messages to. */
 export interface AllowedContact {
   name: string;
-  /** International, digits only (447700900123). */
+  /** International, digits only (447700900123); for a group, its WhatsApp id ("…@g.us"). */
   number: string;
+  group?: boolean;
 }
 
 /**

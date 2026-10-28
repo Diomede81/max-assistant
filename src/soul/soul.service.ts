@@ -80,7 +80,10 @@ export class SoulService implements OnModuleInit {
     if (!this.memory.enabled) return;
     this.store = new SealedStore(this.cfg.memory.dir, 'journal', memorySecret(this.cfg));
     try {
-      this.journal = (this.store.load() ?? []).filter((e) => e && typeof e.text === 'string');
+      const loaded = this.store.load() as unknown;
+      // Only a list is Max's journal: the life journal (JournalService) once shared this file name and left its own shape.
+      if (Array.isArray(loaded)) this.journal = loaded.filter((e) => e && typeof e.text === 'string');
+      else if (loaded) this.log.warn("Max's journal file held something else (the life journal's data); starting Max's journal afresh");
     } catch (err) {
       this.log.error(`Could not read Max's journal (${(err as Error).message}); starting a new one`);
     }

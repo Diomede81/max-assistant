@@ -528,9 +528,10 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
    */
   async sendToSelf(text: string): Promise<void> {
     if (!this.sock || !this.canMessageSelf) throw new Error('WhatsApp isn\'t linked');
-    const body = `${MAX_MARK}${text.replace(/^🤖\s*/u, '')}`.slice(0, 4000);
-    const sent = await this.sock.sendMessage(`${this.phone}@s.whatsapp.net`, { text: body });
-    if (sent?.key.id) this.remember(sent.key.id);
+    for (const part of pieces(`${MAX_MARK}${text.replace(/^🤖\s*/u, '')}`)) {
+      const sent = await this.sock.sendMessage(`${this.phone}@s.whatsapp.net`, { text: part });
+      if (sent?.key.id) this.remember(sent.key.id);
+    }
     this.log.log('Sent a WhatsApp message to you');
   }
 
@@ -567,7 +568,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (!this.sock || this.state !== 'connected') throw new Error('WhatsApp isn\'t linked');
     const a = this.allowed.find((x) => x.number === number || x.number === normaliseNumber(number));
     if (!a) throw new Error(`${number.includes('@') ? 'That group' : showNumber(number)} isn't on the allowed list any more`);
-    await this.sock.sendMessage(jidOf(a), { text: `${MAX_MARK}${text}`.slice(0, 4000) });
+    for (const part of pieces(`${MAX_MARK}${text}`)) await this.sock.sendMessage(jidOf(a), { text: part });
     this.log.log(`Sent a WhatsApp message to ${a.name}`);
     return a.name;
   }
@@ -1120,6 +1121,21 @@ function sendIdOf(k: Known): string | undefined {
 /** Where a message to someone on the allowed list goes: a group's id, or a person's number. */
 function jidOf(a: AllowedContact): string {
   return a.group || a.number.includes('@') ? a.number : `${a.number}@s.whatsapp.net`;
+}
+
+/** A long text as several WhatsApp messages, split between lines (a week's listings don't fit in one). */
+export function pieces(text: string, max = 3500): string[] {
+  const out: string[] = [];
+  let rest = text.trim();
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf('\n', max);
+    if (cut < max / 2) cut = rest.lastIndexOf(' ', max);
+    if (cut < max / 2) cut = max;
+    out.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) out.push(rest);
+  return out.length > 1 ? out.map((p, i) => `${p}\n(${i + 1}/${out.length})`) : out;
 }
 
 /** An id without the device part ("447700900123:5@s.whatsapp.net" → "447700900123@s.whatsapp.net"). */

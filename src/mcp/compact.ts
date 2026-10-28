@@ -114,16 +114,27 @@ function hasList(v: unknown): boolean {
   return false;
 }
 
+const ENTITIES: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", middot: '·', mdash: '—', ndash: '–', hellip: '…', bull: '•', copy: '©', reg: '®', trade: '™',
+  laquo: '«', raquo: '»', ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', euro: '€', pound: '£', yen: '¥', deg: '°', times: '×', divide: '÷', plusmn: '±',
+  eacute: 'é', egrave: 'è', agrave: 'à', aacute: 'á', iacute: 'í', igrave: 'ì', oacute: 'ó', ograve: 'ò', uacute: 'ú', ugrave: 'ù', ccedil: 'ç', ntilde: 'ñ', uuml: 'ü', ouml: 'ö', auml: 'ä', szlig: 'ß',
+};
+
+/** HTML character codes as the characters they stand for ("&mdash;" → "—", "&#8217;" → "’"). */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, code: string) => {
+    if (code[0] === '#') {
+      const n = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
+    }
+    return ENTITIES[code.toLowerCase()] ?? m;
+  });
+}
+
 export function htmlToText(html: string): string {
   // Very long markup is cut first (the AI only gets a few thousand characters of it anyway).
   const kept = removeBlocks(html.slice(0, MAX_HTML), ['script', 'style', 'head']).replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, '\n');
-  return stripTags(kept)
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  return decodeEntities(stripTags(kept).replace(/<\/?[a-z][^<]*$/i, ''))
     .replace(/_{5,}|-{5,}/g, ' ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\s*\n\s*/g, '\n')

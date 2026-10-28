@@ -142,7 +142,13 @@ export class TaskAgentService implements OnModuleInit {
       try {
         // the last step: no more actions, just the answer
         last = step === maxSteps - 1 || left < 20_000;
-        reply = await this.models.step(job, messages, last ? [] : tools, { maxTokens: opts.written ? 3000 : 1200, timeoutMs: Math.min(STEP_MS, left), assignment: opts.assignment });
+        reply = await this.models.step(job, messages, last ? [] : tools, { maxTokens: opts.written ? 6000 : 1200, timeoutMs: Math.min(STEP_MS, left), assignment: opts.assignment });
+        // A written answer that hit the limit mid-sentence: have it carried on from where it stopped (a listing for a whole week can be long).
+        for (let more = 0; reply.cut && !reply.toolCalls.length && opts.written && more < 3 && totalMs - (Date.now() - started) > 20_000; more++) {
+          this.log.log(`${opts.label ?? 'Task'}: the answer was cut off at the limit; asking for the rest (${more + 1}/3)`);
+          const next = await this.models.step(job, [...messages, { role: 'assistant', content: reply.content }, { role: 'user', content: 'Your answer was cut off at the length limit. Continue exactly from where it stopped, without repeating anything, and finish it.' }], [], { maxTokens: 6000, timeoutMs: Math.min(STEP_MS, totalMs - (Date.now() - started)), assignment: opts.assignment });
+          reply = { ...next, content: reply.content + next.content };
+        }
       } catch (err) {
         this.log.warn(`${opts.label ?? 'Task'} stopped: ${(err as Error).message}`);
         return { text: '', actions, error: (err as Error).message, failedActions };

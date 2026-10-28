@@ -42,6 +42,7 @@ import { HomeService } from '../home/home.service';
 import { MicrophoneService } from '../audio/microphone.service';
 import { wakeLog } from '../wake-word/wake-log';
 import { recentLog } from '../log-buffer';
+import { looksLikeHtml } from '../mcp/self-email';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { AutomationsService } from '../home/automations.service';
 import { SOUL_DOCS, SOUL_MAX_CHARS, SoulDoc, SoulService } from '../soul/soul.service';
@@ -188,6 +189,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'GET' && url.pathname === '/') return this.page(res, url, req);
     if (req.method === 'GET' && url.pathname === '/api/status') return this.json(res, await this.data());
+    if (req.method === 'GET' && url.pathname === '/report.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="max-report.txt"', 'Cache-Control': 'no-store' });
+      res.end(await this.report());
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/log.txt') {
       const text = recentLog().map((l) => `${new Date(l.at).toISOString()} ${l.level.toUpperCase().padEnd(5)} [${l.context}] ${l.message}`).join('\n');
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="max-log.txt"', 'Cache-Control': 'no-store' });
@@ -1345,6 +1351,54 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       if (p.startsWith('/home/flow') || p === '/api/home/flow') return this.json(res, { kind: 'stopped', integration: '', title: "That didn't work", text: message });
       res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message }));
     }
+  }
+
+  /**
+   * One text file with what's needed to look into a problem: the version, the mode, each scheduled
+   * task's last run (status, problems, how the result starts), the WhatsApp and connection state, and
+   * the log. No API keys, no message text, no memory.
+   */
+  private async report(): Promise<string> {
+    const v = this.updates?.version();
+    const out: string[] = [
+      `Max support report · ${new Date().toISOString()}`,
+      `Version: ${v ? `${v.subject} (${v.sha.slice(0, 7)}, ${v.date}, ${v.branch})` : 'unknown'}`,
+      `Mode: ${this.modes.mode} · on the box: ${this.cfg.face.onBox} · voice: ${this.cfg.voiceMode} · memory: ${this.memory.enabled}`,
+      `Main model: ${this.cfg.llm.model} at ${this.cfg.llm.baseUrl.replace(/\/v1\/?$/, '')}`,
+      '',
+    ];
+    if (this.models) {
+      out.push('Model assignments:');
+      for (const t of Object.keys(TASKS) as Task[]) out.push(`  ${TASKS[t].label}: ${this.models.describeAssignment(this.models.assignment(t))}`);
+      out.push('');
+    }
+    if (this.jobs) {
+      out.push('Scheduled tasks:');
+      for (const j of this.jobs.jobs) {
+        out.push(`  ${j.name} · ${j.enabled ? 'on' : 'paused'} · effort ${j.effort}${j.provider ? ` · ${j.provider} ${j.model ?? ''}` : ''} · say ${j.say} email ${j.email} whatsapp ${j.whatsapp} · also to ${[...j.emailTo, ...j.whatsappTo].join(', ') || 'nobody'}`);
+        out.push(`    brief: ${j.brief.replace(/\s+/g, ' ').slice(0, 300)}`);
+        for (const r of j.runs.slice(0, 3)) {
+          out.push(`    run ${r.at}: ${r.status} in ${r.seconds}s, ${r.actions} actions, attempt ${r.attempt}; sent: ${r.sent.join(', ') || 'nothing'}; failed: ${r.failed.join(', ') || 'nothing'}`);
+          for (const p of r.problems) out.push(`      problem: ${p.what} | fix: ${p.fix}`);
+          out.push(`      result: ${r.text.length} chars, ${looksLikeHtml(r.text) ? 'HTML' : 'text'}, starts: ${r.text.replace(/\s+/g, ' ').slice(0, 200)} … ends: ${r.text.replace(/\s+/g, ' ').slice(-120)}`);
+        }
+      }
+      out.push('');
+    }
+    if (this.whatsapp) {
+      const w = await this.whatsapp.status();
+      out.push(`WhatsApp: ${w.state}${w.note ? ` · ${w.note}` : ''} · chat with Max ${w.chat}`);
+      out.push(`  sees: ${w.readable.map((r) => `${r.name} (${r.group ? 'group' : r.shown})`).join(', ') || 'only your own chat'}`);
+      out.push(`  sends to: ${w.allowed.map((a) => `${a.name} (${a.shown})`).join(', ') || 'nobody'}`);
+      if (w.received) out.push(`  since start: ${w.received.messages} received, ${w.received.unreadable} unreadable, ${w.received.ignored} dropped, ${w.received.kept} kept in ${w.received.chats} chats; latest: ${w.received.recent.map((c) => `${c.name} (${c.messages})`).join(', ')}`);
+      const trace = (w as { trace?: { at: number; chat: string; via: string; what: string }[] }).trace;
+      if (trace?.length) for (const t of trace.slice(0, 40)) out.push(`  ${new Date(t.at).toISOString()} ${t.chat} · ${t.via} · ${t.what}`);
+      out.push('');
+    }
+    out.push(`Apps: ${this.composio.enabled ? 'Composio on' : 'Composio off'}${this.composio.lastError ? ` (${this.composio.lastError})` : ''} · Home Assistant: ${this.ha.openAiTools.length} actions · MCP servers: ${this.mcp.tools.length} tools`);
+    out.push('', 'Log:');
+    for (const l of recentLog()) out.push(`${new Date(l.at).toISOString()} ${l.level.toUpperCase().padEnd(5)} [${l.context}] ${l.message}`);
+    return `${out.join('\n')}\n`;
   }
 
   private json(res: ServerResponse, body: unknown): void {

@@ -15,6 +15,7 @@ export const TASKS = {
   health: { label: 'Health plans', help: 'Writes your exercise routines and meal plans from the websites you chose: a strong model gives better plans.' },
   home: { label: 'Home automations', help: 'Turns an automation you describe ("when I\'m out and the alarm is on…") into one for Home Assistant.' },
   jobs: { label: 'Scheduled tasks', help: 'Runs the tasks you schedule (Routines → Scheduled tasks) with Max\'s actions, unless a task names its own model. A strong, careful model does them best.' },
+  journal: { label: 'Life reviews', help: 'Writes your weekly and monthly reviews from the journal (and reads your calendar for it in the evening). A thoughtful, well-writing model suits it.' },
 } as const;
 export type Task = keyof typeof TASKS;
 

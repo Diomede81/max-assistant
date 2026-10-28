@@ -462,6 +462,7 @@ export class BuiltinActionsService implements OnModuleInit {
       `To-dos:\n${this.todos.dayBriefing()}`,
       this.routines?.pendingLine() ?? '',
       this.social?.dayLine() ? `People: ${this.social.dayLine()}` : '',
+      ...this.dayLines.map((f) => f()),
       "Calendar: not included here. Get today's events from the calendar app if one is connected; if none is, don't mention the calendar.",
     ]
       .filter(Boolean)
@@ -519,6 +520,9 @@ export class BuiltinActionsService implements OnModuleInit {
   private get dayTicks(): TodoTicks {
     return (this.ticks ??= new TodoTicks(this.todos, () => this.dayCard(this.dayExtra, true)));
   }
+
+  /** Extra lines for "what's my day" from parts that register themselves (the journal). */
+  readonly dayLines: (() => string)[] = [];
 
   onModuleInit(): void {
     // A briefing someone asked for ("get me fresh news") is announced when it's ready.

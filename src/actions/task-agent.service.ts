@@ -17,6 +17,8 @@ export interface WorkOptions {
   written?: boolean;
   /** For the log, e.g. 'scheduled task "Flights"'. */
   label?: string;
+  /** Working on its own (a scheduled task): actions run quietly, nothing on the screen, music and the box left alone. */
+  background?: boolean;
 }
 
 export interface WorkResult {
@@ -44,6 +46,8 @@ const MAX_TOOLS = 120;
  * the conversation, where the user can answer. It finds things out, works them out and shows them.
  */
 const NOT_FOR_TASKS = new Set([TASK_TOOL, 'end_conversation', 'set_mode', 'device_power', 'device_settings', 'software_update', 'airplay', 'remember', 'forget', 'set_timer', 'set_reminder', 'cancel_timer']);
+/** Also kept from a task working in the background: anything that touches the screen, the music or the house while the user may be using Max. */
+const NOT_IN_BACKGROUND = new Set(['show_on_screen', 'music_control', 'play_music', 'play_radio', 'airplay', 'home_device', 'home_automation', 'scheduled_task', 'meeting', 'whatsapp_send', 'news_briefing', 'news_settings']);
 
 /**
  * Hard tasks, done properly: the conversation's model is chosen for speed (it answers in a moment),
@@ -115,7 +119,8 @@ export class TaskAgentService implements OnModuleInit {
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
     const totalMs = opts.totalMs ?? TOTAL_MS;
     const job = opts.job ?? 'tasks';
-    const tools = this.router.tools.filter((t) => t.type === 'function' && !NOT_FOR_TASKS.has(t.function.name) && !this.router.needsConfirmation(t.function.name)).slice(0, MAX_TOOLS);
+    const blocked = (name: string) => NOT_FOR_TASKS.has(name) || (opts.background && (NOT_IN_BACKGROUND.has(name) || /^(screen_|show_|display_|music_|play_|airplay_)/.test(name))) || this.router.needsConfirmation(name);
+    const tools = this.router.tools.filter((t) => t.type === 'function' && !blocked(t.function.name)).slice(0, MAX_TOOLS);
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: await this.instructions(goal, opts.written) },
       { role: 'user', content: `Task: ${goal}` },
@@ -147,7 +152,7 @@ export class TaskAgentService implements OnModuleInit {
         reply.toolCalls.map(async (c) => {
           if (c.type !== 'function') return { id: c.id, content: 'unsupported' };
           const name = c.function.name;
-          if (NOT_FOR_TASKS.has(name) || this.router.needsConfirmation(name)) {
+          if (blocked(name)) {
             return { id: c.id, content: 'Not available here: say in your answer what should be done, and the conversation will do it with the user.' };
           }
           let args: Record<string, unknown> = {};
@@ -160,7 +165,7 @@ export class TaskAgentService implements OnModuleInit {
           // within the task's own time: an action that hangs doesn't hold the whole task
           const left = Math.max(5000, totalMs - (Date.now() - started));
           const out = await Promise.race([
-            this.router.call(name, args).catch((err) => `Error: ${(err as Error).message}`),
+            this.router.call(name, args, { background: opts.background }).catch((err) => `Error: ${(err as Error).message}`),
             new Promise<string>((r) => setTimeout(() => r('Error: this action took too long; carry on without it.'), left).unref()),
           ]);
           if (/^(Error|Could not|Not (done|sent|available))\b/i.test(out) && failedActions.length < 5) failedActions.push(`${name}: ${out.slice(0, 120)}`);

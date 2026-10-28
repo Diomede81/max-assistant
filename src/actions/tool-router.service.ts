@@ -372,6 +372,7 @@ export class ToolRouterService {
       }
       if (name === 'work_on_task' && this.taskAgent) return await this.taskAgent.run(String(args.task ?? ''));
       if (this.builtin.has(name)) return this.builtin.call(name, args);
+      if (name === 'read_webpage' && typeof args.url === 'string') args = { ...args, url: unwrapSafeLink(args.url) };
       if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''), allow)) {
         this.log.warn(`read_webpage refused: ${String(args.url ?? '').slice(0, 120)} wasn't in anything Max read`);
         return (
@@ -498,9 +499,23 @@ function stableJson(v: unknown): string {
 }
 
 /** A link, for comparing: no #fragment, no trailing slash, lower-case host. */
+/** An Outlook "safelinks" wrapper (from an email) → the real address; anything else unchanged. */
+export function unwrapSafeLink(url: string): string {
+  try {
+    const u = new URL(url);
+    if (/\.safelinks\.protection\.outlook\.com$/i.test(u.hostname)) {
+      const real = u.searchParams.get('url');
+      if (real && /^https?:\/\//i.test(real)) return real;
+    }
+  } catch {
+    // not a link
+  }
+  return url;
+}
+
 /** The links in a text, normalised, for a scheduled task to keep its own list of what it may open. */
 export function linksIn(text: string): string[] {
-  return [...text.matchAll(URL_RE)].map((m) => normLink(m[0]));
+  return [...text.matchAll(URL_RE)].map((m) => normLink(unwrapSafeLink(m[0])));
 }
 
 /** The websites a text names ("princecharlescinema.com", "bbc.co.uk/news"), as host names. */

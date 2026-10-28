@@ -657,6 +657,8 @@ export function statusText(r: JobRun): string {
 export function diagnose(kind: 'model' | 'time' | 'empty' | 'action' | 'email' | 'whatsapp', message: string): Problem {
   const m = message.toLowerCase();
   if (kind === 'model') {
+    if (/internal action markup|written-out action request|kept asking for actions/.test(m)) return { what: `The AI model wrote its internal action markup instead of a result (${message.slice(0, 60)})`, fix: 'It happens when a model runs out of steps while still wanting to look things up: it is retried. If it keeps happening, give the task more effort (Thorough) or pick another model for it.', retry: true };
+    if (/empty answer|almost nothing/.test(m)) return { what: 'The AI model gave back no real answer', fix: 'It is retried. If it keeps happening, pick another model for this task or reword what to do.', retry: true };
     if (/401|403|invalid api key|incorrect api key|unauthori[sz]ed|authentication/.test(m)) return { what: `The AI model refused the key (${message.slice(0, 80)})`, fix: 'Check the provider\'s key in .env (Settings → AI models shows which are set up) and restart Max.', retry: false };
     if (/429|rate limit|quota|insufficient|balance|credit/.test(m)) return { what: `The AI provider is out of credit or rate-limited (${message.slice(0, 80)})`, fix: 'Top up or wait; or pick another model for this task.', retry: true };
     if (/404|not found|does not exist|unknown model|no such model/.test(m)) return { what: `The model name isn't known to the provider (${message.slice(0, 80)})`, fix: 'Pick the model from the list in the task\'s settings.', retry: false };

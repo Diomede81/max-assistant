@@ -1166,7 +1166,8 @@ export function pieces(text: string, max = 3500): string[] {
   }
   if (rest) out.push(rest);
   return out.length > 1 ? out.map((p, i) => `${p}\n(${i + 1}/${out.length})`) : out;
-=======
+}
+
 /** An id with most of its digits hidden, for the log and the panel ("…0123 (number)", "…4567 (hidden id)", "…abc (group)"). */
 export function maskId(jid: string): string {
   const [user, host] = bare(jid).split('@');

@@ -586,7 +586,19 @@ export function hostsIn(text: string): string[] {
 
 /** Whether a link may be opened: it was seen (in `links`), or it is on one of the `hosts`. */
 export function linkRule(links: Set<string>, hosts: Set<string>): (url: URL) => boolean {
-  return (u) => links.has(normLink(u.href)) || [...hosts].some((h) => u.hostname === h || u.hostname === `www.${h}` || u.hostname.endsWith(`.${h}`));
+  return (u) => links.has(normLink(u.href)) || links.has(normLink(pageOf(u))) || [...hosts].some((h) => u.hostname === h || u.hostname === `www.${h}` || u.hostname.endsWith(`.${h}`));
+}
+
+/**
+ * A listing's other pages ("?page=2", "?month=2026-11"): the same page as far as the rule is concerned. Only the
+ * usual paging names, and only small numbers or dates as values: nothing of the user's could fit in them.
+ */
+function pageOf(u: URL): string {
+  const p = new URL(u.href);
+  for (const [k, v] of [...p.searchParams]) {
+    if (/^(page|p|pg|month|year|week|day|date|from|to|start|offset|view)$/i.test(k) && /^\d{1,4}(-\d{1,2}){0,2}$/.test(v)) p.searchParams.delete(k);
+  }
+  return p.href;
 }
 
 /** A link without its #fragment: the fragment reaches the page's own scripts, so it must never carry the user's data. */

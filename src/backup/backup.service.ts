@@ -49,6 +49,8 @@ export interface BackupStatus extends BackupSettings {
   withHome: boolean;
   /** Max is about to restart after a restore. */
   restarting: boolean;
+  /** Files the last backup could not read (Home Assistant keeps a few for itself). */
+  leftOut: string[];
 }
 
 interface Entry {
@@ -103,7 +105,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
           })
           .sort((a, b) => b.at.localeCompare(a.at))
       : [];
-    return { ...this.settings, folder: this.folder, files, withHome: this.withHome, restarting: this.restarting };
+    return { ...this.settings, folder: this.folder, files, withHome: this.withHome, restarting: this.restarting, leftOut: this.leftOut };
   }
 
   /** The encryption key, for keeping somewhere safe (a password manager): without it a backup can't be opened. */
@@ -200,8 +202,12 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
   // ---------- the file ----------
 
+  /** Files the last backup could not read (Home Assistant's private ones): shown on the panel, not a failure. */
+  leftOut: string[] = [];
+
   private build(): Buffer {
     const chunks: Buffer[] = [];
+    const unreadable: string[] = [];
     const add = (base: string, root: string, skip: RegExp) => {
       for (const path of walk(base)) {
         const rel = relative(base, path).split(sep).join('/');
@@ -211,12 +217,22 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
           this.log.warn(`Backup: ${rel} left out (${mb(st.size)} is too large)`);
           continue;
         }
-        const bytes = readFileSync(path);
+        let bytes: Buffer;
+        try {
+          bytes = readFileSync(path);
+        } catch (err) {
+          // Home Assistant keeps a few of its files for itself (its login store, owned by root): the backup goes on without them
+          unreadable.push(`${root}/${rel}`);
+          this.log.debug(`Backup: ${root}/${rel} left out (${(err as Error).message})`);
+          continue;
+        }
         chunks.push(Buffer.from(`${JSON.stringify({ p: `${root}/${rel}`, s: bytes.length } as Entry)}\n`), bytes);
       }
     };
     add(this.cfg.memory.dir, 'data', SKIP_DATA);
     if (this.withHome) add(this.cfg.backup.homeDir, 'home-assistant', SKIP_HOME);
+    this.leftOut = unreadable;
+    if (unreadable.length) this.log.log(`Backup: ${unreadable.length} file${unreadable.length === 1 ? '' : 's'} could not be read and ${unreadable.length === 1 ? 'was' : 'were'} left out (${unreadable.slice(0, 3).join(', ')}${unreadable.length > 3 ? '…' : ''})`);
     const plain = gzipSync(Buffer.concat(chunks));
     const iv = randomBytes(IV_LEN);
     const c = createCipheriv('aes-256-gcm', this.cipherKey(), iv);

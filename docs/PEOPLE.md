@@ -11,7 +11,7 @@ work); the control panel shows it in personal and work mode, never in guest mode
 | --- | --- |
 | Circle | **Family**, **Close friend**, **Friend**, **Colleague** or **Acquaintance**. Each has a default for how often you'd like to be in touch (7, 14, 30, 60, 90 days); change it per person |
 | Relation | "my sister", "old school friend" |
-| In touch | Every time you spoke, called, texted, met or emailed, with the date and anything they told you. Logged by voice, on the control panel (one tap: Spoke / Texted / Met), or noticed from WhatsApp: a message to or from their number, in a chat Max may see, counts as texting |
+| In touch | Every time you spoke, called, texted, met or emailed, with the date and anything they told you. Logged by voice, on the control panel (one tap: Spoke / Texted / Met), or noticed from WhatsApp: a message to or from their number counts as texting, whether or not Max may read that chat |
 | Interests | What they're into, for gifts and things to talk about |
 | How they are | A dated note each time there's news: a new job, a knee on the mend, a holiday |
 | Birthday | Shown ahead of time, on Home when it's within three days |
@@ -48,6 +48,7 @@ Home page and the daily briefing still list who's overdue.
 
 ## WhatsApp
 
-With a phone number on a person, Max fills in "last texted" from WhatsApp by himself: the last message to
-or from that number, in a chat he may see (your own chat, and the chats allowed under Connections →
-WhatsApp). He never reads chats you haven't allowed.
+With a phone number on a person (start typing + in the field to pick from your WhatsApp chats), Max fills
+in "last texted" by himself from the time of the last message to or from that number. He only needs to
+know *when* it was, which the WhatsApp chat list keeps for every chat: he doesn't need to read the chat,
+and doesn't, unless you ticked See for it on Connections → WhatsApp (then he also notes who wrote).

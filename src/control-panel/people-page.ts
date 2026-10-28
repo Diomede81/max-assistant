@@ -4,6 +4,8 @@ export interface PanelPeople {
   circles: { id: string; label: string; every: number }[];
   touches: { id: string; label: string }[];
   whatsapp: boolean;
+  /** People on the WhatsApp chat list, to fill the number in from. */
+  chats: { name: string; number: string }[];
   /** Personal mode: Max uses the list by voice (in work mode the page is read and edited here only). */
   personal: boolean;
   /** The daily reminder about overdue catch-ups. */
@@ -98,9 +100,9 @@ function personForm(x: PanelPerson | undefined, p: PanelPeople, esc: Esc): strin
 <label class="inline">Relation <input name="relation" maxlength="60" value="${esc(x?.relation ?? '')}" placeholder="my sister, old school friend"></label></div>
 <div class="addfact wrap"><label class="inline">Keep in touch every <input type="number" name="every" min="1" max="365" value="${x?.everySet ? x.every : ''}" placeholder="${x?.every ?? ''}" style="width:5em"> days <span class="meta">(empty: the circle's default)</span></label>
 <label class="inline">Birthday <input name="birthday" maxlength="10" value="${esc(x?.birthday ?? '')}" placeholder="1981-03-14 or 03-14"></label></div>
-<div class="addfact wrap"><label class="inline">WhatsApp / phone <input name="phone" maxlength="24" value="${esc(x?.phone ?? '')}" placeholder="+44 7700 900123"></label>
+<div class="addfact wrap"><label class="inline">WhatsApp / phone <input name="phone" maxlength="24" value="${esc(x?.phone ?? '')}" placeholder="+44 7700 900123" list="wa-people-${esc(x?.id ?? 'new')}"></label>${p.chats.length ? `<datalist id="wa-people-${esc(x?.id ?? 'new')}">${p.chats.map((c) => `<option value="+${esc(c.number)}">${esc(c.name)}</option>`).join('')}</datalist>` : ''}
 <label class="inline">Email <input name="email" maxlength="120" value="${esc(x?.email ?? '')}" placeholder="anna@example.com"></label></div>
 ${x ? '' : '<label>Interests <span class="meta">(comma-separated)</span><input name="interests" maxlength="300" placeholder="climbing, jazz, Italian food"></label>'}
 <div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Add'}</button></div>
-${x ? '' : `<p class="meta">With a WhatsApp number, messages to or from them (in a chat Max may see: Connections → WhatsApp) count as texting, so "last texted" fills itself in.${p.whatsapp ? '' : ' WhatsApp is not linked yet.'}</p>`}</form>`;
+${x ? '' : `<p class="meta">With a WhatsApp number, every message to or from them updates "last texted" by itself${p.chats.length ? ' (start typing + to pick from your WhatsApp chats)' : ''}. Max only needs to know when the last message was: he doesn\'t need to read the chat.${p.whatsapp ? '' : ' WhatsApp is not linked yet.'}</p>`}</form>`;
 }

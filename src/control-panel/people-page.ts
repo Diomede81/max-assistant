@@ -6,6 +6,10 @@ export interface PanelPeople {
   whatsapp: boolean;
   /** Personal mode: Max uses the list by voice (in work mode the page is read and edited here only). */
   personal: boolean;
+  /** The daily reminder about overdue catch-ups. */
+  nudge: { speak: boolean; screen: boolean; time: string; laterDays: number };
+  /** The screen is on (reminders can show there). */
+  screen: boolean;
 }
 
 export interface PanelPerson {
@@ -20,6 +24,8 @@ export interface PanelPerson {
   email?: string;
   birthday?: string;
   birthdayInDays?: number;
+  /** "Later" was pressed: no reminder before this day. */
+  snoozedUntil?: string;
   interests: string[];
   updates: { at: string; text: string }[];
   touches: { at: string; kind: string; kindLabel: string; note?: string; auto?: boolean }[];
@@ -40,7 +46,10 @@ export function peopleParts(p: PanelPeople, esc: Esc): { id: string; label: stri
 ${p.personal ? '' : '<p class="hint">Max is in work mode: he won\'t mention these people or log contact by voice until personal mode. You can still read and update the list here.</p>'}
 <p class="meta">The people close to you, and keeping in touch with them. Tell Max "I called Mum, her knee is better", "had lunch with Marco", "Anna's into climbing now", or ask "who should I catch up with?" and "what's new with Marco?". A WhatsApp message to or from someone here counts as texting. Everything stays on the box, encrypted, and only in personal mode.</p>
 ${p.list.length ? '' : '<p class="empty">Nobody yet: add the people you want to stay close to below, or say "Max, add my sister Anna to my people".</p>'}</section>
-${due.length ? `<section id="people-due"><h2>Worth catching up with</h2><ul>${due.map((x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge warn">${x.daysSince === undefined ? 'not in touch yet' : `${x.daysSince} days`}</span></div><div class="meta">${esc(x.circleLabel)}${x.relation ? ` · ${esc(x.relation)}` : ''} · you'd like every ${x.every} days${x.updates[0] ? ` · latest: ${esc(x.updates[0].text)}` : ''}</div></div><div class="acts">${quick(x, esc)}</div></li>`).join('')}</ul></section>` : ''}
+<section id="people-reminders"><h2>Reminders</h2>
+<p class="meta">Once a day, when it's been too long with someone: Max says so${p.screen ? ' and shows them on his screen, with an "In touch" button each and Later' : ''}. In personal mode only. "Later" (on the screen, or "remind me about Marco next week") pauses the reminder for a few days.</p>
+<form class="addfact wrap" method="post" action="/people/reminders"><label class="meta"><input type="checkbox" name="speak" value="yes" ${p.nudge.speak ? 'checked' : ''}> Out loud</label>${p.screen ? `<label class="meta"><input type="checkbox" name="screen" value="yes" ${p.nudge.screen ? 'checked' : ''}> On the screen</label>` : `<input type="hidden" name="screen" value="${p.nudge.screen ? 'yes' : 'no'}">`}<label class="meta">at <input type="time" name="time" value="${esc(p.nudge.time)}"></label><label class="meta">Later means <input type="number" name="laterDays" min="1" max="30" value="${p.nudge.laterDays}" style="width:4em"> days</label><button class="btn secondary" type="submit">Save</button></form></section>
+${due.length ? `<section id="people-due"><h2>Worth catching up with</h2><ul>${due.map((x) => `<li class="row"><div><div class="name">${esc(x.name)} <span class="badge warn">${x.daysSince === undefined ? 'not in touch yet' : `${x.daysSince} days`}</span>${x.snoozedUntil ? ` <span class="badge off">later: ${esc(x.snoozedUntil)}</span>` : ''}</div><div class="meta">${esc(x.circleLabel)}${x.relation ? ` · ${esc(x.relation)}` : ''} · you'd like every ${x.every} days${x.updates[0] ? ` · latest: ${esc(x.updates[0].text)}` : ''}</div></div><div class="acts">${quick(x, esc)}</div></li>`).join('')}</ul></section>` : ''}
 ${bdays.length ? `<section id="people-birthdays"><h2>Birthdays</h2><ul>${bdays.map((x) => `<li class="row"><div><div class="name">${esc(x.name)}</div><div class="meta">${x.birthdayInDays === 0 ? 'Today!' : x.birthdayInDays === 1 ? 'Tomorrow' : `In ${x.birthdayInDays} days`} · ${esc(x.birthday)}${x.interests.length ? ` · into ${esc(x.interests.slice(0, 4).join(', '))}` : ''}</div></div></li>`).join('')}</ul></section>` : ''}
 ${byCircle.map((g) => `<section id="people-${esc(g.c.id)}"><h2>${esc(g.c.label)}${g.c.label.endsWith('y') ? '' : 's'} <span class="meta">${g.people.length}</span></h2><ul>${g.people.map((x) => `<li class="row"><div><div class="name"><a href="#person-${esc(x.id)}">${esc(x.name)}</a>${x.overdue > 0 ? ' <span class="badge warn">catch up</span>' : ''}</div><div class="meta">${x.relation ? `${esc(x.relation)} · ` : ''}${x.daysSince === undefined ? 'not in touch yet' : x.daysSince === 0 ? 'in touch today' : `${x.daysSince} day${x.daysSince === 1 ? '' : 's'} ago`}${x.updates[0] ? ` · ${esc(x.updates[0].text)}` : ''}</div></div><div class="acts">${quick(x, esc)}</div></li>`).join('')}</ul></section>`).join('')}`;
   const cards = p.list.map((x) => personCard(x, p, esc)).join('');
@@ -52,7 +61,8 @@ ${byCircle.map((g) => `<section id="people-${esc(g.c.id)}"><h2>${esc(g.c.label)}
 
 /** One-tap "we were in touch today" buttons. */
 function quick(x: PanelPerson, esc: Esc): string {
-  return ['spoke', 'texted', 'met'].map((k) => `<form method="post" action="/people/log"><input type="hidden" name="id" value="${esc(x.id)}"><input type="hidden" name="kind" value="${k}"><button class="btn secondary small" type="submit" title="We ${k === 'met' ? 'met' : k} today">${k === 'spoke' ? 'Spoke' : k === 'texted' ? 'Texted' : 'Met'}</button></form>`).join('');
+  return ['spoke', 'texted', 'met'].map((k) => `<form method="post" action="/people/log"><input type="hidden" name="id" value="${esc(x.id)}"><input type="hidden" name="kind" value="${k}"><button class="btn secondary small" type="submit" title="We ${k === 'met' ? 'met' : k} today">${k === 'spoke' ? 'Spoke' : k === 'texted' ? 'Texted' : 'Met'}</button></form>`).join('') +
+    (x.overdue > 0 && !x.snoozedUntil ? `<form method="post" action="/people/later"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary small" type="submit" title="No reminder for a few days">Later</button></form>` : '');
 }
 
 function personCard(x: PanelPerson, p: PanelPeople, esc: Esc): string {

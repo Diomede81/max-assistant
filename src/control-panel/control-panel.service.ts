@@ -654,6 +654,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const get = (k: string) => (f.get(k) ?? '').trim();
     const id = get('id');
     const back = (msg: string, ok = true, anchor = id ? `person-${id}` : 'people') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
+    if (action === 'reminders') {
+      const msg = so.saveNudge({ speak: f.get('speak') === 'yes', screen: f.get('screen') === 'yes', time: get('time') || undefined, laterDays: get('laterDays') });
+      return back(msg, !/^(The time|"Later")/.test(msg), 'people-reminders');
+    }
     if (action === 'save') {
       const msg = so.save({ name: get('name'), circle: get('circle'), relation: get('relation'), every: get('every'), phone: get('phone'), email: get('email'), birthday: get('birthday'), ...(id ? {} : { interests: get('interests') }) }, id || undefined);
       const ok = /^(Added|Updated)/.test(msg);
@@ -672,6 +676,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'update-remove':
         so.removeUpdate(p, get('at'));
         return back('Removed.');
+      case 'later':
+        return back(so.snooze(p), true, 'people');
       case 'delete':
         if (get('confirm') !== 'yes') return back('Tick the box to confirm.', false);
         return back(so.remove(p.id), true, 'people');
@@ -984,7 +990,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               const bday = this.social!.birthdaysSoon(366).find((b) => b.person.id === x.id);
               return {
                 id: x.id, name: x.name, circle: x.circle, circleLabel: CIRCLES[x.circle]?.label ?? x.circle, relation: x.relation, every: this.social!.every(x), everySet: x.every !== undefined,
-                phone: x.phone, email: x.email, birthday: x.birthday, birthdayInDays: bday?.inDays, interests: x.interests, updates: x.updates,
+                phone: x.phone, email: x.email, birthday: x.birthday, birthdayInDays: bday?.inDays, snoozedUntil: x.snoozedUntil && x.snoozedUntil > localToday() ? x.snoozedUntil : undefined, interests: x.interests, updates: x.updates,
                 touches: x.touches.map((t) => ({ ...t, kindLabel: TOUCHES[t.kind] ?? t.kind })), daysSince: this.social!.daysSince(x), overdue: this.social!.overdueDays(x),
               };
             }),
@@ -992,6 +998,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             touches: Object.entries(TOUCHES).map(([id, label]) => ({ id, label })),
             whatsapp: Boolean(this.whatsapp?.canMessageSelf),
             personal: this.social.open,
+            nudge: this.social.nudge,
+            screen: this.cfg.face.enabled,
           }
         : undefined,
       jobs: this.jobs && this.memory.enabled && this.models

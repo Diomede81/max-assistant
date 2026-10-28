@@ -276,10 +276,10 @@ export class ToolRouterService {
    * without making the face look busy, showing its results on the screen or touching what the
    * conversation remembers (links), so Max stays free to talk.
    */
-  async call(name: string, args: Record<string, unknown>, opts: { background?: boolean } = {}): Promise<string> {
+  async call(name: string, args: Record<string, unknown>, opts: { background?: boolean; allow?: (url: URL) => boolean } = {}): Promise<string> {
     // Belt and braces: nothing runs while the start-up code hasn't been entered.
     if (this.lock?.locked) return 'Not done: Max is locked. The start-up code has to be entered on his screen first.';
-    if (opts.background) return this.timed(name, args);
+    if (opts.background) return this.timed(name, args, opts.allow);
     const what = describeActivity(name);
     if (!what) return this.rememberLinks(await this.timed(name, args));
     const ev: ActivityEvent = { id: ++this.activityId, name, ...what };
@@ -296,7 +296,7 @@ export class ToolRouterService {
    * must never leave Max spinning, unable to listen. Past the limit Max answers without it (the action
    * itself may still finish in the background; its result is then ignored).
    */
-  private async timed(name: string, args: Record<string, unknown>): Promise<string> {
+  private async timed(name: string, args: Record<string, unknown>, allow?: (url: URL) => boolean): Promise<string> {
     const limit = TIME_LIMIT_MS[name] ?? DEFAULT_TIME_LIMIT_MS;
     const started = Date.now();
     let timer: NodeJS.Timeout | undefined;
@@ -307,7 +307,7 @@ export class ToolRouterService {
       }, limit);
     });
     try {
-      const out = await Promise.race([this.run(name, args), late]);
+      const out = await Promise.race([this.run(name, args, allow), late]);
       const ms = Date.now() - started;
       if (ms > 10_000) this.log.log(`${name} took ${Math.round(ms / 1000)}s`);
       return out;
@@ -329,18 +329,19 @@ export class ToolRouterService {
    * email...: written without access to the user's data). A link the AI model built itself could carry
    * the user's information out (https://evil.example/?d=...); for a site the user names, it searches first.
    */
-  private linkAllowed(url: string): boolean {
+  private linkAllowed(url: string, allow?: (url: URL) => boolean): boolean {
     let u: URL;
     try {
       u = new URL(url);
     } catch {
       return true; // not a link: read_webpage itself says so
     }
+    if (allow?.(u)) return true; // a scheduled task's own rule: links in its brief or its results, and the websites the brief names
     const seen = this.links.get(normLink(url));
     return Boolean(seen && Date.now() - seen < LINK_MEMORY_MS);
   }
 
-  private async run(name: string, args: Record<string, unknown>): Promise<string> {
+  private async run(name: string, args: Record<string, unknown>, allow?: (url: URL) => boolean): Promise<string> {
     this.log.log(`tool ${name} ${detail(args)}`);
     if (name === 'remember' && !this.rememberAsked()) {
       this.log.log('remember skipped: the user didn\'t ask to remember anything (the conversation is filed afterwards)');
@@ -371,7 +372,7 @@ export class ToolRouterService {
       }
       if (name === 'work_on_task' && this.taskAgent) return await this.taskAgent.run(String(args.task ?? ''));
       if (this.builtin.has(name)) return this.builtin.call(name, args);
-      if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''))) {
+      if (name === 'read_webpage' && !this.linkAllowed(String(args.url ?? ''), allow)) {
         this.log.warn(`read_webpage refused: ${String(args.url ?? '').slice(0, 120)} wasn't in anything Max read`);
         return (
           'Not done: Max only opens pages whose link came from a search, the news briefing or a message he read. For a ' +
@@ -497,6 +498,21 @@ function stableJson(v: unknown): string {
 }
 
 /** A link, for comparing: no #fragment, no trailing slash, lower-case host. */
+/** The links in a text, normalised, for a scheduled task to keep its own list of what it may open. */
+export function linksIn(text: string): string[] {
+  return [...text.matchAll(URL_RE)].map((m) => normLink(m[0]));
+}
+
+/** The websites a text names ("princecharlescinema.com", "bbc.co.uk/news"), as host names. */
+export function hostsIn(text: string): string[] {
+  return [...text.toLowerCase().matchAll(/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/g)].map((m) => m[1]).filter((h) => !/\.(jpg|png|pdf|txt|md|js|json|csv)$/.test(h) && !/^\d+(\.\d+)+$/.test(h));
+}
+
+/** Whether a link may be opened: it was seen (in `links`), or it is on one of the `hosts`. */
+export function linkRule(links: Set<string>, hosts: Set<string>): (url: URL) => boolean {
+  return (u) => links.has(normLink(u.href)) || [...hosts].some((h) => u.hostname === h || u.hostname === `www.${h}` || u.hostname.endsWith(`.${h}`));
+}
+
 function normLink(url: string): string {
   const clean = url.replace(/[.,;:!?]+$/, '');
   try {

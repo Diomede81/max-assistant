@@ -109,10 +109,12 @@ export class JournalService extends EventEmitter implements OnModuleInit, OnModu
   }
 
   onModuleInit(): void {
-    this.store = new SealedStore(this.cfg.memory.dir, 'journal', memorySecret(this.cfg));
+    // 'life-journal': 'journal' is Max's own journal (Personality), kept by SoulService.
+    this.store = new SealedStore(this.cfg.memory.dir, 'life-journal', memorySecret(this.cfg));
     try {
       const s = this.store.load();
-      if (s) this.state = { entries: s.entries ?? [], reviews: s.reviews ?? [], settings: { ...DEFAULTS, ...(s.settings ?? {}) }, eventsDone: s.eventsDone ?? {}, lastWeekly: s.lastWeekly, lastMonthly: s.lastMonthly };
+      if (s && Array.isArray(s.entries)) this.state = { entries: s.entries, reviews: Array.isArray(s.reviews) ? s.reviews : [], settings: { ...DEFAULTS, ...(s.settings ?? {}) }, eventsDone: s.eventsDone ?? {}, lastWeekly: s.lastWeekly, lastMonthly: s.lastMonthly };
+      else if (s) this.log.warn('The journal file has an unexpected shape; starting with an empty journal');
     } catch (err) {
       this.log.error(`Could not read the journal (${(err as Error).message}); starting without it`);
     }

@@ -68,6 +68,11 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 
 ## Using the box
 
+- **Night mode** (Settings → Device): a time range, e.g. 23:00 to 07:00, in which Max is muted: he doesn't
+  answer "Hey Max", says nothing (a reminder that falls due waits for the morning) and shows no notices on
+  his screen; his face sleeps. WhatsApp and the control panel still work. Switch it off there at any time;
+  the Home page shows "Night mode · muted until 07:00" while it's on.
+
 - **Control panel:** <http://max.local:8099> from any phone or computer on your WiFi. The first time, it asks you to
   choose a password and to type the code Max shows on his screen. On other devices: the password, then tap **Allow**
   on Max's screen; each device then stays signed in for 30 days.

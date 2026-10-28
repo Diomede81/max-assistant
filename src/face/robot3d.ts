@@ -20,8 +20,8 @@ export const ROBOT3D_JS = String.raw`
   /** Half the screen height in 3D units: the head (radius 1) fills about half the screen, leaving room above and below for the clock and glance. */
   const VIEW_HALF = 1.82;
 
-  /** Which face: 'classic' (flat) or a 3D character (robot, astro, golden, rolling, alien). */
-  const CHARACTERS = ['robot', 'astro', 'golden', 'rolling', 'alien'];
+  /** Which face: 'classic' (flat) or a 3D character (robot, astro, golden, rolling, alien, and the Halloween three). */
+  const CHARACTERS = ['robot', 'astro', 'golden', 'rolling', 'alien', 'dracula', 'frankenstein', 'jekyll'];
   function faceChoice() {
     const p = params.get('face') || info.faceStyle || 'robot';
     return p === 'classic' || CHARACTERS.indexOf(p) >= 0 ? p : 'robot';
@@ -188,6 +188,82 @@ export const ROBOT3D_JS = String.raw`
         const tuft = add(new THREE.ConeGeometry(0.045, len, 12), dark, x, 0.92 + len / 2 - 0.04, -0.05);
         tuft.rotation.z = tilt * deg;
       }
+    } else if (R3.style === 'dracula') {
+      // Dracula: a pale head, black hair slicked back to a widow's peak, a high-collared cape with a red lining, and fangs.
+      skull.material = mat(0xe9e2dc, 0.5, 0, 0.6);
+      const hair = mat(0x1c1c2a, 0.35, 0.15, 0.9), red = mat(0x9b1020, 0.55, 0, 0.5), capeM = mat(0x15151a, 0.6, 0.05, 0.5);
+      // the hair: a cap over the top and back of the head
+      // slicked back: a cap over the top, tilted back so the pale forehead shows
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(1.02, 64, 48, 0, Math.PI * 2, 0, Math.PI * 0.3), hair);
+      cap.scale.set(1, 0.94, 0.92); cap.rotation.x = -0.5; head.add(cap);
+      const back = new THREE.Mesh(new THREE.SphereGeometry(1.02, 64, 48, Math.PI * 0.6, Math.PI * 0.8, Math.PI * 0.25, Math.PI * 0.5), hair);
+      back.scale.set(1, 0.94, 0.92); head.add(back);
+      // the widow's peak: a point of hair down the middle of the forehead
+      const peak = onShell(new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.46, 3), hair), 0, 44, 0.012);
+      peak.rotateZ(Math.PI); peak.scale.z = 0.35;
+      // the cape: two tall collar wings behind the head, black outside and red inside
+      for (const sd of [-1, 1]) {
+        const wing = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.7, 0.05), capeM);
+        const inner = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.6, 0.03), red);
+        inner.position.z = 0.03;
+        wing.add(outer); wing.add(inner);
+        wing.position.set(sd * 0.95, -0.15, -0.75);
+        wing.rotation.y = -sd * 0.55; wing.rotation.z = sd * 0.08;
+        head.add(wing);
+      }
+      // a bow tie below the chin
+      for (const sd of [-1, 1]) { const b = add(new THREE.ConeGeometry(0.13, 0.26, 3), red, sd * 0.16, -0.98, 0.35); b.rotation.z = sd * Math.PI / 2; }
+      add(new THREE.SphereGeometry(0.06, 12, 10), red, 0, -0.98, 0.38);
+      // fangs, either side of the mouth
+      for (const sd of [-1, 1]) { const f = onShell(new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.16, 10), mat(0xfaf6ee, 0.4)), sd * 14, -34, 0.05); f.rotateX(-1.3); }
+    } else if (R3.style === 'frankenstein') {
+      // Frankenstein's monster: green skin, a flat black-haired top, a stitched scar, and bolts in the neck.
+      skull.material = mat(0x6f9c5e, 0.7, 0, 0.5);
+      const hair = mat(0x0c0c10, 0.6, 0.05, 0.5), steel = mat(0x9aa0a8, 0.35, 0.9, 1.3), dark = mat(0x2a3a22, 0.8, 0, 0.3);
+      // the flat top: a slab sitting in the top of the head
+      const top = add(new THREE.CylinderGeometry(0.84, 0.99, 0.3, 48), hair, 0, 0.84, -0.02);
+      top.scale.z = 0.92;
+      // a jagged fringe along the hairline
+      for (const a of [-46, -30, -14, 2, 18, 34, 48]) onShell(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16 + (Math.abs(a) % 3) * 0.04, 0.05), hair), a, 50 + (a % 2) * 3, 0.01);
+      // the scar across the forehead, with stitches
+      const scar = onShell(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.035, 0.03), dark), -16, 36, 0.014);
+      scar.rotateZ(0.16);
+      for (const dx of [-0.26, -0.1, 0.06, 0.22]) { const st = onShell(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.03), dark), -16 + dx * 44, 36 + dx * 7, 0.016); st.rotateZ(0.16); }
+      // bolts in the neck
+      for (const sd of [-1, 1]) {
+        const bolt = add(new THREE.CylinderGeometry(0.09, 0.09, 0.3, 24), steel, sd * 0.98, -0.62, 0);
+        bolt.rotation.z = Math.PI / 2;
+        const headB = add(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 6), steel, sd * 1.12, -0.62, 0);
+        headB.rotation.z = Math.PI / 2;
+      }
+    } else if (R3.style === 'jekyll') {
+      // Dr Jekyll and Mr Hyde: the left half a pale gentleman in a top hat, the right half a wild purple-grey monster.
+      skull.visible = false;
+      const pale = mat(0xe6d9cc, 0.5, 0, 0.6), hyde = mat(0x6a4f86, 0.75, 0, 0.45), black = mat(0x0e0e12, 0.4, 0.1, 0.7), wild = mat(0x2a1f33, 0.85, 0, 0.3);
+      // two half heads (seen from the front: his right side is the viewer's left)
+      const left = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48, Math.PI / 2, Math.PI), hyde); left.scale.set(1, 0.94, 0.92); head.add(left);
+      const right = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48, -Math.PI / 2, Math.PI), pale); right.scale.set(1, 0.94, 0.92); head.add(right);
+      // the seam
+      const seam = add(new THREE.TorusGeometry(1.0, 0.012, 8, 96, Math.PI), black, 0, 0, 0);
+      seam.rotation.y = Math.PI / 2; seam.rotation.x = Math.PI; seam.scale.set(0.92, 0.94, 1);
+      // the top hat, tilted onto the gentleman's side
+      const hat = new THREE.Group();
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.05, 48), black);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.5, 0.75, 48), black); crown.position.y = 0.38;
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.505, 0.51, 0.1, 48), mat(0x7a1020, 0.5)); band.position.y = 0.07;
+      hat.add(brim); hat.add(crown); hat.add(band);
+      hat.position.set(-0.42, 0.74, -0.1); hat.rotation.z = 0.42; hat.rotation.x = -0.08;
+      head.add(hat);
+      // a monocle on the gentleman's eye side
+      const mono = onShell(new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.018, 10, 48), mat(0xd8b24a, 0.3, 1, 1.4)), -22, 4, 0.06);
+      mono.rotateX(0);
+      // wild hair and a torn ear on the monster's side
+      for (const [a, up, len, tilt] of [[40, 50, 0.5, -0.5], [58, 44, 0.42, -0.9], [74, 34, 0.38, -1.2], [50, 60, 0.34, -0.3], [66, 20, 0.3, -1.4]]) {
+        const tuft = onShell(new THREE.Mesh(new THREE.ConeGeometry(0.07, len, 10), wild), a, up, len / 2 - 0.02);
+        tuft.rotateX(-Math.PI / 2 + tilt * 0.3);
+      }
+      const ear = add(new THREE.ConeGeometry(0.2, 0.5, 4), hyde, 1.0, 0.1, -0.1); ear.rotation.z = -0.7; ear.scale.z = 0.4;
     } else {
       // Max: the white robot with glowing ear pods and a little antenna.
       ears(shell);

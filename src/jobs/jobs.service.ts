@@ -21,9 +21,9 @@ import { said } from '../log-content';
 
 /** How much work a task may take: steps (actions and thinking turns) and time. */
 export const EFFORTS = {
-  quick: { label: 'Quick', help: 'a look-up: about a minute', steps: 6, totalMs: 90_000 },
-  normal: { label: 'Normal', help: 'a few steps: up to 4 minutes', steps: 14, totalMs: 4 * 60_000 },
-  thorough: { label: 'Thorough', help: 'research and comparisons: up to 10 minutes', steps: 30, totalMs: 10 * 60_000 },
+  quick: { label: 'Quick', help: 'a look-up: about a minute', steps: 6, totalMs: 90_000, web: 4 },
+  normal: { label: 'Normal', help: 'a few steps: up to 4 minutes', steps: 14, totalMs: 4 * 60_000, web: 10 },
+  thorough: { label: 'Thorough', help: 'research and comparisons: up to 10 minutes', steps: 30, totalMs: 10 * 60_000, web: 20 },
 } as const;
 export type Effort = keyof typeof EFFORTS;
 
@@ -332,7 +332,7 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
     this.persist();
     try {
       const effort = EFFORTS[j.effort] ?? EFFORTS.normal;
-      const r = await agent.work(j.brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, written: true, background: true, label: `scheduled task "${j.name}"` });
+      const r = await agent.work(j.brief, { job: 'jobs', assignment: this.assignment(j), maxSteps: effort.steps, totalMs: effort.totalMs, webBudget: effort.web, written: true, background: true, label: `scheduled task "${j.name}"` });
       const run: JobRun = {
         at: new Date().toISOString(),
         seconds: Math.round((Date.now() - started) / 1000),
@@ -673,6 +673,8 @@ export function diagnose(kind: 'model' | 'time' | 'empty' | 'action' | 'email' |
   if (kind === 'empty') return { what: 'The AI model gave back nothing', fix: 'Try another model for this task, or reword what to do.', retry: true };
   if (kind === 'action') {
     const name = message.split(':')[0];
+    if (/429|rate limit/.test(m)) return { what: `The web service allowed fewer pages a minute than the task asked for (${name}${/×\d+/.exec(message)?.[0] ? `, ${/×\d+/.exec(message)![0]}` : ''})`, fix: 'Max paces page reads to stay under the allowance and waits when told to slow down; a task that still wants more pages than fit in its time gets this. Give it more effort (Thorough), or a paid Firecrawl plan allows more a minute.', retry: false };
+    if (/may only open the exact links/.test(m)) return { what: `The AI asked for a page it may not open (${name})`, fix: 'A task opens the pages named in its brief, their other pages, and links its searches return, never a link the AI made up. Name the pages in the brief, or let it search.', retry: false };
     if (/took too long|timed out|timeout/.test(m)) return { what: `The action ${name} took too long`, fix: 'Usually temporary. If it keeps happening, the service behind it is slow or down.', retry: true };
     if (/not (set up|connected|linked)|needs .* key|add .* to \.env/.test(m)) return { what: `The action ${name} isn't set up (${message.slice(name.length + 1, name.length + 100).trim()})`, fix: 'Set it up under Connections, or reword the task so it doesn\'t need it.', retry: false };
     return { what: `The action ${name} failed (${message.slice(name.length + 1, name.length + 100).trim()})`, fix: 'The result may be incomplete: check it. If it keeps happening, check that service under Connections.', retry: false };

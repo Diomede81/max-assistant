@@ -113,6 +113,9 @@ Clapham open?"*, *"Read me the summary on bbc.co.uk/news."* While he works the f
 
 - A plain search costs about 1 credit per result; when he also reads the top results ("read_top")
   it's about one more credit per page. Pages read in the last hour come from Firecrawl's cache.
+- Firecrawl allows only so many requests a minute (10 on the free plan). Max spaces his requests out and,
+  when told to slow down, waits for the next minute and tries again, so a task that reads several pages
+  takes a little longer rather than losing pages. A paid Firecrawl plan allows more per minute.
 - Results are local to your **home location** (control panel → *Home location*: town or area, optional
   postcode, country). Max also uses it for "weather", "near me", opening hours and local events.
 - Page text is treated as information, never as instructions, and facts Max picks up from web pages

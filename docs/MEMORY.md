@@ -233,9 +233,10 @@ restarts, rebuilds and updates:
 
 - memories, conversation notes, projects and their tasks (the encrypted vaults);
 - **timers and reminders** (`timers.vault`, encrypted). Reminders can be set up to a year ahead
-  ("remind me on 3 March to renew the insurance"). If one came due while Max was switched off, he
-  tells you when he's back: *"While I was switched off, I missed your reminder…"* (reminders up to a
-  day late; kitchen timers up to 30 minutes).
+  ("remind me on 3 March to renew the insurance"). If one came due while Max was switched off, it is
+  kept and, once he's back and listening, said out loud and shown on the screen with a Done button:
+  *"While I was switched off, I missed your reminder…"* (reminders up to three days late; kitchen timers
+  up to 30 minutes). What's waiting is listed under My Day › Reminders on the control panel, with Cancel.
 
 Only the current conversation itself is short-lived: after a restart, start a new one.
 

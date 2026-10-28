@@ -1216,48 +1216,41 @@ function whatsappSection(w: WhatsAppStatus): string {
       : w.state === 'off'
         ? '<form method="post" action="/whatsapp/link"><button class="btn" type="submit">Link a phone</button></form>'
         : `<form method="post" action="/whatsapp/unlink" onsubmit="return confirm('Unlink WhatsApp? Max will forget the login and the messages he kept.')"><button class="btn secondary" type="submit">Unlink</button></form>`;
-  const people = w.allowed
-    .map(
-      (a) => `<div class="addfact"><span class="meta"><b>${esc(a.name)}</b> · ${esc(a.shown)}</span>
-<form method="post" action="/whatsapp/disallow"><input type="hidden" name="number" value="${esc(a.number)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
-    )
-    .join('');
   return `<section id="whatsapp"><h2>WhatsApp</h2><ul><li class="row"><div style="flex:1"><div class="name">Your WhatsApp ${state}</div>
 <div class="meta">"Any new WhatsApp messages?", "what did Magda say?", "message Magda that I'm on my way". Max joins as a linked device, like WhatsApp Web, but only sees your own chat and the chats you allow below, and keeps their last 7 days of messages on the box, encrypted. He's never shown as online, so your phone still gets its notifications, and reading here doesn't mark anything as read. Not in guest mode or while Max is locked.</div>
 ${w.note ? `<p class="meta"><b>${esc(w.note)}</b></p>` : ''}
 ${w.received ? receivedRow(w.received) : ''}
 ${link}</div></li>
-${readableRow(w)}
-<li class="row"><div style="flex:1"><div class="name">Who Max may send messages to</div>
-<div class="meta">Max only sends to the people on this list, and only after reading the message back and hearing your "yes". He can't add people himself.</div>
-${people || '<p class="meta">Nobody yet: Max can read your messages but not send any.</p>'}
-<form class="addfact" method="post" action="/whatsapp/allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add</button></form>
-</div></li></ul>
+${readableRow(w)}</ul>
 <p class="meta">This uses WhatsApp's linked-devices feature through unofficial software (not a WhatsApp product). WhatsApp unlinks devices when the phone has been offline for about 14 days: link again then. You can also unlink Max from the phone (Linked devices).</p>
 </section>`;
 }
 
-/** The sandbox: Max sees your own chat, plus only the chats added here. */
+/** The sandbox: Max sees your own chat, plus only the chats ticked here; sends only to the chats ticked for it. */
 function readableRow(w: WhatsAppStatus): string {
-  const rows = w.readable
-    .map(
-      (r) => `<div class="addfact"><span class="meta"><b>${esc(r.name)}</b> · ${esc(r.shown)}</span>
-<form method="post" action="/whatsapp/read-remove"><input type="hidden" name="id" value="${esc(r.id)}"><button class="btn secondary" type="submit">Remove</button></form></div>`,
-    )
+  const t = (ms?: number) => (ms ? new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'no message yet');
+  const toggle = (on: boolean, onAction: string, offAction: string, id: string, label: string, onLabel: string) =>
+    `<form method="post" action="${on ? offAction : onAction}"><input type="hidden" name="${on && offAction === '/whatsapp/disallow' ? 'number' : 'id'}" value="${esc(id)}"><button class="btn ${on ? '' : 'secondary'} small" type="submit" aria-pressed="${on}" title="${on ? `Max may ${label} this chat: press to stop` : `Let Max ${label} this chat`}">${on ? onLabel : label}</button></form>`;
+  const rows = w.known
+    .map((k) => {
+      return `<li class="row"><div><div class="name">${esc(k.name)}${k.group ? ' <span class="badge">group</span>' : ''}</div><div class="meta">${esc(k.shown)} · last message ${esc(t(k.lastAt))}</div></div><div class="acts">${toggle(k.see, '/whatsapp/read-allow', '/whatsapp/read-remove', k.id, 'See', 'Sees ✓')}${k.sendId ? toggle(k.send, '/whatsapp/send-allow', '/whatsapp/disallow', k.send ? k.sendId : k.id, 'Send', 'Sends ✓') : ''}</div></li>`;
+    })
     .join('');
-  const groups = w.groups?.length
-    ? `<form class="addfact" method="post" action="/whatsapp/read-allow"><select name="group" aria-label="Group">${w.groups.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select><button class="btn" type="submit">Add group</button></form>`
-    : w.state === 'connected'
-      ? '<form class="addfact" method="post" action="/whatsapp/groups"><button class="btn secondary" type="submit">Show my groups</button></form>'
-      : '';
   const chat = `<li class="row"><div style="flex:1"><div class="name">Chat with Max ${w.chat ? badge(true, 'On') : '<span class="badge off">Off</span>'}</div>
 <div class="meta">Write to Max in your own chat ("Message yourself", the chat with your own number) and he answers there, starting with 🤖: anything you'd ask him out loud ("what's on tomorrow?", "remind me at 6 to call Mum", "turn off the heating"). Only you can reach him this way, and he asks for your typed "yes" before sending or changing anything.</div>
 <form method="post" action="/whatsapp/chat"><input type="hidden" name="on" value="${w.chat ? 'no' : 'yes'}"><button class="btn secondary" type="submit">${w.chat ? 'Switch off' : 'Switch on'}</button></form></div></li>`;
-  return `${chat}<li class="row"><div style="flex:1"><div class="name">Chats Max can see</div>
-<div class="meta"><b>Only your own chat</b> ("Message yourself", where Max sends you things) <b>and the chats on this list.</b> Every other chat is dropped the moment it reaches Max: never kept, named or shown to his AI. Removing a chat deletes what he kept from it.</div>
-${rows || '<p class="meta">None yet: Max sees only your own chat.</p>'}
-<form class="addfact" method="post" action="/whatsapp/read-allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+44 7700 900123" aria-label="Phone number" inputmode="tel" required><button class="btn" type="submit">Add person</button></form>
-${groups}
+  const seeing = w.readable.map((r) => `<b>${esc(r.name)}</b>`).join(', ');
+  const sending = w.allowed.map((a) => `<b>${esc(a.name)}</b>${a.group ? ' (group)' : ''}`).join(', ');
+  return `${chat}<li class="row"><div style="flex:1"><div class="name">Your chats: what Max may do with each</div>
+<div class="meta"><b>See:</b> Max keeps that chat's last 7 days of messages on the box and can read them to you. Every other chat is dropped the moment it reaches him: never kept, never shown to his AI. This is checked in Max's code on every message, by the chat's id, not by the AI. Unticking a chat deletes what he kept from it.<br>
+<b>Send:</b> Max may send messages there, each one read back and only after your "yes". People and groups alike. He can't add a chat to either list himself.</div>
+<p class="meta">Sees: ${seeing || 'only your own chat'}. Sends to: ${sending || 'nobody'}.</p>
+${rows ? `<ul>${rows}</ul>` : `<p class="meta">${w.state === 'connected' ? 'No chats on the list yet: they appear as messages arrive, or press Refresh for your groups.' : 'Link a phone first.'}</p>`}
+<div class="acts">${w.state === 'connected' ? '<form method="post" action="/whatsapp/groups"><button class="btn secondary" type="submit">Refresh groups</button></form>' : ''}</div>
+<details><summary class="meta">Someone not on the list yet? Add them by number</summary>
+<form class="addfact" method="post" action="/whatsapp/read-allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+39 333 1234567" aria-label="Phone number" inputmode="tel" required><button class="btn secondary" type="submit">Let Max see their chat</button></form>
+<form class="addfact" method="post" action="/whatsapp/allow"><input name="name" maxlength="40" placeholder="Name, e.g. Magda" aria-label="Name" required><input name="number" maxlength="24" placeholder="+39 333 1234567" aria-label="Phone number" inputmode="tel" required><button class="btn secondary" type="submit">Let Max send to them</button></form>
+<p class="meta">Always with the country code (+39, +44…): a number typed without one is taken as a UK number, and the chat is never matched.</p></details>
 </div></li>`;
 }
 

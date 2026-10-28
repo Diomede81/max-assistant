@@ -19,8 +19,9 @@ limited to the people you allow, and every message needs your spoken "yes".
 
 1. Control panel → **☰ Menu → Connections → WhatsApp** → **Link a phone**.
 2. On your phone: **WhatsApp → Settings → Linked devices → Link a device**, and scan the code.
-3. To let Max send messages to someone, add their name and number under **Who Max may send messages
-   to** (e.g. "Magda", +44 7700 900123). UK numbers can be typed as 07…; others need the country code.
+3. Under **Your chats** the panel lists your chats and groups as messages arrive (names only, never
+   their messages; press **Refresh groups** for groups nobody has written in yet). Tick **See** on a chat
+   to let Max read it, **Send** to let him send there. People and groups alike.
 
 ## Chat with Max on WhatsApp
 
@@ -33,19 +34,32 @@ it goes on, and files it in memory once it has been quiet for half an hour, like
 - Sending or changing something still needs your "yes": here you type it.
 - Not while Max is locked or in guest mode. Switch it off on the control panel (**Chat with Max**).
 
-## Which chats Max can see (the sandbox)
+## Which chats Max can see, and may send to (the sandbox)
 
 By default Max sees **only your own chat** ("Message yourself": your notes, and what Max sends you, e.g. your
-workout plan). To let him see another chat, add it on the control panel under **Chats Max can see**: a person
-by their number, or a group picked from your list of groups ("Show my groups"). Remove it there and what he
-kept from it is deleted straight away.
+workout plan) and sends to nobody. On the control panel, **Your chats** lists every chat and group WhatsApp
+has shown him (names and ids only, never a message), most recent first, with two switches each:
 
-How it works: WhatsApp sends every linked device all your chats (that's how linked devices work), so Max drops
-every message from a chat that isn't on the list the moment it arrives. It is never stored, named or shown to
-his AI; the panel only counts how many were dropped. For a complete separation, give Max his own WhatsApp
-number (a spare SIM or eSIM) and chat with that instead: then he never receives your other chats at all.
+- **See**: Max keeps that chat's last 7 days of messages on the box and reads them to you ("what did Magda
+  say?", "anything new in the family group?"). Unticking it deletes what he kept.
+- **Send**: Max may send messages there, each one read back and only after your "yes". Works for groups
+  too ("tell the family group I'm running late").
 
-Sending is a separate list (**Who Max may send messages to**): seeing a chat doesn't let him send to it.
+Someone who hasn't written yet can be added by number, under the list: always with the country code
+(+39 333 1234567, +44 7700 900123; a UK mobile can also be typed 07…). A number typed without one is
+refused rather than guessed, because a wrong guess means the chat is never matched.
+
+How it's enforced: WhatsApp sends a linked device every chat (that's how linked devices work), so Max's code
+checks the chat's id on every message that arrives and drops anything not on the See list, before it is
+stored, named or shown to his AI. The AI only ever reads from what was kept. WhatsApp addresses the same
+person sometimes by phone number and sometimes by a hidden id: a chat on the list is matched by every id
+WhatsApp uses for it, so a message gets through whichever form it comes in. Max can't add a chat to either
+list himself: only the control panel can. For a complete separation, give Max his own WhatsApp number (a
+spare SIM or eSIM) and chat with that instead: then he never receives your other chats at all.
+
+**A chat you ticked still shows nothing?** Check the row's "last message" time on the panel: if it moves
+when they write, the message reached Max; if not, the phone has been offline (WhatsApp unlinks devices after
+about 14 days) or messages can't be decrypted (the panel says so: Unlink and link again).
 
 ## Privacy and safety
 

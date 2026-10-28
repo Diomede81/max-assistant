@@ -56,7 +56,8 @@ more websites (ones that need a browser).
    breakfast if you like), recipe websites if you have favourites, the day and time it's made (e.g. Sunday 17:00),
    how it's sent, and the time of day for the daily recipes.
 
-Max writes the week's recipes (ingredients with quantities, steps, time, calories and protein each), practical
+Max writes the week's recipes one day at a time (so any model finishes each day, and each day is checked on
+its own), then totals the shopping list: ingredients with quantities, steps, time, calories and protein each, practical
 for a busy home (weekday dinners within 40 minutes, lunches from the previous dinner's leftovers, ingredients
 reused to cut waste) and one shopping list for the week, by supermarket aisle.
 

@@ -110,9 +110,9 @@ OpenAI charges per minute of audio in and out. Published third-party estimates f
 https://openai.com/api/pricing for current prices. To keep costs down, Max:
 - only connects after the wake word (the always-on listening is local and free),
 - hangs up when nothing more is *said* for a while after his answer (Settings → Device: 4 to 20 seconds,
-  default `REALTIME_FOLLOW_UP_MS`). Only your words count: sound with no words in it for 6 seconds (a TV,
-  people talking across the room) is not you, so it can't keep him listening; and a first request that
-  never comes ends it after 7 seconds,
+  default `REALTIME_FOLLOW_UP_MS`). Only your words count: a stretch of sound that ends without any words
+  (a TV, people talking across the room) doesn't keep him listening. While you are talking he never hangs
+  up, however long the sentence; and a first request that never comes ends it after 7 seconds,
 - never keeps a session open longer than `REALTIME_MAX_SESSION_S` (default 5 minutes).
 
 Set a monthly spending limit in your OpenAI account settings before a demo.

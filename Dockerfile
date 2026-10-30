@@ -21,6 +21,8 @@ RUN ARCH=$(node -p process.arch) \
 # Not fatal: without it memory search uses keywords (and retries the download on first use).
 ARG EMBED_MODEL=Xenova/all-MiniLM-L6-v2
 RUN node -e "const m=process.argv[1],fs=require('fs');(async()=>{for(const f of ['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx']){const r=await fetch('https://huggingface.co/'+m+'/resolve/main/'+f);if(!r.ok)throw new Error(f+': '+r.status);const p='models/'+m+'/'+f;fs.mkdirSync(require('path').dirname(p),{recursive:true});fs.writeFileSync(p,Buffer.from(await r.arrayBuffer()));}console.log('memory search model ready')})().catch(e=>{console.warn('memory search model not downloaded: '+e.message);fs.mkdirSync('models',{recursive:true})})" "$EMBED_MODEL"
+# A second, slightly larger model (bge-small, ~34 MB) for the memory benchmark to compare against (docs/MEMORY.md).
+RUN node -e "const m=process.argv[1],fs=require('fs');(async()=>{for(const f of ['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx']){const r=await fetch('https://huggingface.co/'+m+'/resolve/main/'+f);if(!r.ok)throw new Error(f+': '+r.status);const p='models/'+m+'/'+f;fs.mkdirSync(require('path').dirname(p),{recursive:true});fs.writeFileSync(p,Buffer.from(await r.arrayBuffer()));}console.log('benchmark model ready')})().catch(e=>{console.warn('benchmark model not downloaded: '+e.message)})" "Xenova/bge-small-en-v1.5"
 
 FROM node:22-bookworm-slim
 RUN apt-get update \

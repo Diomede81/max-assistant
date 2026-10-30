@@ -43,7 +43,11 @@ import { PanelData, renderPanel } from './page';
 import { HomeService } from '../home/home.service';
 import { MicrophoneService } from '../audio/microphone.service';
 import { wakeLog } from '../wake-word/wake-log';
+import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { recentLog } from '../log-buffer';
+import { benchFile, benchRunningFile, BenchResult } from '../tools/memory-bench';
 import { looksLikeHtml } from '../mcp/self-email';
 import { WakeWordService } from '../wake-word/wake-word.service';
 import { AutomationsService } from '../home/automations.service';
@@ -654,6 +658,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const get = (k: string) => (f.get(k) ?? '').trim();
     const back = (msg: string, ok = true, anchor = 'journal') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
     switch (action) {
+      case 'bench':
+        return back(this.startBench());
       case 'add': {
         const msg = jn.add(get('text'), { date: get('date') || undefined, mood: get('mood') || undefined, source: 'panel' });
         return back(msg, msg.startsWith('Noted'), get('date') ? `journal-${get('date')}` : 'journal');
@@ -1090,6 +1096,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             workApps: this.cfg.memory.workApps,
             activity: this.memory.recentActivity(60),
             today: localToday(),
+            bench: this.benchStatus(),
             todos: this.todos.items(VAULTS, true)
               .filter((x) => x.task.status === 'open' || (x.task.doneAt ?? '') > new Date(Date.now() - 14 * 86400_000).toISOString())
               .map(({ task: t, vault, project }) => ({
@@ -1435,6 +1442,35 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       if (mine && (k.name.length <= 2 || /^(\+|Someone)/.test(k.name) || k.name === k.shown)) k.name = `${mine}`;
     }
     return w;
+  }
+
+  /** The memory benchmark: its last results (data/memory-bench.json) and whether one is running. */
+  private benchStatus(): { running: boolean; result?: BenchResult } {
+    const dir = this.cfg.memory.dir;
+    let result: BenchResult | undefined;
+    try {
+      result = JSON.parse(readFileSync(benchFile(dir), 'utf8')) as BenchResult;
+    } catch {
+      /* not run yet */
+    }
+    let running = false;
+    try {
+      // a marker older than ten minutes is left over from a run that died
+      running = Date.now() - Date.parse(readFileSync(benchRunningFile(dir), 'utf8')) < 10 * 60_000;
+    } catch {
+      /* not running */
+    }
+    return { running, result };
+  }
+
+  /** Starts the benchmark as its own process (it loads two models; Max keeps answering meanwhile). */
+  private startBench(): string {
+    if (this.benchStatus().running) return 'The benchmark is already running.';
+    const script = join(__dirname, '..', 'tools', 'memory-bench.js');
+    const child = spawn(process.execPath, [script], { detached: true, stdio: 'ignore' });
+    child.unref();
+    this.log.log('Memory benchmark started');
+    return 'Benchmark started: about two minutes. This page shows the result when it is done.';
   }
 
   private json(res: ServerResponse, body: unknown): void {

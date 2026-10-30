@@ -113,6 +113,8 @@ export interface NewItem {
 
 interface VaultData {
   version: 2;
+  /** The meaning-search model that made the stored vectors: a different one in .env means re-indexing everything. */
+  embedModel?: string;
   items: MemoryItem[];
   episodes: Episode[];
   projects: Project[];
@@ -720,6 +722,12 @@ export class MemoryService implements OnModuleInit {
 
   private async reindex(): Promise<void> {
     for (const v of this.openVaults()) {
+      // Vectors from another model don't compare with the new one's: start again (keyword search works meanwhile).
+      if (v.data.embedModel && v.data.embedModel !== this.cfg.memory.embedModel) {
+        this.log.log(`${v.name}: the meaning-search model changed (${v.data.embedModel} → ${this.cfg.memory.embedModel}); re-indexing`);
+        for (const i of v.data.items) delete i.vec;
+        for (const e of v.data.episodes) delete e.vec;
+      }
       const missing: { obj: { vec?: string }; text: string }[] = [
         ...v.data.items.filter((i) => !i.vec).map((i) => ({ obj: i, text: i.text })),
         ...v.data.episodes.filter((e) => !e.vec).map((e) => ({ obj: e, text: e.summary })),
@@ -730,8 +738,9 @@ export class MemoryService implements OnModuleInit {
         if (!vecs) return;
         batch.forEach((b, k) => (b.obj.vec = toB64(vecs[k])));
       }
-      if (missing.length) {
-        this.log.log(`Indexed ${missing.length} memories in ${v.name}`);
+      if (missing.length || v.data.embedModel !== this.cfg.memory.embedModel) {
+        if (missing.length) this.log.log(`Indexed ${missing.length} memories in ${v.name}`);
+        v.data.embedModel = this.cfg.memory.embedModel;
         this.save(v);
       }
     }

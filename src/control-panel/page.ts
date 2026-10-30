@@ -11,6 +11,7 @@ import type { WhatsAppStatus } from '../whatsapp/whatsapp.service';
 import { HEALTH_CSS, healthParts, PanelHealth } from './health-page';
 import { backupSection } from './backup-page';
 import type { BackupStatus } from '../backup/backup.service';
+import type { BenchResult } from '../tools/memory-bench';
 
 export interface PanelData {
   /** Home Assistant on the Max box: the Devices tab. */
@@ -158,6 +159,8 @@ export interface PanelData {
     /** Today in the household time zone (YYYY-MM-DD). */
     today: string;
     todos: PanelTodo[];
+    /** The memory benchmark's last results, and whether one is running now. */
+    bench?: { running: boolean; result?: BenchResult };
   };
 }
 
@@ -657,6 +660,7 @@ ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read M
 <p class="meta">Each vault is encrypted separately. Passwords, PINs and codes are never stored.</p></section>
 <section id="conversations"><h2>Conversations <span class="meta">${VAULT_LABEL[v.name]}${v.totalNotes > v.notes.length ? ` · latest ${v.notes.length} of ${v.totalNotes}; Max can search them all` : ''}</span></h2><ul>${notes}</ul>
 <p class="meta">Older notes are rolled up into weekly, then monthly digests automatically.</p></section>
+${m.bench ? benchSection(m.bench) : ''}
 ${activitySection(m.activity)}`;
 }
 
@@ -737,6 +741,22 @@ function remindersSection(timers: NonNullable<PanelData['timers']>): string {
   return `<section id="reminders"><h2>Reminders and timers</h2>
 <p class="meta">"Remind me at 6 to call Mum", "remind me on 3 March to renew the insurance", "set a timer for 10 minutes". Kept on the box, encrypted, through restarts and updates; one that falls due while Max is off is said and shown once he's back.</p>
 ${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing waiting.</p>'}</section>`;
+}
+
+/** Max › Memory › Benchmark: how fast and how well meaning search works on this box, with the rules' recommendation. */
+function benchSection(b: NonNullable<NonNullable<PanelData['memory']>['bench']>): string {
+  const r = b.result;
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const pct = (n?: number) => `${Math.round((n ?? 0) * 100)}%`;
+  const rows = r
+    ? r.models.map((m) => `<li class="row"><div><div class="name">${esc(m.model)}${m.model === r.decision.embedModel ? ' <span class="badge ok">recommended</span>' : ''}</div><div class="meta">${m.ok ? `${m.msPerSentence} ms a sentence · ${m.rssMb} MB · right fact in the top 3 ${pct(m.recallAt3)} of the time (top 1: ${pct(m.recallAt1)}) · loads in ${m.loadMs} ms` : esc(m.error)}</div></div></li>`).join('') +
+      `<li class="row"><div><div class="name">Searching the vaults as they grow</div><div class="meta">${r.search.map((s) => `${s.facts.toLocaleString('en-GB')} facts: ${s.ms} ms`).join(' · ')} · ${r.decision.storage === 'database' ? 'a database with an index would be needed' : 'the vaults as they are will do'}</div></div></li>`
+    : '';
+  return `<section id="memory-bench"><h2>Benchmark</h2>
+<p class="meta">How well meaning search works on this box: the current model against a slightly larger one (bge-small), and how long a search takes as the vaults grow. The decision rules are written down in advance (docs/design/SELF-LEARNING.md): switch models only for a clear gain at a reasonable speed; move to a database only when search gets slow.</p>
+${b.running ? '<p class="meta"><span class="badge warn">running</span> About two minutes: this page refreshes by itself. <span data-wait></span></p>' : ''}
+${r ? `<p class="meta">Last run ${esc(when(r.at))} on ${esc(`${r.box.arch}, ${r.box.cpus} cores, ${Math.round(r.box.totalMemMb / 1024)} GB`)}.</p><ul>${rows}</ul><p><b>${esc(r.recommendation)}</b></p>` : '<p class="meta">Not run yet.</p>'}
+<form method="post" action="/memory/bench"><button class="btn secondary" type="submit" ${b.running ? 'disabled' : ''}>Run the benchmark</button></form></section>`;
 }
 
 function updatesSection(u: NonNullable<PanelData['updates']>): string {

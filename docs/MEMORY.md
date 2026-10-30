@@ -188,6 +188,20 @@ Later, with buttons to tick items off, change their priority, criticality or pro
   never part of the core) until you confirm it. This stops a malicious email from planting
   "instructions" in his memory. Memory is always given to the AI as notes, never as instructions.
 
+## The benchmark: is meaning search good enough on this box?
+
+Max › Memory › **Run the benchmark** measures, on the box itself, the meaning-search model Max uses
+(all-MiniLM-L6-v2) against a slightly larger one (bge-small-en-v1.5, downloaded with the image): how many
+milliseconds a sentence takes, how much memory each needs, and how often the right fact is in the top
+three for a fixed set of forty household questions in English and Italian. It also times a search over
+5,000, 20,000 and 50,000 facts. It runs as its own process for about two minutes; Max keeps answering.
+
+The decision rules are written down in advance (docs/design/SELF-LEARNING.md): switch models only if the
+other finds the right fact at least 5 points more often and stays under 60 ms a sentence; move the vaults
+to a database only if searching 20,000 facts takes more than 100 ms. The page shows the recommendation;
+to follow a model switch, set `MEMORY_EMBED_MODEL=Xenova/bge-small-en-v1.5` in `.env` and restart: Max
+re-indexes the vaults on the next start. From a terminal: `node dist/tools/memory-bench.js`.
+
 ## Activity log: who saw what
 
 The control panel's **Memory activity** section lists, for the last 30 days:

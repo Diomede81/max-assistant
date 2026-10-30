@@ -68,6 +68,19 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
 
 ## Using the box
 
+- **Microphone lights** (Settings → Device): the ring of lights on the mic board can be on, always off, or
+  off at night (night mode, and the hours the face sleeps: `FACE_SLEEP`). Switching it needs the board
+  maker's own control tool, `xvf_host`, which Max's setup does not download for you: it is a prebuilt
+  program from a third party that would run with full rights on your box, so installing it is your call.
+  To install it, on the box:
+  ```bash
+  sudo install -d -m 755 /usr/local/lib/max/xvf_host && cd /usr/local/lib/max/xvf_host
+  for f in xvf_host libcommand_map.so libdevice_usb.so libdevice_i2c.so transport_config.yaml dfu_cmds.yaml; do
+    sudo curl -fsSL -o "$f" "https://raw.githubusercontent.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/master/host_control/rpi_64bit/$f"
+  done
+  sudo chmod 755 xvf_host && sudo ./xvf_host VERSION     # should print the board's firmware version
+  ```
+  Then pick the setting on the control panel. Without the tool the lights simply stay on.
 - **Night mode** (Settings → Device): a time range, e.g. 23:00 to 07:00, in which Max is muted: he doesn't
   answer "Hey Max", says nothing (a reminder that falls due waits for the morning) and shows no notices on
   his screen; his face sleeps. WhatsApp and the control panel still work. Switch it off there at any time;

@@ -51,6 +51,8 @@ export interface PanelData {
     tone?: string;
     /** Night mode: muted between these times. */
     night?: { on: boolean; from: string; to: string; now: boolean };
+    micLight?: string;
+    micLightNow?: string;
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
@@ -386,6 +388,14 @@ function micSwitch(mic: { muted: boolean }, from: string): string {
   return `<div class="addfact"><div><b>Microphone ${mic.muted ? 'off' : 'on'}</b> <span class="badge ${mic.muted ? 'warn' : 'ok'}">${mic.muted ? "Max can't hear" : 'listening for "Hey Max"'}</span>
 <div class="meta">${mic.muted ? 'Nothing reaches Max until you turn it on (here, or the button on top of the box).' : 'Turn it off when you want privacy: Max hears nothing, the same as the button on top of the box.'}</div></div>
 ${post('/device/mute', { on: mic.muted ? '0' : '1', from }, mic.muted ? 'Turn the microphone on' : 'Turn the microphone off', mic.muted ? 'btn' : 'btn secondary')}</div>`;
+}
+
+/** The mic board's LED ring: on, off, or off at night. */
+function micLightRow(setting: string, now?: string): string {
+  const opt = (v: string, label: string) => `<label class="meta tick"><input type="radio" name="micLight" value="${v}" ${setting === v ? 'checked' : ''} onchange="this.form.submit()"> ${label}</label>`;
+  return `<div class="addfact"><div><b>Microphone lights</b> ${now ? `<span class="badge ${now === 'on' ? 'ok' : 'off'}">${now === 'on' ? 'on now' : 'off now'}</span>` : ''}
+<div class="meta">The ring of lights on the microphone board. "Off at night" follows night mode and the hours the face sleeps. Needs the board's control tool on the box (docs/PI.md, "Microphone lights"); without it the lights stay on.</div>
+<form class="stack" method="post" action="/device/mic-light">${opt('on', 'On')}${opt('night', 'Off at night')}${opt('off', 'Always off')}<noscript><button class="btn secondary" type="submit">Save</button></noscript></form></div></div>`;
 }
 
 /** Night mode: a time range in which Max is muted (no wake word, no announcements, no notices on the screen). */
@@ -995,6 +1005,7 @@ export function renderPanel(d: PanelData): string {
   const deviceSection = `<section id="device"><h2>Device</h2>
 ${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
 ${d.device?.night ? nightRow(d.device.night) : ''}
+${d.onBox && d.device?.micLight ? micLightRow(d.device.micLight, d.device.micLightNow) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
 ${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>

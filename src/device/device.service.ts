@@ -27,7 +27,10 @@ export interface DeviceStatus {
   startSound?: boolean;
   /** How the speaker is tuned (see SPEAKER_TONES). */
   tone?: SpeakerTone;
-  night?: Night & { now: boolean };
+  night?: Night & { now: boolean   /** The mic board's lights: the setting, and whether they are on or off right now. */
+  micLight?: MicLight;
+  micLightNow?: 'on' | 'off';
+};
   /** Seconds of no words after Max's answer before a conversation ends (undefined: the .env default). */
   listenSec?: number;
 }
@@ -55,7 +58,11 @@ const GREET_AGAIN_MIN = 10;
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; tone?: SpeakerTone; night?: Night }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; tone?: SpeakerTone; night?: Night; micLight?: MicLight }>;
+  /** The mic board's LED ring: on, off, or off during night mode (and the face's sleep hours). */
+  private micLightSetting: MicLight = 'night';
+  private micLightApplied?: 'on' | 'off';
+  private micLightTimer?: NodeJS.Timeout;
   /** Night mode: between these times Max is muted (no wake word, no announcements, no screen notices). */
   private nightSettings: Night = { on: false, from: '23:00', to: '07:00' };
   private level = 100;
@@ -73,6 +80,7 @@ export class DeviceService implements OnModuleInit {
       this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true, listenSec: saved?.listenSec };
       if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
       if (saved?.night) this.nightSettings = { ...this.nightSettings, ...saved.night };
+      if (saved?.micLight && MIC_LIGHTS.includes(saved.micLight)) this.micLightSetting = saved.micLight;
     } catch {
       // keep full brightness
     }
@@ -80,10 +88,16 @@ export class DeviceService implements OnModuleInit {
     if (this.cfg.face.onBox) this.applyTone();
     // After a restart, the box's screen starts at full brightness: set it back to the chosen level.
     if (this.cfg.face.onBox && this.level !== 100) this.applyBrightness();
+    // The mic board's lights: applied now and whenever night begins or ends.
+    if (this.cfg.face.onBox) {
+      this.applyMicLight();
+      this.micLightTimer = setInterval(() => this.applyMicLight(), 60_000);
+      this.micLightTimer.unref();
+    }
   }
 
   async status(): Promise<DeviceStatus> {
-    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone, night: { ...this.nightSettings, now: this.nightNow } };
+    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone, night: { ...this.nightSettings, now: this.nightNow }, micLight: this.micLightSetting, micLightNow: this.micLightApplied };
   }
 
   // ---------- Night mode ----------
@@ -107,6 +121,42 @@ export class DeviceService implements OnModuleInit {
     this.persist();
     const n = this.nightSettings;
     return n.on ? `Night mode: Max is muted from ${n.from} to ${n.to}${this.nightNow ? ' (that is now)' : ''}.` : 'Night mode is off.';
+  }
+
+  // ---------- The mic board's lights ----------
+
+  get micLight(): MicLight {
+    return this.micLightSetting;
+  }
+
+  setMicLight(v: string): string {
+    if (!MIC_LIGHTS.includes(v as MicLight)) return 'Choose on, off, or off at night.';
+    this.micLightSetting = v as MicLight;
+    this.persist();
+    this.applyMicLight(true);
+    return v === 'on' ? 'Microphone lights on.' : v === 'off' ? 'Microphone lights off.' : `Microphone lights off at night (night mode, or ${this.cfg.face.sleep} while the face sleeps).`;
+  }
+
+  /** Whether the ring should be dark right now. */
+  private micLightWanted(): 'on' | 'off' {
+    if (this.micLightSetting === 'off') return 'off';
+    if (this.micLightSetting === 'on') return 'on';
+    const [from, to] = this.cfg.face.sleep.trim().split('-');
+    const asleep = /^\d{1,2}:\d{2}$/.test(from ?? '') && /^\d{1,2}:\d{2}$/.test(to ?? '') && inRange(from.padStart(5, '0'), to.padStart(5, '0'));
+    return this.nightNow || asleep ? 'off' : 'on';
+  }
+
+  /** Asks the box to switch the ring (max-mic-light.sh reads /run/max/mic-light-request), only when something changed. */
+  private applyMicLight(force = false): void {
+    const want = this.micLightWanted();
+    if (!force && want === this.micLightApplied) return;
+    try {
+      writeFileSync(join(this.cfg.face.runDir, 'mic-light-request'), want);
+      this.micLightApplied = want;
+      this.log.log(`Microphone lights ${want}`);
+    } catch {
+      /* not on the box */
+    }
   }
 
   // ---------- Greeting and start-up sound ----------
@@ -142,7 +192,7 @@ export class DeviceService implements OnModuleInit {
 
   private persist(): void {
     this.store
-      .save({ brightness: this.level, ...this.voice, tone: this.speakerTone, night: this.nightSettings })
+      .save({ brightness: this.level, ...this.voice, tone: this.speakerTone, night: this.nightSettings, micLight: this.micLightSetting })
       .catch((err) => this.log.warn(`Could not save the device settings: ${(err as Error).message}`));
   }
 
@@ -259,6 +309,9 @@ export class DeviceService implements OnModuleInit {
 }
 
 const clamp = (v: number, min: number) => Math.max(min, Math.min(100, Math.round(Number.isFinite(v) ? v : 100)));
+
+export const MIC_LIGHTS = ['on', 'off', 'night'] as const;
+export type MicLight = (typeof MIC_LIGHTS)[number];
 
 export interface Night {
   on: boolean;

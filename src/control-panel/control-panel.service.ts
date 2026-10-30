@@ -273,6 +273,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       const what = f.has('volume') ? 'Volume' : 'Brightness';
       return this.redirect(res, `/?${typeof out === 'number' ? `ok=${encodeURIComponent(`${what} ${out}%.`)}` : `error=${encodeURIComponent(out)}`}#device`);
     }
+    if (req.method === 'POST' && url.pathname === '/device/mic-light' && this.device) {
+      const f = await readForm(req);
+      const msg = this.device.setMicLight(f.get('micLight') ?? '');
+      return this.redirect(res, `/?${/^Choose/.test(msg) ? 'error' : 'ok'}=${encodeURIComponent(msg)}#device`);
+    }
     if (req.method === 'POST' && url.pathname === '/device/night' && this.device) {
       const f = await readForm(req);
       const msg = this.device.setNight({ on: f.get('on') === 'yes', from: f.get('from') ?? undefined, to: f.get('to') ?? undefined });

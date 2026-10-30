@@ -162,6 +162,8 @@ export interface PanelData {
     todos: PanelTodo[];
     /** The memory benchmark's last results, and whether one is running now. */
     bench?: { running: boolean; result?: BenchResult };
+    /** How often the user corrects Max (the measure of learning). */
+    learning?: { thisWeek: number; lastWeek: number; byTask: { task: string; thisWeek: number; lastWeek: number }[]; recent: { at: string; task: string; how: string; said?: string; meant: string }[]; since?: string };
   };
 }
 
@@ -661,6 +663,7 @@ ${m.passwordSet ? '' : '<p class="hint">Anyone who can open this page can read M
 <p class="meta">Each vault is encrypted separately. Passwords, PINs and codes are never stored.</p></section>
 <section id="conversations"><h2>Conversations <span class="meta">${VAULT_LABEL[v.name]}${v.totalNotes > v.notes.length ? ` · latest ${v.notes.length} of ${v.totalNotes}; Max can search them all` : ''}</span></h2><ul>${notes}</ul>
 <p class="meta">Older notes are rolled up into weekly, then monthly digests automatically.</p></section>
+${m.learning ? learningSection(m.learning) : ''}
 ${m.bench ? benchSection(m.bench) : ''}
 ${activitySection(m.activity)}`;
 }
@@ -742,6 +745,18 @@ function remindersSection(timers: NonNullable<PanelData['timers']>): string {
   return `<section id="reminders"><h2>Reminders and timers</h2>
 <p class="meta">"Remind me at 6 to call Mum", "remind me on 3 March to renew the insurance", "set a timer for 10 minutes". Kept on the box, encrypted, through restarts and updates; one that falls due while Max is off is said and shown once he's back.</p>
 ${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing waiting.</p>'}</section>`;
+}
+
+/** Max › Memory › Learning: corrections per week, the baseline for whether learning helps. */
+function learningSection(l: NonNullable<NonNullable<PanelData['memory']>['learning']>): string {
+  const trend = l.lastWeek ? (l.thisWeek < l.lastWeek ? '<span class="badge ok">fewer than last week</span>' : l.thisWeek > l.lastWeek ? '<span class="badge warn">more than last week</span>' : '<span class="badge">same as last week</span>') : '';
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const how: Record<string, string> = { said: 'you corrected him', repeated: 'you asked again, changed', removed: 'you removed a fact he filed' };
+  return `<section id="learning"><h2>Learning <span class="meta">corrections</span></h2>
+<p class="meta">How often you have to correct Max: a "no, I meant…" right after his answer, the same request again with something changed, or a fact he filed that you removed within minutes. Counted by Max himself on the box, no AI involved, and kept for 90 days. Fewer corrections over time is what learning looks like; this is the baseline before it starts${l.since ? ` (counting since ${esc(when(l.since))})` : ''}.</p>
+<p><b>${l.thisWeek}</b> this week · ${l.lastWeek} last week ${trend}</p>
+${l.byTask.length ? `<p class="meta">${l.byTask.map((t) => `${esc(t.task)}: ${t.thisWeek}${t.lastWeek ? ` (${t.lastWeek} last week)` : ''}`).join(' · ')}</p>` : ''}
+${l.recent.length ? `<ul>${l.recent.map((c) => `<li class="row"><div><div class="name">${esc(c.meant)}</div><div class="meta">${esc(when(c.at))} · ${esc(c.task)} · ${esc(how[c.how] ?? c.how)}${c.said ? ` · after: "${esc(c.said)}"` : ''}</div></div></li>`).join('')}</ul>` : '<p class="meta">No corrections noticed yet.</p>'}</section>`;
 }
 
 /** Max › Memory › Benchmark: how fast and how well meaning search works on this box, with the rules' recommendation. */

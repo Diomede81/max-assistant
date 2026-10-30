@@ -7,6 +7,7 @@ import { KINDS, Kind, MemoryItem, MemoryService } from './memory.service';
 import { Mode, ModesService, VaultName, VAULTS } from './modes.service';
 import { ProjectsService } from './projects.service';
 import { SoulService } from '../soul/soul.service';
+import { CorrectionsService } from './corrections.service';
 
 export interface TranscriptLine {
   who: 'user' | 'max' | 'action';
@@ -49,14 +50,17 @@ export class MemoryLearnerService {
     private readonly modes: ModesService,
     private readonly projects: ProjectsService,
     private readonly models: ModelsService,
+    @Optional() private readonly corrections?: CorrectionsService,
   ) {
     this.on = memory.enabled && cfg.memory.autoLearn;
   }
 
   /** Never throws: a failed filing is logged and skipped. `mode`: the mode the conversation took place in. */
   async learn(lines: TranscriptLine[], mode: Mode = this.modes.mode): Promise<void> {
+    if (mode === 'guest') return; // visitors' conversations are not filed, nor counted
+    // Corrections are counted whether or not filing is on: they are the measure of learning (phase 0).
+    this.corrections?.note(lines);
     if (!this.on) return;
-    if (mode === 'guest') return; // visitors' conversations are not filed
     const userLines = lines.filter((l) => l.who === 'user').map((l) => l.text);
     const words = (who: TranscriptLine['who']) => lines.filter((l) => l.who === who).reduce((n, l) => n + l.text.split(/\s+/).length, 0);
     if (words('user') < MIN_WORDS && words('max') < MIN_WORDS * 3) return;

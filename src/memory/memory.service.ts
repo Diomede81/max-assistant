@@ -532,6 +532,11 @@ export class MemoryService implements OnModuleInit {
     return true;
   }
 
+  /** A fact by id, from any open vault. */
+  itemById(id: string): MemoryItem | undefined {
+    return this.find(id)?.i;
+  }
+
   deleteItem(id: string): boolean {
     const f = this.find(id);
     if (!f) return false;

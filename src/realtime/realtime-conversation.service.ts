@@ -227,7 +227,9 @@ export class RealtimeConversationService {
       this.face?.setState('listening');
       userSpeaking = true;
       speechStartedAt = Date.now();
-      // Sound alone doesn't count as activity: only words do (below), so noise can't keep the conversation open.
+      // Sound alone doesn't count as activity after an answer: only words do (below), so noise can't keep the conversation
+      // open. On the first turn it does count: the user has just said "Hey Max" and is talking, however long it takes.
+      if (turns === 0) lastActivity = Date.now();
       if (rt.bargeIn) interrupt(); // headphones mode: just start talking
     });
     client.on('speech-stopped', () => {

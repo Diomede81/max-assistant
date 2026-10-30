@@ -27,10 +27,10 @@ export interface DeviceStatus {
   startSound?: boolean;
   /** How the speaker is tuned (see SPEAKER_TONES). */
   tone?: SpeakerTone;
-  night?: Night & { now: boolean   /** The mic board's lights: the setting, and whether they are on or off right now. */
+  night?: Night & { now: boolean };
+  /** The mic board's lights: the setting, and whether they are on or off right now. */
   micLight?: MicLight;
   micLightNow?: 'on' | 'off';
-};
   /** Seconds of no words after Max's answer before a conversation ends (undefined: the .env default). */
   listenSec?: number;
 }

@@ -28,8 +28,10 @@ const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
 const CHIME_SKIP_MS = 400;
 const FIRST_TURN_WAIT_MS = 7000;
-/** Sound that started but brought no words within this long (a TV, people talking nearby) is not the user: it doesn't keep the conversation open. */
-const NOISE_MAX_MS = 6000;
+/** After a stretch of sound ends, its words (the transcript) can trail by this long: wait before deciding it was noise. */
+const WORDS_TRAIL_MS = 4000;
+/** A single unbroken stretch of sound longer than this with no words at all (a TV, a radio) is not the user: the conversation may end under it. */
+const NOISE_SEGMENT_MAX_MS = 45_000;
 /** If a provider never answers after the user spoke, stop waiting (keeps sessions from hanging open). */
 const NO_ANSWER_MS = 15000;
 /** The longest the conversation waits for a running action before going back to normal. */
@@ -225,7 +227,9 @@ export class RealtimeConversationService {
       this.face?.setState('listening');
       userSpeaking = true;
       speechStartedAt = Date.now();
-      // Sound alone doesn't count as activity: only words do (below), so noise can't keep the conversation open.
+      // Sound alone doesn't count as activity after an answer: only words do (below), so noise can't keep the conversation
+      // open. On the first turn it does count: the user has just said "Hey Max" and is talking, however long it takes.
+      if (turns === 0) lastActivity = Date.now();
       if (rt.bargeIn) interrupt(); // headphones mode: just start talking
     });
     client.on('speech-stopped', () => {
@@ -233,6 +237,7 @@ export class RealtimeConversationService {
       userSpeaking = false;
       busy = true;
       speechStoppedAt = Date.now();
+      // the words of what was just said may still be on their way: counted when they arrive (heardWords)
       firstAudioThisTurn = true;
     });
     client.on('audio', (pcm: Buffer) => {
@@ -369,10 +374,15 @@ export class RealtimeConversationService {
         const now = Date.now();
         const quietFor = now - lastActivity;
         const limit = turns === 0 ? FIRST_TURN_WAIT_MS : followUpMs;
-        // Sound with no words for a while (a TV, a conversation across the room): not the user talking to Max.
-        if (userSpeaking && speechStartedAt && now - speechStartedAt > NOISE_MAX_MS && wordsAt < speechStartedAt) {
+        // While the user is talking, nothing ends the conversation (a long question's words arrive only at its pauses);
+        // only an unbroken stretch of sound with no words at all, far longer than a sentence, is taken for noise.
+        if (userSpeaking && speechStartedAt && now - speechStartedAt > NOISE_SEGMENT_MAX_MS && wordsAt < speechStartedAt) {
           userSpeaking = false;
-          this.log.log('Heard sound but no words: not counting it as you talking');
+          this.log.log('A long stretch of sound with no words: not counting it as you talking');
+        }
+        // A stretch of sound that ended: its words count once they arrive (they may trail a few seconds); none means noise.
+        if (!userSpeaking && speechStoppedAt > speechStartedAt && wordsAt < speechStartedAt && now - speechStoppedAt <= WORDS_TRAIL_MS) {
+          lastActivity = Math.max(lastActivity, speechStoppedAt); // still waiting for the words: don't hang up yet
         }
         let why: string | undefined;
         if (closed) why = 'connection closed';
@@ -385,7 +395,7 @@ export class RealtimeConversationService {
         // an action is still working: not "no answer", not quiet (but never more than RUNNING_MAX_MS: a hung one
         // must not leave Max deaf; the action router's own limits normally end it well before)
         else if ([...running.values()].some((t) => now - t < RUNNING_MAX_MS)) lastActivity = now;
-        else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > (wordsAt >= speechStartedAt ? NO_ANSWER_MS : NOISE_MAX_MS) && now - lastActivity > (wordsAt >= speechStartedAt ? NO_ANSWER_MS : NOISE_MAX_MS)) {
+        else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
           lastActivity = now;
         } else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {

@@ -53,6 +53,7 @@ export interface PanelData {
     night?: { on: boolean; from: string; to: string; now: boolean };
     micLight?: string;
     micLightNow?: string;
+    micLightReport?: { ok: boolean; want: string; message: string; at: string };
     /** The box's microphone (on the box only): off while muted, by the button on top or from here. */
     mic?: { muted: boolean };
   };
@@ -391,9 +392,10 @@ ${post('/device/mute', { on: mic.muted ? '0' : '1', from }, mic.muted ? 'Turn th
 }
 
 /** The mic board's LED ring: on, off, or off at night. */
-function micLightRow(setting: string, now?: string): string {
+function micLightRow(setting: string, now?: string, report?: { ok: boolean; want: string; message: string; at: string }): string {
   const opt = (v: string, label: string) => `<label class="meta tick"><input type="radio" name="micLight" value="${v}" ${setting === v ? 'checked' : ''} onchange="this.form.submit()"> ${label}</label>`;
-  return `<div class="addfact"><div><b>Microphone lights</b> ${now ? `<span class="badge ${now === 'on' ? 'ok' : 'off'}">${now === 'on' ? 'on now' : 'off now'}</span>` : ''}
+  const said = !report ? '<span class="badge warn">the box has not answered yet</span>' : report.ok ? `<span class="badge ${report.want === 'on' ? 'ok' : 'off'}">${report.want === 'on' ? 'on now' : 'off now'}</span>` : `<span class="badge warn">not working</span> <span class="meta">${esc(report.message)}</span>`;
+  return `<div class="addfact"><div><b>Microphone lights</b> ${said}
 <div class="meta">The ring of lights on the microphone board. "Off at night" follows night mode and the hours the face sleeps. Needs the board's control tool on the box (docs/PI.md, "Microphone lights"); without it the lights stay on.</div>
 <form class="stack" method="post" action="/device/mic-light">${opt('on', 'On')}${opt('night', 'Off at night')}${opt('off', 'Always off')}<noscript><button class="btn secondary" type="submit">Save</button></noscript></form></div></div>`;
 }
@@ -1005,7 +1007,7 @@ export function renderPanel(d: PanelData): string {
   const deviceSection = `<section id="device"><h2>Device</h2>
 ${d.device?.mic ? micSwitch(d.device.mic, 'device') : ''}
 ${d.device?.night ? nightRow(d.device.night) : ''}
-${d.onBox && d.device?.micLight ? micLightRow(d.device.micLight, d.device.micLightNow) : ''}
+${d.onBox && d.device?.micLight ? micLightRow(d.device.micLight, d.device.micLightNow, d.device.micLightReport) : ''}
 ${d.device ? `<form class="addfact level" method="post" action="/device/level"><label class="meta" for="vol">Volume</label><input id="vol" type="range" name="volume" min="0" max="100" step="5" value="${d.device.volume ?? 50}" ${d.device.volume === undefined ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.volume ?? '–'}%</span></form>
 <form class="addfact level" method="post" action="/device/level"><label class="meta" for="bri">Brightness</label><input id="bri" type="range" name="brightness" min="5" max="100" step="5" value="${d.device.brightness}" ${!d.onBox || d.device.brightnessSupported === false ? 'disabled' : ''} oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="this.form.submit()"><span class="meta">${d.device.brightness}%</span></form>
 ${d.onBox ? `<form class="stack" method="post" action="/device/sound"><p class="meta"><b>Speaker sound</b></p>

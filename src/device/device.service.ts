@@ -31,6 +31,8 @@ export interface DeviceStatus {
   /** The mic board's lights: the setting, and whether they are on or off right now. */
   micLight?: MicLight;
   micLightNow?: 'on' | 'off';
+  /** The box's answer to the last request (whether the control tool worked). */
+  micLightReport?: { ok: boolean; want: string; message: string; at: string };
   /** Seconds of no words after Max's answer before a conversation ends (undefined: the .env default). */
   listenSec?: number;
 }
@@ -97,7 +99,7 @@ export class DeviceService implements OnModuleInit {
   }
 
   async status(): Promise<DeviceStatus> {
-    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone, night: { ...this.nightSettings, now: this.nightNow }, micLight: this.micLightSetting, micLightNow: this.micLightApplied };
+    return { volume: await this.volume(), brightness: this.level, brightnessSupported: this.backlight()?.supported, ...this.voice, tone: this.speakerTone, night: { ...this.nightSettings, now: this.nightNow }, micLight: this.micLightSetting, micLightNow: this.micLightApplied, micLightReport: this.micLightReport() };
   }
 
   // ---------- Night mode ----------
@@ -149,7 +151,9 @@ export class DeviceService implements OnModuleInit {
   /** Asks the box to switch the ring (max-mic-light.sh reads /run/max/mic-light-request), only when something changed. */
   private applyMicLight(force = false): void {
     const want = this.micLightWanted();
-    if (!force && want === this.micLightApplied) return;
+    const report = this.micLightReport();
+    // Re-sent when the box hasn't confirmed it yet (the box service may have started after the request).
+    if (!force && want === this.micLightApplied && report?.want === want) return;
     try {
       writeFileSync(join(this.cfg.face.runDir, 'mic-light-request'), want);
       this.micLightApplied = want;
@@ -298,6 +302,16 @@ export class DeviceService implements OnModuleInit {
   }
 
   /** What the box reported after applying the last change (written by max-brightness.sh). */
+  /** What the box said after the last microphone-light request (written by max-mic-light.sh). */
+  private micLightReport(): { ok: boolean; want: string; message: string; at: string } | undefined {
+    if (!this.cfg.face.onBox) return undefined;
+    try {
+      return JSON.parse(readFileSync(join(this.cfg.face.runDir, 'mic-light.json'), 'utf8')) as { ok: boolean; want: string; message: string; at: string };
+    } catch {
+      return undefined;
+    }
+  }
+
   private backlight(): { supported: boolean } | undefined {
     if (!this.cfg.face.onBox) return { supported: false };
     try {

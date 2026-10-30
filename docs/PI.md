@@ -80,7 +80,10 @@ After the restart, Max's face appears on the screen and he's listening for "Hey 
   done
   sudo chmod 755 xvf_host && sudo ./xvf_host VERSION     # should print the board's firmware version
   ```
-  Then pick the setting on the control panel. Without the tool the lights simply stay on.
+  Then pick the setting on the control panel. Without the tool the lights simply stay on. The setting's row
+  shows what the box answered ("off now", or "not working" with the reason); on the box, `journalctl -t
+  max-mic-light` has the same, and `sudo ./xvf_host LED_EFFECT 0` run by hand in the tool's folder should
+  turn the ring off at once.
 - **Night mode** (Settings → Device): a time range, e.g. 23:00 to 07:00, in which Max is muted: he doesn't
   answer "Hey Max", says nothing (a reminder that falls due waits for the morning) and shows no notices on
   his screen; his face sleeps. WhatsApp and the control panel still work. Switch it off there at any time;

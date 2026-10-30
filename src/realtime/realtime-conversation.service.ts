@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { FaceService } from '../face/face.service';
 import { APP_CONFIG, AppConfig } from '../config';
+import { DeviceService } from '../device/device.service';
 import { describeCapabilities } from '../actions/capabilities';
 import { SpeakerService } from '../audio/speaker.service';
 import { Resampler } from '../audio/resampler';
@@ -27,6 +28,8 @@ const PCM24 = { rate: 24000, width: 2, channels: 1 };
 /** Skip the first moments after the wake word: that's Max's own chime. */
 const CHIME_SKIP_MS = 400;
 const FIRST_TURN_WAIT_MS = 7000;
+/** Sound that started but brought no words within this long (a TV, people talking nearby) is not the user: it doesn't keep the conversation open. */
+const NOISE_MAX_MS = 6000;
 /** If a provider never answers after the user spoke, stop waiting (keeps sessions from hanging open). */
 const NO_ANSWER_MS = 15000;
 /** The longest the conversation waits for a running action before going back to normal. */
@@ -59,6 +62,7 @@ export class RealtimeConversationService {
     private readonly wake: WakeWordService,
     private readonly memory: MemoryService,
     private readonly learner: MemoryLearnerService,
+    @Optional() private readonly device?: DeviceService,
   ) {}
 
   /**
@@ -182,6 +186,10 @@ export class RealtimeConversationService {
     this.control?.reset(); // nothing left over from a previous conversation
     let lastActivity = Date.now();
     let speechStoppedAt = 0;
+    /** When the user last said actual words (the transcript), and when the current sound started. */
+    let wordsAt = 0;
+    let speechStartedAt = 0;
+    const followUpMs = (this.device?.listenSec ?? 0) > 0 ? this.device!.listenSec! * 1000 : rt.followUpMs;
     let firstAudioThisTurn = true;
     let clearTimer: NodeJS.Timeout | undefined;
     // Bumped on every interruption: queued replies from before it are dropped, not played.
@@ -216,7 +224,8 @@ export class RealtimeConversationService {
       this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
       userSpeaking = true;
-      lastActivity = Date.now();
+      speechStartedAt = Date.now();
+      // Sound alone doesn't count as activity: only words do (below), so noise can't keep the conversation open.
       if (rt.bargeIn) interrupt(); // headphones mode: just start talking
     });
     client.on('speech-stopped', () => {
@@ -311,9 +320,18 @@ export class RealtimeConversationService {
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
     // What the user said, as it comes in: the answer to "Shall I go ahead?" is checked against it.
-    client.on('user-words', (t: string) => this.tools.heard(t));
+    const heardWords = (t: string) => {
+      if (t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter((w) => w.length > 1).length < 1) return;
+      wordsAt = Date.now();
+      lastActivity = wordsAt;
+    };
+    client.on('user-words', (t: string) => {
+      this.tools.heard(t);
+      heardWords(t);
+    });
     client.on('user-transcript', (t: string) => {
       this.tools.heard(t);
+      heardWords(t);
       this.log.log(`You: ${said(t)}`);
       transcript.push({ who: 'user', text: t });
       this.face?.heard(t);
@@ -350,7 +368,12 @@ export class RealtimeConversationService {
       const tick = setInterval(() => {
         const now = Date.now();
         const quietFor = now - lastActivity;
-        const limit = turns === 0 ? FIRST_TURN_WAIT_MS : rt.followUpMs;
+        const limit = turns === 0 ? FIRST_TURN_WAIT_MS : followUpMs;
+        // Sound with no words for a while (a TV, a conversation across the room): not the user talking to Max.
+        if (userSpeaking && speechStartedAt && now - speechStartedAt > NOISE_MAX_MS && wordsAt < speechStartedAt) {
+          userSpeaking = false;
+          this.log.log('Heard sound but no words: not counting it as you talking');
+        }
         let why: string | undefined;
         if (closed) why = 'connection closed';
         else if (stopReason) why = stopReason;
@@ -362,11 +385,11 @@ export class RealtimeConversationService {
         // an action is still working: not "no answer", not quiet (but never more than RUNNING_MAX_MS: a hung one
         // must not leave Max deaf; the action router's own limits normally end it well before)
         else if ([...running.values()].some((t) => now - t < RUNNING_MAX_MS)) lastActivity = now;
-        else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
+        else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > (wordsAt >= speechStartedAt ? NO_ANSWER_MS : NOISE_MAX_MS) && now - lastActivity > (wordsAt >= speechStartedAt ? NO_ANSWER_MS : NOISE_MAX_MS)) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
           lastActivity = now;
         } else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {
-          why = turns === 0 ? 'no request heard' : 'no follow-up question';
+          why = turns === 0 ? 'no request heard' : `nothing more said for ${Math.round(limit / 1000)}s`;
         }
         if (why) {
           clearInterval(tick);

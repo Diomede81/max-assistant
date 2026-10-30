@@ -28,6 +28,8 @@ export interface DeviceStatus {
   /** How the speaker is tuned (see SPEAKER_TONES). */
   tone?: SpeakerTone;
   night?: Night & { now: boolean };
+  /** Seconds of no words after Max's answer before a conversation ends (undefined: the .env default). */
+  listenSec?: number;
 }
 
 /** Speaker tuning, applied on the box by max-sound.sh (an equaliser before the mic board). */
@@ -53,11 +55,11 @@ const GREET_AGAIN_MIN = 10;
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; tone?: SpeakerTone; night?: Night }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; tone?: SpeakerTone; night?: Night }>;
   /** Night mode: between these times Max is muted (no wake word, no announcements, no screen notices). */
   private nightSettings: Night = { on: false, from: '23:00', to: '07:00' };
   private level = 100;
-  private voice: { greeting: string; greetAgainMin: number; startSound: boolean } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
+  private voice: { greeting: string; greetAgainMin: number; startSound: boolean; listenSec?: number } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
   private speakerTone: SpeakerTone = 'flat';
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
@@ -68,7 +70,7 @@ export class DeviceService implements OnModuleInit {
     try {
       const saved = this.store.load();
       this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
-      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true };
+      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true, listenSec: saved?.listenSec };
       if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
       if (saved?.night) this.nightSettings = { ...this.nightSettings, ...saved.night };
     } catch {
@@ -124,7 +126,13 @@ export class DeviceService implements OnModuleInit {
     return this.voice.startSound;
   }
 
-  setVoice(changes: { greeting?: string; greetAgainMin?: number; startSound?: boolean }): string {
+  /** Seconds of no words from the user after which a conversation ends (the control panel; undefined: the .env default). */
+  get listenSec(): number | undefined {
+    return this.voice.listenSec;
+  }
+
+  setVoice(changes: { greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number }): string {
+    if (changes.listenSec !== undefined && Number.isFinite(changes.listenSec)) this.voice.listenSec = Math.max(3, Math.min(60, Math.round(changes.listenSec)));
     if (changes.greeting !== undefined) this.voice.greeting = changes.greeting.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (changes.greetAgainMin !== undefined && Number.isFinite(changes.greetAgainMin)) this.voice.greetAgainMin = Math.max(0, Math.min(240, Math.round(changes.greetAgainMin)));
     if (changes.startSound !== undefined) this.voice.startSound = changes.startSound;

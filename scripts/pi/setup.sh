@@ -223,7 +223,13 @@ install -D -m 755 "$REPO/scripts/pi/max-brightness.sh" /usr/local/lib/max/max-br
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.path" /etc/systemd/system/max-brightness.path
 install -m 644 "$REPO/scripts/pi/systemd/max-brightness.service" /etc/systemd/system/max-brightness.service
 systemctl daemon-reload
-systemctl enable --now max-power.path max-brightness.path
+# The mic board's lights (ReSpeaker XVF3800): off at night or from the control panel. Needs the board maker's
+# control tool, which you install yourself (docs/PI.md, "Microphone lights"); without it the lights just stay on.
+install -D -m 755 "$REPO/scripts/pi/max-mic-light.sh" /usr/local/lib/max/max-mic-light.sh
+install -m 644 "$REPO/scripts/pi/systemd/max-mic-light.path" /etc/systemd/system/max-mic-light.path
+install -m 644 "$REPO/scripts/pi/systemd/max-mic-light.service" /etc/systemd/system/max-mic-light.service
+[ -x /usr/local/lib/max/xvf_host/xvf_host ] || say "Microphone lights: the board's control tool is not installed, so they stay on (docs/PI.md explains how to install it)"
+systemctl enable --now max-power.path max-brightness.path max-mic-light.path
 systemctl enable max-power-button.service
 systemctl restart max-power-button.service || true
 

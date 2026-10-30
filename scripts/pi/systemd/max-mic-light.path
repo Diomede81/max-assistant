@@ -1,0 +1,9 @@
+[Unit]
+Description=Max microphone light requests (night mode, control panel)
+
+[Path]
+PathChanged=/run/max/mic-light-request
+Unit=max-mic-light.service
+
+[Install]
+WantedBy=multi-user.target

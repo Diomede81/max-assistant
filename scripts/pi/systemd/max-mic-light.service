@@ -1,0 +1,8 @@
+[Unit]
+Description=Max: switch the microphone board's lights on request
+
+[Service]
+Type=oneshot
+Environment=MAX_RUN_DIR=/run/max
+Environment=XVF_HOST_DIR=/usr/local/lib/max/xvf_host
+ExecStart=/usr/local/lib/max/max-mic-light.sh

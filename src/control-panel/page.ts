@@ -46,6 +46,7 @@ export interface PanelData {
     greeting?: string;
     greetAgainMin?: number;
     startSound?: boolean;
+    listenSec?: number;
     tone?: string;
     /** Night mode: muted between these times. */
     night?: { on: boolean; from: string; to: string; now: boolean };
@@ -987,6 +988,15 @@ ${d.device ? `<form class="stack" method="post" action="/device/voice">
     ]
       .map(([v, l]) => `<option value="${v}" ${v === (d.device!.greetAgainMin ?? 10) ? 'selected' : ''}>${l}</option>`)
       .join('')}</select><span class="meta">of quiet. Sooner than that, "Hey Max" gets just the short beep.</span></div>
+<div class="addfact"><label class="meta" for="listen-sec">After he answers, stop listening when nothing more is said for</label><select id="listen-sec" name="listenSec">${[
+      [4, '4 seconds'],
+      [6, '6 seconds'],
+      [8, '8 seconds'],
+      [12, '12 seconds'],
+      [20, '20 seconds'],
+    ]
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.listenSec ?? 8) ? 'selected' : ''}>${l}</option>`)
+      .join('')}</select><span class="meta">Only your words count: a TV or people talking nearby don't keep him listening.</span></div>
 <div class="addfact"><label class="meta"><input type="checkbox" name="startSound" value="on" ${d.device.startSound !== false ? 'checked' : ''}> Play a short jingle when Max starts (after a restart or an update)</label><button class="btn" type="submit">Save</button></div>
 <p class="meta">To end a conversation, say "stop", "that's all" or "thank you", on its own or in a sentence ("that was really helpful, thank you"). A request after it still goes through ("thanks, can you also set a timer").</p>
 </form>` : ''}

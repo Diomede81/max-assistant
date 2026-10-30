@@ -658,8 +658,6 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const get = (k: string) => (f.get(k) ?? '').trim();
     const back = (msg: string, ok = true, anchor = 'journal') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
     switch (action) {
-      case 'bench':
-        return back(this.startBench());
       case 'add': {
         const msg = jn.add(get('text'), { date: get('date') || undefined, mood: get('mood') || undefined, source: 'panel' });
         return back(msg, msg.startsWith('Noted'), get('date') ? `journal-${get('date')}` : 'journal');
@@ -892,6 +890,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const vault = (VAULTS.includes(f.get('vault') as VaultName) ? f.get('vault') : 'personal') as VaultName;
     const back = (msg: string, ok = true) => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}&vault=${vault}#memory`);
     switch (action) {
+      case 'bench':
+        return this.redirect(res, `/?ok=${encodeURIComponent(this.startBench())}#memory-bench`);
       case 'add': {
         const kind = KINDS.includes(f.get('kind') as Kind) ? (f.get('kind') as Kind) : undefined;
         const r = await this.memory.remember({ text: f.get('fact') ?? '', vault, kind, date: f.get('date') || undefined, source: 'panel' });

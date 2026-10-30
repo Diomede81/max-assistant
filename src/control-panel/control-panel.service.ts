@@ -18,6 +18,7 @@ import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
 import { describe as describeTimer, TimerService } from '../actions/timer.service';
+import { CorrectionsService } from '../memory/corrections.service';
 import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
 import { JournalService, MOODS } from '../journal/journal.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
@@ -77,6 +78,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   @Optional() @Inject(SoulService) private readonly soul?: SoulService;
   @Optional() @Inject(RoutinesService) private readonly routines?: RoutinesService;
   @Optional() @Inject(JobsService) private readonly jobs?: JobsService;
+  @Optional() @Inject(CorrectionsService) private readonly corrections?: CorrectionsService;
   @Optional() @Inject(TimerService) private readonly timerService?: TimerService;
   @Optional() @Inject(SocialService) private readonly social?: SocialService;
   @Optional() @Inject(JournalService) private readonly journal?: JournalService;
@@ -899,7 +901,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       }
       case 'delete':
         if (f.get('type') === 'note') this.memory.deleteEpisode(id);
-        else this.memory.deleteItem(id);
+        else {
+          const gone = this.memory.itemById(id);
+          this.memory.deleteItem(id);
+          if (gone) this.corrections?.removedSoon(gone.text, gone.createdAt, gone.source);
+        }
         return back('Removed from memory.');
       case 'move':
         return back(this.memory.moveItem(id, (f.get('to') as VaultName) ?? vault) ? 'Moved.' : 'Could not move that.');
@@ -1097,6 +1103,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             activity: this.memory.recentActivity(60),
             today: localToday(),
             bench: this.benchStatus(),
+            learning: this.corrections?.summary(),
             todos: this.todos.items(VAULTS, true)
               .filter((x) => x.task.status === 'open' || (x.task.doneAt ?? '') > new Date(Date.now() - 14 * 86400_000).toISOString())
               .map(({ task: t, vault, project }) => ({

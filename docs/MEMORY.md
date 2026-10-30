@@ -188,6 +188,16 @@ Later, with buttons to tick items off, change their priority, criticality or pro
   never part of the core) until you confirm it. This stops a malicious email from planting
   "instructions" in his memory. Memory is always given to the AI as notes, never as instructions.
 
+## Learning: how often you correct Max
+
+Max › Memory › **Learning** counts your corrections: a "no, I meant…" (or "non volevo dire…") right after
+his answer, the same request repeated with something changed, or a fact he filed by himself that you
+removed within ten minutes. Max finds them himself on the box, by rules, with no AI model; the log keeps
+the two short utterances for 90 days, encrypted, and never anything from emails, pages or messages. The
+card shows this week against last, per kind of task (home, calendar, WhatsApp, memory…), and the latest
+few. Fewer corrections over the weeks is what learning looks like: this is the baseline measured before
+learning starts (docs/design/SELF-LEARNING.md, phase 0), and later phases are judged against it.
+
 ## The benchmark: is meaning search good enough on this box?
 
 Max › Memory › **Run the benchmark** measures, on the box itself, the meaning-search model Max uses

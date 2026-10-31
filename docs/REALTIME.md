@@ -87,7 +87,7 @@ done within 10 seconds, the standard voice says them, so none is ever missed.
 |---|---|
 | `REALTIME_VOICE` | `cedar` (male) and `marin` (female) are OpenAI's most natural voices. Others: `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `alloy` |
 | `REALTIME_STYLE` | Personality and delivery, e.g. `Speak with a warm, calm British accent, like a witty butler.` |
-| `REALTIME_SILENCE_MS` | How long a pause means "I'm done" (default 500). Lower = snappier, but may cut you off |
+| `REALTIME_SILENCE_MS` | How long a pause means "I'm done" (default 500; Settings → Device overrides it). Lower = snappier, but may cut you off; longer (1.2–2.5 s) lets you think mid-sentence when dictating |
 | `REALTIME_FOLLOW_UP_MS` | How long Max keeps listening for a follow-up before hanging up (default 8000) |
 | `REALTIME_WAKE_INTERRUPT` | `on` (default): say the wake word while Max is talking to cut him off and ask something else. Works on normal speakers |
 | `REALTIME_BARGE_IN=on` | Lets you interrupt Max mid-sentence. **Use only with headphones** (or a speakerphone with echo cancellation): otherwise Max hears his own voice and interrupts himself |
@@ -113,7 +113,8 @@ https://openai.com/api/pricing for current prices. To keep costs down, Max:
   default `REALTIME_FOLLOW_UP_MS`). Only your words count: a stretch of sound that ends without any words
   (a TV, people talking across the room) doesn't keep him listening. While you are talking he never hangs
   up, however long the sentence; and a first request that never comes ends it after 7 seconds,
-- never keeps a session open longer than `REALTIME_MAX_SESSION_S` (default 5 minutes).
+- ends a long session at the next quiet moment after `REALTIME_MAX_SESSION_S` (default 15 minutes), never
+  mid-sentence or mid-answer.
 
 Set a monthly spending limit in your OpenAI account settings before a demo.
 

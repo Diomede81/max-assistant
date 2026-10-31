@@ -67,7 +67,7 @@ export const TIME_LIMIT_MS: Record<string, number> = { work_on_task: 120_000, he
 /** Facts saved this soon after reading emails/web pages are marked unverified (they may come from that content). */
 const EXTERNAL_CONTENT_WINDOW_MS = 10 * 60 * 1000;
 /** "Remember that…", "don't forget…", "make a note…" (and Italian): the user asking Max to save something. */
-const ASK_TO_REMEMBER = /\b(remember|don'?t forget|do not forget|not to forget|note (that|this|it|down)|make a note|take a note|save (that|this|it)|keep in mind|write (that|this|it) down|memori[sz]e|ricorda|ricordati|ricordatelo|segna|segnati)\b/i;
+const ASK_TO_REMEMBER = /\b(remember|don'?t forget|do not forget|not to forget|note (that|this|it|down)|make a note|take a note|save (that|this|it|a note|the note|to memory|in memory)|add .{0,30}(to|in) (my |your )?memory|put .{0,30}(in|into) (my |your )?memory|memory|keep in mind|write (that|this|it) down|memori[sz]e|memorizza|ricorda|ricordati|ricordatelo|segna|segnati|prendi nota|annota|salva|salvalo|salvala|nota)\b/i;
 const ASK_WINDOW_MS = 2 * 60_000;
 
 /**
@@ -231,6 +231,7 @@ export class ToolRouterService {
     if (!text.trim()) return;
     const now = Date.now();
     this.recentWords = [...this.recentWords.filter((w) => now - w.at < ASK_WINDOW_MS), { text, at: now }].slice(-12);
+    for (const w of this.wordWaiters.splice(0)) w();
   }
 
   /** What the user said lately: "remember" only saves when they asked for it in there. */
@@ -241,10 +242,29 @@ export class ToolRouterService {
    * said in passing are filed after the conversation, once; a question is never a fact). Unknown when
    * their words aren't transcribed: then it's allowed.
    */
-  private rememberAsked(): boolean {
+  private async rememberAsked(): Promise<boolean> {
     if (!this.wordsKnown) return true;
+    // In the live voice the model acts before the words of the sentence have arrived: wait a moment for them.
+    if (!this.recentWords.some((w) => Date.now() - w.at < 3000)) await this.waitForWords(2500);
     const recent = this.recentWords.filter((w) => Date.now() - w.at < ASK_WINDOW_MS);
-    return !recent.length || recent.some((w) => ASK_TO_REMEMBER.test(w.text));
+    const asked = !recent.length || recent.some((w) => ASK_TO_REMEMBER.test(w.text));
+    if (!asked) this.log.log(`remember: no request to remember in the last words ("${recent[recent.length - 1]?.text.slice(0, 60)}")`);
+    return asked;
+  }
+
+  private wordWaiters: (() => void)[] = [];
+  private waitForWords(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => {
+        this.wordWaiters = this.wordWaiters.filter((w) => w !== done);
+        resolve();
+      }, ms);
+      const done = () => {
+        clearTimeout(t);
+        resolve();
+      };
+      this.wordWaiters.push(done);
+    });
   }
 
   /** Whether the user's words are known (real-time OpenAI voice only transcribes with a transcription model). */
@@ -383,7 +403,7 @@ export class ToolRouterService {
 
   private async run(name: string, args: Record<string, unknown>, allow?: (url: URL) => boolean): Promise<string> {
     this.log.log(`tool ${name} ${detail(args)}`);
-    if (name === 'remember' && !this.rememberAsked()) {
+    if (name === 'remember' && !(await this.rememberAsked())) {
       this.log.log('remember skipped: the user didn\'t ask to remember anything (the conversation is filed afterwards)');
       return 'Not saved: only save when the user asks you to remember something. Anything lasting they mentioned is filed automatically after the conversation. Carry on without mentioning it.';
     }

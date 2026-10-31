@@ -296,7 +296,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     }
     if (req.method === 'POST' && url.pathname === '/device/voice' && this.device) {
       const f = await readForm(req);
-      const msg = this.device.setVoice({ greeting: f.get('greeting') ?? '', greetAgainMin: f.has('greetAgain') ? Number(f.get('greetAgain')) : undefined, startSound: f.get('startSound') === 'on', listenSec: f.has('listenSec') ? Number(f.get('listenSec')) : undefined });
+      const msg = this.device.setVoice({ greeting: f.get('greeting') ?? '', greetAgainMin: f.has('greetAgain') ? Number(f.get('greetAgain')) : undefined, startSound: f.get('startSound') === 'on', listenSec: f.has('listenSec') ? Number(f.get('listenSec')) : undefined, pauseMs: f.has('pauseMs') ? Number(f.get('pauseMs')) : undefined });
       void this.liveVoice?.ensure(this.device.greeting); // recorded in the live voice, ready for the next "Hey Max"
       return this.redirect(res, `/?ok=${encodeURIComponent(msg)}#device`);
     }

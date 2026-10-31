@@ -87,13 +87,26 @@ done within 10 seconds, the standard voice says them, so none is ever missed.
 |---|---|
 | `REALTIME_VOICE` | `cedar` (male) and `marin` (female) are OpenAI's most natural voices. Others: `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `alloy` |
 | `REALTIME_STYLE` | Personality and delivery, e.g. `Speak with a warm, calm British accent, like a witty butler.` |
-| `REALTIME_SILENCE_MS` | How long a pause means "I'm done" (default 500; Settings → Device overrides it). Lower = snappier, but may cut you off; longer (1.2–2.5 s) lets you think mid-sentence when dictating |
+| `REALTIME_SILENCE_MS` | How long a pause means "I'm done" (default 1000; Settings → Device overrides it). Lower = snappier, but may cut you off; longer (1.5–4 s) lets you think mid-sentence when dictating |
+| `REALTIME_END_OF_SPEECH` | `relaxed` (default): Gemini waits through hesitations before deciding you've finished; `quick`: decides sooner, for one-line commands |
 | `REALTIME_FOLLOW_UP_MS` | How long Max keeps listening for a follow-up before hanging up (default 8000) |
 | `REALTIME_WAKE_INTERRUPT` | `on` (default): say the wake word while Max is talking to cut him off and ask something else. Works on normal speakers |
 | `REALTIME_BARGE_IN=on` | Lets you interrupt Max mid-sentence. **Use only with headphones** (or a speakerphone with echo cancellation): otherwise Max hears his own voice and interrupts himself |
 | `REALTIME_TRANSCRIBE_MODEL` | Set to e.g. `gpt-4o-mini-transcribe` to also log what you said (small extra cost) |
 
 Switch back any time with `VOICE_MODE=pipeline`.
+
+## Taking turns: when Max decides you've finished
+
+Three things decide when Max answers, all under Settings → Device:
+
+1. **The pause** ("A pause of … means you've finished"). Gemini ends your turn after that much silence. It is also told to be slow to call a hesitation a pause (`REALTIME_END_OF_SPEECH=relaxed`).
+2. **The grace window** ("If you carry on within … Max stays quiet"). Max's answer is held back that long after your pause, with the microphone still open. Speak again inside it and the answer is dropped unheard: Max just keeps listening, and the voice model is told nobody heard it, so the next answer stands on its own. Every answer starts that much later, so keep it short (0.8 s is the default; "no time" switches it off).
+3. **The follow-up wait** ("After he answers, stop listening when nothing more is said for …").
+
+For telling him about your day, set the pause to 1.5–2 s and the grace window to 1.2 s. For quick commands, 0.8 s and 0.5 s.
+
+The log traces each of these: `[voice +12.3s] you carried on within the 800 ms grace window: Max's answer (1400 ms of speech, still arriving) dropped unheard, still listening`.
 
 ## Interrupting Max
 

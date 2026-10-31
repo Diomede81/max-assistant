@@ -38,6 +38,10 @@ const NO_ANSWER_MS = 15000;
 const RUNNING_MAX_MS = 150_000;
 /** After an interruption, listen again almost immediately (Max's audio has been cut). */
 const INTERRUPT_REOPEN_MS = 250;
+/** How long Max holds his answer back after the user pauses, unless Settings > Device says otherwise. */
+const DEFAULT_GRACE_MS = 800;
+/** Told to the voice model when a held answer was dropped (it believes it said it). */
+const UNHEARD_NOTE = '(The user had not finished speaking: your last answer was not played to them. Answer what they say next on its own, without referring to it.)';
 
 /**
  * One spoken conversation using OpenAI Realtime (speech in, speech out, no separate
@@ -97,6 +101,7 @@ export class RealtimeConversationService {
         ? this.tools.tools.filter((t) => !(t.type === 'function' && matchesAny(t.function.name, rt.excludeTools)))
         : [],
       silenceMs: this.device?.pauseMs ?? rt.silenceMs,
+      endOfSpeech: rt.endOfSpeech,
       interruptResponse: rt.bargeIn,
       transcribeModel: rt.transcribeModel,
       language: rt.language,
@@ -193,7 +198,10 @@ export class RealtimeConversationService {
     let speechStartedAt = 0;
     let limitNoted = false;
     const followUpMs = (this.device?.listenSec ?? 0) > 0 ? this.device!.listenSec! * 1000 : rt.followUpMs;
-    this.log.log(`[voice] session settings: pause ${this.device?.pauseMs ?? rt.silenceMs} ms, follow-up ${Math.round(followUpMs / 1000)}s, first turn ${FIRST_TURN_WAIT_MS / 1000}s, session limit ${rt.maxSessionMs / 1000}s, words ${rt.provider === 'gemini' || rt.transcribeModel ? 'known' : 'unknown'}`);
+    // "Let me finish": Max's answer is held back this long after the user pauses; speak again within it and the
+    // answer is dropped unheard, the mic still open. Not in headphones mode, where talking over him already works.
+    const graceMs = rt.bargeIn ? 0 : (this.device?.graceMs ?? DEFAULT_GRACE_MS);
+    this.log.log(`[voice] session settings: pause ${this.device?.pauseMs ?? rt.silenceMs} ms (${rt.endOfSpeech} end of speech), grace ${graceMs} ms, follow-up ${Math.round(followUpMs / 1000)}s, first turn ${FIRST_TURN_WAIT_MS / 1000}s, session limit ${rt.maxSessionMs / 1000}s, words ${rt.provider === 'gemini' || rt.transcribeModel ? 'known' : 'unknown'}`);
     let firstAudioThisTurn = true;
     let clearTimer: NodeJS.Timeout | undefined;
     // Bumped on every interruption: queued replies from before it are dropped, not played.
@@ -204,8 +212,17 @@ export class RealtimeConversationService {
     let responseActive = false;
     // What was said, for the conversation note saved to memory afterwards.
     const transcript: TranscriptLine[] = [];
+    /** Audio of a reply held back during the grace window (undefined: not holding). */
+    let held: Buffer[] | undefined;
+    let heldMs = 0;
+    let holdTimer: NodeJS.Timeout | undefined;
+    /** The server finished the held reply before the window ended: close the player once it has been pushed. */
+    let holdComplete = false;
+    /** A held reply was dropped because the user carried on; the server may still think Max said it. */
+    let droppedReply = false;
 
     interrupt = () => {
+      if (held) return dropHeld('interrupted');
       if (!speaking()) return; // only meaningful while Max is talking
       generation++;
       this.speaker.stop();
@@ -224,8 +241,50 @@ export class RealtimeConversationService {
     };
 
     const trace = (what: string) => this.log.log(`[voice +${((Date.now() - started) / 1000).toFixed(1)}s] ${what}`);
+    /** The user spoke again inside the grace window: the held answer is never played. */
+    const dropHeld = (why: string) => {
+      clearTimeout(holdTimer);
+      const ms = heldMs;
+      held = undefined;
+      heldMs = 0;
+      const finished = holdComplete;
+      holdComplete = false;
+      if (finished) {
+        // The server believes Max gave that answer: tell it nobody heard it, so the next answer doesn't build on it.
+        client.addContext?.(UNHEARD_NOTE);
+      } else {
+        discardingCancelled = true; // the rest of that reply is still coming: ignore it
+        droppedReply = true; // and when it ends, tell the server (unless it cancelled it itself)
+      }
+      busy = true; // waiting for the answer to what the user is now saying
+      firstAudioThisTurn = true;
+      trace(`${why} within the ${graceMs} ms grace window: Max's answer (${Math.round(ms)} ms of speech${finished ? ', complete' : ', still arriving'}) dropped unheard, still listening`);
+    };
+    /** The grace window passed with no more speech: play the held reply. */
+    const startPlaying = () => {
+      holdTimer = undefined;
+      const chunks = held ?? [];
+      held = undefined;
+      if (firstAudioThisTurn && speechStoppedAt) {
+        this.log.log(`voice-to-voice ${Date.now() - speechStoppedAt} ms (end of your speech -> Max starts talking, after the ${graceMs} ms grace window)`);
+        firstAudioThisTurn = false;
+      }
+      const q = (player = new AsyncQueue<Buffer>());
+      const gen = generation;
+      playing = playing.then(() => (gen === generation ? this.speaker.play(PCM24, q) : undefined)).catch(() => undefined);
+      audioEndsAt = Math.max(audioEndsAt, Date.now()) + heldMs;
+      heldMs = 0;
+      lastActivity = Math.max(lastActivity, audioEndsAt + echoTail); // the follow-up wait starts when he has finished
+      for (const b of chunks) q.push(b);
+      if (holdComplete) {
+        holdComplete = false;
+        q.close();
+        player = undefined;
+      }
+    };
     client.on('speech-started', () => {
       trace(`you started speaking${turns === 0 ? ' (first turn)' : ''}`);
+      if (held) dropHeld('you carried on');
       this.lastUserSpeechAt = Date.now();
       this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
@@ -248,8 +307,21 @@ export class RealtimeConversationService {
     client.on('audio', (pcm: Buffer) => {
       if (discardingCancelled) return;
       responseActive = true;
+      if (held) {
+        held.push(pcm);
+        heldMs += (pcm.length / (PCM24.rate * 2)) * 1000;
+        return;
+      }
       if (!player) {
         if (!rt.bargeIn && !speaking()) client.clearInput();
+        if (graceMs > 0 && firstAudioThisTurn) {
+          // The first sound of a reply: hold it back in case the user was only pausing.
+          held = [pcm];
+          heldMs = (pcm.length / (PCM24.rate * 2)) * 1000;
+          holdComplete = false;
+          holdTimer = setTimeout(startPlaying, graceMs);
+          return;
+        }
         if (firstAudioThisTurn && speechStoppedAt) {
           this.log.log(`voice-to-voice ${Date.now() - speechStoppedAt} ms (end of your speech -> Max starts talking)`);
           firstAudioThisTurn = false;
@@ -274,6 +346,10 @@ export class RealtimeConversationService {
       this.hushNow = undefined;
       this.face?.conversationEnded(); // the card shown for this conversation goes; his face comes back
       generation++;
+      clearTimeout(holdTimer);
+      held = undefined;
+      heldMs = 0;
+      holdComplete = false;
       this.speaker.stop();
       player?.close();
       player = undefined;
@@ -305,10 +381,24 @@ export class RealtimeConversationService {
       if (discardingCancelled) {
         // The reply the user interrupted has now ended on the server side.
         discardingCancelled = false;
-        if (r.status === 'cancelled') return;
+        if (r.status === 'cancelled') {
+          droppedReply = false;
+          return;
+        }
       }
-      player?.close();
-      player = undefined;
+      if (droppedReply) {
+        // The server believes Max gave that answer: tell it nobody heard it, so the next answer doesn't build on it.
+        droppedReply = false;
+        client.addContext?.(UNHEARD_NOTE);
+        trace('told the voice model its dropped answer went unheard');
+        if (r.status !== 'failed') return; // not an answer the user heard: no turn, no "finished answer"
+      }
+      if (held) {
+        holdComplete = true; // the player closes once the grace window has passed
+      } else {
+        player?.close();
+        player = undefined;
+      }
       // Discard anything the server buffered while Max was still audible (his own echo).
       if (!rt.bargeIn) {
         clearTimeout(clearTimer);

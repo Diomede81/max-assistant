@@ -49,6 +49,7 @@ export interface PanelData {
     startSound?: boolean;
     listenSec?: number;
     pauseMs?: number;
+    graceMs?: number;
     tone?: string;
     /** Night mode: muted between these times. */
     night?: { on: boolean; from: string; to: string; now: boolean };
@@ -1040,12 +1041,23 @@ ${d.device ? `<form class="stack" method="post" action="/device/voice">
 <div class="addfact"><label class="meta" for="pause-ms">A pause of</label><select id="pause-ms" name="pauseMs">${[
       [500, 'half a second'],
       [800, '0.8 seconds'],
-      [1200, '1.2 seconds'],
-      [1800, '1.8 seconds'],
-      [2500, '2.5 seconds'],
+      [1000, '1 second'],
+      [1500, '1.5 seconds'],
+      [2000, '2 seconds'],
+      [3000, '3 seconds'],
+      [4000, '4 seconds'],
     ]
-      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.pauseMs ?? 500) ? 'selected' : ''}>${l}</option>`)
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.pauseMs ?? 1000) ? 'selected' : ''}>${l}</option>`)
       .join('')}</select><span class="meta">means you've finished and Max answers. Longer lets you think mid-sentence (telling him about your day); shorter is snappier.</span></div>
+<div class="addfact"><label class="meta" for="grace-ms">If you carry on within</label><select id="grace-ms" name="graceMs">${[
+      [0, 'no time (he answers at once)'],
+      [500, 'half a second'],
+      [800, '0.8 seconds'],
+      [1200, '1.2 seconds'],
+      [2000, '2 seconds'],
+    ]
+      .map(([v, l]) => `<option value="${v}" ${v === (d.device!.graceMs ?? 800) ? 'selected' : ''}>${l}</option>`)
+      .join('')}</select><span class="meta">of that pause, Max stays quiet and keeps listening: his answer is held back that long and dropped if you speak again. Every answer starts that much later.</span></div>
 <div class="addfact"><label class="meta" for="listen-sec">After he answers, stop listening when nothing more is said for</label><select id="listen-sec" name="listenSec">${[
       [4, '4 seconds'],
       [6, '6 seconds'],

@@ -127,6 +127,10 @@ export class GeminiLiveClient extends EventEmitter implements VoiceClient {
     /* not supported by Gemini Live */
   }
 
+  addContext(text: string): void {
+    this.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: false } });
+  }
+
   speak(text: string): void {
     this.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } });
   }
@@ -241,7 +245,18 @@ export function buildGeminiSetup(opts: VoiceClientOptions, parts: GeminiSetupPar
     // Strict OpenAPI-style schemas: Gemini Live rejects many JSON Schema keywords with
     // "Request contains an invalid argument" once the model tries to use the tools.
     ...(opts.tools.length ? { tools: [{ functionDeclarations: geminiDeclarations(opts.tools) }] } : {}),
-    ...(p.vad ? { realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: opts.silenceMs } } } : {}),
+    // endOfSpeechSensitivity LOW: Gemini is slower to decide the user has finished, so a breath or a thought
+    // mid-sentence doesn't end the turn; silenceDurationMs is the pause that does.
+    ...(p.vad
+      ? {
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              silenceDurationMs: opts.silenceMs,
+              endOfSpeechSensitivity: opts.endOfSpeech === 'quick' ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW',
+            },
+          },
+        }
+      : {}),
     ...(p.transcription ? { inputAudioTranscription: {}, outputAudioTranscription: {} } : {}),
   };
 }

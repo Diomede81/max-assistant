@@ -35,6 +35,8 @@ export interface DeviceStatus {
   micLightReport?: { ok: boolean; want: string; message: string; at: string };
   /** Seconds of no words after Max's answer before a conversation ends (undefined: the .env default). */
   listenSec?: number;
+  /** Milliseconds of pause that mean "I've finished speaking" in the live voice (undefined: the .env default). */
+  pauseMs?: number;
 }
 
 /** Speaker tuning, applied on the box by max-sound.sh (an equaliser before the mic board). */
@@ -60,7 +62,7 @@ const GREET_AGAIN_MIN = 10;
 @Injectable()
 export class DeviceService implements OnModuleInit {
   private readonly log = new Logger('Device');
-  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; tone?: SpeakerTone; night?: Night; micLight?: MicLight }>;
+  private readonly store: SealedStore<{ brightness?: number; greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; pauseMs?: number; tone?: SpeakerTone; night?: Night; micLight?: MicLight }>;
   /** The mic board's LED ring: on, off, or off during night mode (and the face's sleep hours). */
   private micLightSetting: MicLight = 'night';
   private micLightApplied?: 'on' | 'off';
@@ -68,7 +70,7 @@ export class DeviceService implements OnModuleInit {
   /** Night mode: between these times Max is muted (no wake word, no announcements, no screen notices). */
   private nightSettings: Night = { on: false, from: '23:00', to: '07:00' };
   private level = 100;
-  private voice: { greeting: string; greetAgainMin: number; startSound: boolean; listenSec?: number } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
+  private voice: { greeting: string; greetAgainMin: number; startSound: boolean; listenSec?: number; pauseMs?: number } = { greeting: DEFAULT_GREETING, greetAgainMin: GREET_AGAIN_MIN, startSound: true };
   private speakerTone: SpeakerTone = 'flat';
 
   constructor(@Inject(APP_CONFIG) private readonly cfg: AppConfig) {
@@ -79,7 +81,7 @@ export class DeviceService implements OnModuleInit {
     try {
       const saved = this.store.load();
       this.level = clamp(saved?.brightness ?? 100, MIN_BRIGHTNESS);
-      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true, listenSec: saved?.listenSec };
+      this.voice = { greeting: saved?.greeting ?? DEFAULT_GREETING, greetAgainMin: saved?.greetAgainMin ?? GREET_AGAIN_MIN, startSound: saved?.startSound ?? true, listenSec: saved?.listenSec, pauseMs: saved?.pauseMs };
       if (saved?.tone && saved.tone in SPEAKER_TONES) this.speakerTone = saved.tone;
       if (saved?.night) this.nightSettings = { ...this.nightSettings, ...saved.night };
       if (saved?.micLight && MIC_LIGHTS.includes(saved.micLight)) this.micLightSetting = saved.micLight;
@@ -185,8 +187,14 @@ export class DeviceService implements OnModuleInit {
     return this.voice.listenSec;
   }
 
-  setVoice(changes: { greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number }): string {
+  /** The pause (ms) that ends what the user is saying, in the live voice (undefined: the .env default). */
+  get pauseMs(): number | undefined {
+    return this.voice.pauseMs;
+  }
+
+  setVoice(changes: { greeting?: string; greetAgainMin?: number; startSound?: boolean; listenSec?: number; pauseMs?: number }): string {
     if (changes.listenSec !== undefined && Number.isFinite(changes.listenSec)) this.voice.listenSec = Math.max(3, Math.min(60, Math.round(changes.listenSec)));
+    if (changes.pauseMs !== undefined && Number.isFinite(changes.pauseMs)) this.voice.pauseMs = Math.max(300, Math.min(3000, Math.round(changes.pauseMs)));
     if (changes.greeting !== undefined) this.voice.greeting = changes.greeting.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (changes.greetAgainMin !== undefined && Number.isFinite(changes.greetAgainMin)) this.voice.greetAgainMin = Math.max(0, Math.min(240, Math.round(changes.greetAgainMin)));
     if (changes.startSound !== undefined) this.voice.startSound = changes.startSound;

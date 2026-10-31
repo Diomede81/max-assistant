@@ -96,7 +96,7 @@ export class RealtimeConversationService {
       tools: rt.tools
         ? this.tools.tools.filter((t) => !(t.type === 'function' && matchesAny(t.function.name, rt.excludeTools)))
         : [],
-      silenceMs: rt.silenceMs,
+      silenceMs: this.device?.pauseMs ?? rt.silenceMs,
       interruptResponse: rt.bargeIn,
       transcribeModel: rt.transcribeModel,
       language: rt.language,
@@ -191,7 +191,9 @@ export class RealtimeConversationService {
     /** When the user last said actual words (the transcript), and when the current sound started. */
     let wordsAt = 0;
     let speechStartedAt = 0;
+    let limitNoted = false;
     const followUpMs = (this.device?.listenSec ?? 0) > 0 ? this.device!.listenSec! * 1000 : rt.followUpMs;
+    this.log.log(`[voice] session settings: pause ${this.device?.pauseMs ?? rt.silenceMs} ms, follow-up ${Math.round(followUpMs / 1000)}s, first turn ${FIRST_TURN_WAIT_MS / 1000}s, session limit ${rt.maxSessionMs / 1000}s, words ${rt.provider === 'gemini' || rt.transcribeModel ? 'known' : 'unknown'}`);
     let firstAudioThisTurn = true;
     let clearTimer: NodeJS.Timeout | undefined;
     // Bumped on every interruption: queued replies from before it are dropped, not played.
@@ -221,7 +223,9 @@ export class RealtimeConversationService {
       this.log.log('Interrupted - Max stopped talking, listening to you');
     };
 
+    const trace = (what: string) => this.log.log(`[voice +${((Date.now() - started) / 1000).toFixed(1)}s] ${what}`);
     client.on('speech-started', () => {
+      trace(`you started speaking${turns === 0 ? ' (first turn)' : ''}`);
       this.lastUserSpeechAt = Date.now();
       this.tools.userSpoke(); // may be the answer to "Shall I go ahead?"
       this.face?.setState('listening');
@@ -239,6 +243,7 @@ export class RealtimeConversationService {
       speechStoppedAt = Date.now();
       // the words of what was just said may still be on their way: counted when they arrive (heardWords)
       firstAudioThisTurn = true;
+      trace(`you stopped speaking after ${((speechStoppedAt - speechStartedAt) / 1000).toFixed(1)}s${wordsAt >= speechStartedAt ? '' : ' (words not in yet)'}; waiting for Max`);
     });
     client.on('audio', (pcm: Buffer) => {
       if (discardingCancelled) return;
@@ -320,15 +325,19 @@ export class RealtimeConversationService {
       }
       turns++;
       busy = false;
+      trace(`Max finished answer ${turns}; listening for ${Math.round(followUpMs / 1000)}s of nothing said`);
       if (this.control?.consumeEndAfterReply()) endAfterReply = true;
       this.face?.setState('listening');
       lastActivity = Math.max(Date.now(), audioEndsAt + echoTail);
     });
     // What the user said, as it comes in: the answer to "Shall I go ahead?" is checked against it.
     const heardWords = (t: string) => {
-      if (t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter((w) => w.length > 1).length < 1) return;
+      const n = t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter((w) => w.length > 1).length;
+      if (n < 1) return;
+      const first = wordsAt < speechStartedAt;
       wordsAt = Date.now();
       lastActivity = wordsAt;
+      if (first) trace(`your words arrived (${n} so far${speechStoppedAt > speechStartedAt ? `, ${((wordsAt - speechStoppedAt) / 1000).toFixed(1)}s after you stopped` : ', while you speak'})`);
     };
     client.on('user-words', (t: string) => {
       this.tools.heard(t);
@@ -391,17 +400,24 @@ export class RealtimeConversationService {
         // Switched mode: end once he's confirmed it, so the next conversation starts in the new
         // mode with only that mode's memories (nothing from this one carries over).
         else if (!busy && !speaking() && startMode && this.modes?.mode !== startMode) why = `switched to ${this.modes?.mode} mode`;
-        else if (now - started > rt.maxSessionMs) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
+        // The session limit never cuts the user off mid-sentence or mid-answer: it ends the session at the next quiet moment.
+        else if (now - started > rt.maxSessionMs && !userSpeaking && !busy && !speaking()) why = `reached the ${rt.maxSessionMs / 1000}s session limit`;
+        else if (now - started > rt.maxSessionMs && !limitNoted) {
+          limitNoted = true;
+          trace(`past the ${rt.maxSessionMs / 1000}s session limit: ending at the next quiet moment`);
+        }
         // an action is still working: not "no answer", not quiet (but never more than RUNNING_MAX_MS: a hung one
         // must not leave Max deaf; the action router's own limits normally end it well before)
         else if ([...running.values()].some((t) => now - t < RUNNING_MAX_MS)) lastActivity = now;
         else if (busy && !speaking() && speechStoppedAt && now - speechStoppedAt > NO_ANSWER_MS && now - lastActivity > NO_ANSWER_MS) {
           busy = false; // the provider never answered (e.g. it heard noise, not a request)
           lastActivity = now;
+          trace(`no answer from the voice model ${NO_ANSWER_MS / 1000}s after you stopped: treating it as not a request`);
         } else if (!busy && !userSpeaking && !deaf() && quietFor > limit) {
           why = turns === 0 ? 'no request heard' : `nothing more said for ${Math.round(limit / 1000)}s`;
         }
         if (why) {
+          trace(`ending: ${why} (quiet for ${(quietFor / 1000).toFixed(1)}s, limit ${Math.round(limit / 1000)}s, speaking ${userSpeaking}, busy ${busy})`);
           clearInterval(tick);
           resolve(why);
         }

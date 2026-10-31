@@ -324,6 +324,15 @@ By hand, on the box: `sudo python3 /usr/local/lib/max/max-update.py`.
 The very first time (to install this updater) it's the old way: copy the new version from your Mac with the
 `rsync` command, then run `cd ~/max-assistant && sudo ./scripts/pi/setup.sh`.
 
+## When something goes wrong with a conversation
+
+Settings → Log keeps a step-by-step trace of every live-voice conversation, with the seconds since it
+started: the settings in force, when you started and stopped speaking, when your words arrived, each of
+Max's answers, and the exact reason it ended ("nothing more said for 8s", "no request heard", "past the
+session limit: ending at the next quiet moment"). No words are logged, only counts and timings. When Max
+cuts you off or won't answer, Settings → Log → **Download a support report** right after and send it: the
+trace says which rule ended it.
+
 ## Troubleshooting
 
 | Problem | What to do |

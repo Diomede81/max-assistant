@@ -385,7 +385,7 @@ export function loadConfig(): AppConfig {
       tools: env.REALTIME_TOOLS !== 'off',
       excludeTools: list(env.REALTIME_EXCLUDE_TOOLS ?? ''),
       followUpMs: num(env.REALTIME_FOLLOW_UP_MS, 8000),
-      maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 300) * 1000,
+      maxSessionMs: num(env.REALTIME_MAX_SESSION_S, 900) * 1000,
     },
     ha: {
       mcpUrl: env.HA_MCP_URL ?? 'http://homeassistant.local:8123/api/mcp',

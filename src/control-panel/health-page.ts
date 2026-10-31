@@ -95,6 +95,7 @@ export interface PanelHealthPlan {
   running: boolean;
   lastError?: string;
   latest?: { at: string; text: string; sent: string[]; failed: string[]; used?: { url: string; title: string }[] };
+  feedback?: { at: string; date: string; rating?: string; text?: string }[];
   meals?: string[];
   daily?: boolean;
   dailyTime?: string;
@@ -240,10 +241,17 @@ function planCard(p: PanelHealthPlan, esc: Esc): string {
           : ''
       }<pre class="hplan">${esc(p.latest.text)}</pre>`
     : `<p class="empty">Not made yet: it's made at the next scheduled time, or press Make now.</p>`;
+  const feedback = p.part === 'exercise'
+    ? `<h3>How the sessions went</h3>
+<p class="meta">Tell Max out loud when you log a session ("I did today's workout": he asks how it went), or here. The coach reads this before writing the next sessions: too hard means easier and more recovery, too easy means progress, anything that hurt is swapped out.</p>
+${(p.feedback ?? []).length ? `<ul>${[...(p.feedback ?? [])].reverse().slice(0, 6).map((f) => `<li class="row"><div><div class="name">${esc([f.rating, f.text].filter(Boolean).join(' · '))}</div><div class="meta">${esc(f.date)}</div></div></li>`).join('')}</ul>` : ''}
+<form class="addfact wrap" method="post" action="/health/plan-feedback"><input type="hidden" name="id" value="${esc(p.id)}"><select name="rating" aria-label="How was it"><option value="">How was it?</option><option value="too easy">Too easy</option><option value="about right">About right</option><option value="too hard">Too hard</option></select><input name="text" maxlength="400" placeholder="What hurt, what you liked, what to change" aria-label="Notes"><label class="check"><input type="checkbox" name="redo" value="yes"> Redo the rest of the week now</label><button class="btn secondary" type="submit">Note it</button></form>`
+    : '';
   return `<section id="plan-${esc(p.id)}"><h2>${esc(p.name)} ${status}</h2>
 <p class="meta">${p.span === 'week' ? 'The week ahead' : 'The day'} · ${esc(days)} at ${esc(p.time)} · sent by ${esc(to)} · ${p.sources.length ? `following ${esc(p.sources.map(host).join(', '))}` : 'no websites (general advice)'}</p>
 ${p.lastError && !p.running ? `<p class="hint">Last time: ${esc(p.lastError)}</p>` : ''}
 ${p.running ? '<span data-wait></span>' : ''}${latest}
+${feedback}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/health/plan-run"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn" type="submit" ${p.running ? 'disabled' : ''}>Make now</button></form>${p.part === 'diet' && p.span === 'week' && p.daily ? `<form method="post" action="/health/plan-today"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">Send today's recipes</button></form>` : ''}
 <form method="post" action="/health/plan-toggle"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">${p.enabled ? 'Pause' : 'Resume'}</button></form></div>

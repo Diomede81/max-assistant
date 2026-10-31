@@ -559,7 +559,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           },
         };
       }),
-      plans: h.plans.map((p) => ({ ...p, running: h.running.has(p.id), latest: p.history[0] })),
+      plans: h.plans.map((p) => ({ ...p, running: h.running.has(p.id), latest: p.history[0], feedback: p.feedback })),
     };
   }
 
@@ -652,6 +652,10 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(h.togglePlan(get('id')), true, `plan-${get('id')}`);
       case 'plan-today':
         return back(await h.sendToday(get('id')), true, `plan-${get('id')}`);
+      case 'plan-feedback': {
+        const msg = await h.feedback(get('id'), { rating: get('rating'), text: get('text'), redo: f.get('redo') === 'yes' });
+        return back(msg.split('\n')[0], /^Noted/.test(msg), `plan-${get('id')}`);
+      }
       case 'plan-delete':
         if (f.get('confirm') !== 'yes') return back('Tick the box to confirm.', false, `plan-${get('id')}`);
         return back(h.deletePlan(get('id')), true, 'health-plans');

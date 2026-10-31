@@ -41,6 +41,14 @@ In **Health → Plans**, create a plan:
 Max takes your recent log into account (progressing gently, not repeating yesterday's hard session) and
 varies each plan from the last. Ask "what's my workout today?", or "make me a new workout" for a fresh one.
 
+**Feedback shapes the next sessions.** When you log a session from the plan ("Max, I did today's workout"),
+he asks how you found it: too easy, about right or too hard, and anything that hurt or you'd change. The
+coach reads that before writing the next sessions: too hard means easier and more recovery, too easy means
+progress, anything that hurt is swapped out, and the plan says in its first line what changed. Say "redo the
+rest of the week" and the remaining days of a weekly plan are made again straight away, adjusted, and sent
+as set up (a daily plan simply adjusts tomorrow's). The same under the plan on Health → Plans, "How the
+sessions went", where the last few are listed.
+
 The plans are written by the model chosen in **Settings → AI models → Health plans** (e.g. DeepSeek); until
 you choose one, Max's main model writes them. A "thinking" model (e.g. DeepSeek's reasoner) gets plenty of room to think
 and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web & trains), Max can read

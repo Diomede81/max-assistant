@@ -66,7 +66,21 @@ export interface Plan {
   lastRunDay?: string;
   lastError?: string;
   history: { at: string; text: string; sent: string[]; failed: string[]; used?: { url: string; title: string }[] }[];
+  /** How the user found the sessions (asked when they log one): the next sessions are adjusted from it. */
+  feedback?: Feedback[];
 }
+
+export interface Feedback {
+  at: string;
+  /** The day of the session it is about (YYYY-MM-DD). */
+  date: string;
+  rating?: Rating;
+  text?: string;
+}
+
+export const RATINGS = ['too easy', 'about right', 'too hard'] as const;
+export type Rating = (typeof RATINGS)[number];
+const FEEDBACK_KEPT = 20;
 
 /** About the user, for plans that suit them (Health → You). */
 export interface Profile {
@@ -717,8 +731,39 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     return 'Today\'s recipes sent on WhatsApp.';
   }
 
+  /**
+   * How the user found a session: kept with the plan and put in front of the coach for the next one. With
+   * `redo`, the sessions still to come are made again now, adjusted (the rest of the week for a weekly plan;
+   * a daily plan's next session uses it anyway).
+   */
+  async feedback(id: string, input: { rating?: string; text?: string; date?: string; redo?: boolean }): Promise<string> {
+    const p = this.data.plans.find((x) => x.id === id);
+    if (!p) return 'That plan no longer exists.';
+    if (p.part !== 'exercise') return 'Feedback is for exercise plans; for meals, change the plan\'s brief.';
+    const rating = RATINGS.includes(input.rating as Rating) ? (input.rating as Rating) : undefined;
+    const text = input.text?.replace(/\s+/g, ' ').trim().slice(0, 400) || undefined;
+    if (!rating && !text) return 'How did it go: too easy, about right, or too hard, and anything that hurt or you\'d change?';
+    const date = input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : local().date;
+    p.feedback = [...(p.feedback ?? []), { at: new Date().toISOString(), date, rating, text }].slice(-FEEDBACK_KEPT);
+    this.save();
+    this.log.log(`${p.name}: feedback noted (${rating ?? 'no rating'})`);
+    const noted = `Noted for ${p.name}: ${[rating, text].filter(Boolean).join(', ')}.`;
+    if (!input.redo) return `${noted} The next session will take it into account.`;
+    if (p.span !== 'week') return `${noted} Tomorrow's session will be adjusted from it.`;
+    if (local().weekday === 7) return `${noted} It's Sunday: the next week's plan will be adjusted from it.`;
+    const r = await this.run(p.id, { restOfWeek: true });
+    return r.ok ? `${noted} The rest of the week has been redone and sent as set up:\n${r.text}` : `${noted} ${r.text}`;
+  }
+
+  /** Whether an exercise plan has a session the user may have just done (made today or yesterday), with no feedback yet today. */
+  private sessionToAskAbout(): Plan | undefined {
+    const today = local().date;
+    const yesterday = local(new Date(Date.now() - 86_400_000)).date;
+    return this.data.plans.find((p) => p.part === 'exercise' && p.history[0] && [today, yesterday].includes(local(new Date(p.history[0].at)).date) && !(p.feedback ?? []).some((f) => f.date === today));
+  }
+
   /** Makes the plan now and sends it as set up. Returns the plan's text (or why not). */
-  async run(id: string, opts: { send?: boolean } = {}): Promise<{ ok: boolean; text: string }> {
+  async run(id: string, opts: { send?: boolean; restOfWeek?: boolean } = {}): Promise<{ ok: boolean; text: string }> {
     const p = this.data.plans.find((x) => x.id === id);
     if (!p) return { ok: false, text: 'That plan no longer exists.' };
     if (this.running.has(id)) return { ok: false, text: 'That plan is being prepared already.' };
@@ -726,7 +771,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     p.lastRunDay = local().date;
     this.save();
     try {
-      const { text, used } = await this.make(p);
+      const { text, used } = await this.make(p, { restOfWeek: opts.restOfWeek });
       const entry = { at: new Date().toISOString(), text, sent: [] as string[], failed: [] as string[], used };
       if (opts.send !== false) await this.deliver(p, text, entry);
       p.history.unshift(entry);
@@ -744,12 +789,16 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async make(p: Plan): Promise<{ text: string; used: { url: string; title: string }[] }> {
+  private async make(p: Plan, opts: { restOfWeek?: boolean } = {}): Promise<{ text: string; used: { url: string; title: string }[] }> {
     const { read, used } = await this.gather(p);
     // a meal plan (for the week or the day) is recipes with a shopping list
     if (p.part === 'diet') return this.makeMeals(p, read, used);
     const today = local();
-    const period = p.span === 'week' ? `the 7 days starting ${DAYS[today.weekday - 1]} ${today.date}` : `${DAYS[today.weekday - 1]} ${today.date}`;
+    const tomorrow = local(new Date(Date.now() + 86_400_000));
+    const period = opts.restOfWeek
+      ? `the rest of this week, from ${DAYS[tomorrow.weekday - 1]} ${tomorrow.date} to Sunday (only those days)`
+      : p.span === 'week' ? `the 7 days starting ${DAYS[today.weekday - 1]} ${today.date}` : `${DAYS[today.weekday - 1]} ${today.date}`;
+    const feedback = (p.feedback ?? []).slice(-8).map((f) => `${f.date}: ${[f.rating, f.text].filter(Boolean).join(' - ')}`);
     const logs = PART_IDS.filter((x) => x === p.part || (p.part === 'exercise' && (x === 'sleep' || x === 'heart')) || (p.part === 'diet' && (x === 'weight' || x === 'exercise')))
       .map((x) => {
         const items = this.recent(x, 14).slice(-25).map((e) => `${e.date} ${[e.text, ...Object.entries(e.values).map(([k, v]) => `${k} ${v}`)].filter(Boolean).join(', ')}`);
@@ -763,6 +812,9 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
         ? 'Base it on the websites below: use their methods, exercises or recipes, and name the site an idea comes from (in brackets). If a site couldn\'t be read, use sound general practice and say which site was missing.'
         : 'No websites were given: use sound general practice.',
       'Match the user\'s age and fitness level (intensity, volume, impact, recovery), and always work around their limits (injuries, conditions). Follow the user\'s brief (level, goal, equipment, time, likes, limits) and their recent log: build on what they did (progress gently), avoid repeating yesterday\'s hard work, and vary it from the previous plan.',
+      feedback.length
+        ? 'The user\'s feedback on recent sessions is below and comes first: "too hard" means lower the volume or intensity and add recovery; "too easy" means progress (more sets, load, or a harder variation); anything that hurt or they disliked is left out and replaced; what they liked stays. Say in one line at the top what you changed and why.'
+        : '',
       'Each session with a warm-up, the main part (each exercise with sets × reps or minutes, and rest) and a cool-down; how long it takes in total. For a week, every day, rest days included.',
       'Safe for the level stated. End with one line: "Not medical advice: stop if you feel pain, dizziness or chest discomfort, and check with your GP if you have a health condition."',
       `Plain text for email and WhatsApp: a title line, short headings, lines starting with "- ". No markdown symbols (#, *), no tables. At most ${p.span === 'week' ? 700 : 400} words.`,
@@ -774,7 +826,8 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       about ? `About the user: ${about}.` : 'About the user: not filled in (assume a beginner, keep it gentle).',
       `Brief: ${p.brief}`,
       `Recent log (last 14 days):\n${logs || '(nothing logged yet)'}`,
-      last ? `Previous plan (vary from it):\n${last.slice(0, 2500)}` : '',
+      feedback.length ? `How the user found recent sessions (newest last):\n${feedback.join('\n')}` : '',
+      last ? `Previous plan (vary from it${opts.restOfWeek ? '; keep what worked, change what the feedback says' : ''}):\n${last.slice(0, 2500)}` : '',
       read.length ? `Websites:\n${read.join('\n\n')}` : '',
     ]
       .filter(Boolean)
@@ -1050,12 +1103,16 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
           name: 'health_plan',
           description:
             `The user's exercise routine or meal plan${plans ? ` (plans: ${plans})` : ' (none set up yet: they create plans in the Health section of the control panel)'}. ` +
-            '"latest": the most recent one (for "what\'s my workout today?"); "new": make a fresh one now from their chosen websites (takes up to a minute; say so first) and send it as set up.',
+            '"latest": the most recent one (for "what\'s my workout today?"); "new": make a fresh one now from their chosen websites (takes up to a minute; say so first) and send it as set up. ' +
+            '"feedback": how the user found a session (rating: too easy, about right, too hard; text: what hurt, what they liked or would change): the coach adjusts the next sessions from it; with redo=true the rest of the week is made again now, adjusted (only when they ask for that).',
           parameters: {
             type: 'object',
             properties: {
-              action: { type: 'string', enum: ['latest', 'new'] },
+              action: { type: 'string', enum: ['latest', 'new', 'feedback'] },
               plan: { type: 'string', description: 'Which plan (name, or "exercise"/"diet"); empty = the first' },
+              rating: { type: 'string', enum: [...RATINGS], description: 'For feedback' },
+              text: { type: 'string', description: 'For feedback: in their words' },
+              redo: { type: 'boolean', description: 'For feedback: make the rest of the week again now, adjusted' },
             },
             required: ['action'],
           },
@@ -1134,7 +1191,12 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       if (!(part in PARTS)) return 'Which part: exercise, diet, heart, sleep or weight?';
       const values: Record<string, unknown> = {};
       for (const f of PARTS[part].fields) values[f.key] = args[f.key];
-      return this.add(part, { text: typeof args.text === 'string' ? args.text : '', values, date: typeof args.date === 'string' ? args.date : undefined }).message;
+      const logged = this.add(part, { text: typeof args.text === 'string' ? args.text : '', values, date: typeof args.date === 'string' ? args.date : undefined }).message;
+      // A session from the plan: ask how it went, so the next ones can be adjusted (the plan's feedback).
+      const ask = part === 'exercise' ? this.sessionToAskAbout() : undefined;
+      return ask
+        ? `${logged} This looks like a session from the plan "${ask.name}": ask the user how they found it (too easy, about right, too hard; anything that hurt, or they'd change), then record the answer with health_plan action "feedback" (plan "${ask.name}"). Only if they ask to change the rest of the week now, set redo=true.`
+        : logged;
     }
     if (name === 'health_summary') {
       const one = String(args.part ?? '') as Part;
@@ -1148,6 +1210,10 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
     if (args.action === 'new') {
       const r = await this.run(plan.id);
       return r.ok ? `${plan.name} (new):\n${r.text}\n(Say the key points briefly; the full plan was sent as set up.)` : r.text;
+    }
+    if (args.action === 'feedback') {
+      const out = await this.feedback(plan.id, { rating: String(args.rating ?? ''), text: typeof args.text === 'string' ? args.text : undefined, redo: args.redo === true });
+      return out.includes('redone and sent') ? `${out}\n(Say the key changes briefly; the full plan was sent as set up.)` : out;
     }
     const last = plan.history[0];
     if (!last) return `${plan.name} hasn't been made yet: offer to make one now.`;

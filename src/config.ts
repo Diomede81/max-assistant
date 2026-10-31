@@ -164,6 +164,7 @@ export interface AppConfig {
     /** Extra delivery/personality instructions appended to the system prompt */
     style: string;
     silenceMs: number;
+    endOfSpeech: 'quick' | 'relaxed';
     bargeIn: boolean;
     /** Say the wake word while Max is talking to interrupt him (works on speakers, no echo issues). */
     wakeInterrupt: boolean;
@@ -378,7 +379,8 @@ export function loadConfig(): AppConfig {
         env.REALTIME_STYLE ??
         'Speak with a warm, calm British accent, like a witty butler. Keep replies short and natural; ' +
           'never read out lists or long numbers unless asked.',
-      silenceMs: num(env.REALTIME_SILENCE_MS, 500),
+      silenceMs: num(env.REALTIME_SILENCE_MS, 1000),
+      endOfSpeech: env.REALTIME_END_OF_SPEECH === 'quick' ? 'quick' : 'relaxed',
       bargeIn: env.REALTIME_BARGE_IN === 'on',
       wakeInterrupt: env.REALTIME_WAKE_INTERRUPT !== 'off',
       transcribeModel: env.REALTIME_TRANSCRIBE_MODEL || undefined,

@@ -9,6 +9,8 @@ export interface VoiceClientOptions {
   instructions: string;
   tools: ChatCompletionTool[];
   silenceMs: number;
+  /** How readily the provider decides you've finished: 'relaxed' waits through hesitations (Gemini only). */
+  endOfSpeech?: 'quick' | 'relaxed';
   interruptResponse: boolean;
   transcribeModel?: string;
   language?: string;
@@ -35,6 +37,8 @@ export interface VoiceClient extends EventEmitter {
   requestResponse(): void;
   cancelResponse(): void;
   clearInput(): void;
+  /** Adds a note to the conversation without asking for an answer (providers that can't, ignore it). */
+  addContext?(text: string): void;
   /** Asks the voice to say a line of text (used to record the greeting and voice samples). */
   speak(text: string): void;
   close(): void;

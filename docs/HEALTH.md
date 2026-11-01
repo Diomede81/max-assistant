@@ -54,6 +54,14 @@ you choose one, Max's main model writes them. A "thinking" model (e.g. DeepSeek'
 and still answer; if a model gives back nothing, Max's main model writes that plan instead, and the log says why. With Firecrawl set up (Connections → Web & trains), Max can read
 more websites (ones that need a browser).
 
+### Wording what you want
+
+Write it as you'd say it and press **Improve the wording** next to Save. Max rewrites it with what a plan
+needs to fit you (level and goal, equipment, time per session and sessions a week, likes, injuries or
+foods to avoid, how progress should go, the shape you want) and marks anything he still needs to know
+like "[time per session?]". The suggestion appears under the box with the reasons; **Use this wording**
+copies it in, and nothing changes until you press Save.
+
 ## Weekly meals and the shopping list
 
 1. **Health → You**: set your **goal** (lose weight, build muscle, keep my weight, eat healthily). With your age,

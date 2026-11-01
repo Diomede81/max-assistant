@@ -1,5 +1,9 @@
 /** The News briefing area of the control panel: scheduled jobs such as the news briefing. */
+import { Wording, wordingBlock, wordingButton } from './wording';
+
 export interface PanelRoutines {
+  /** Wording suggested for a briefing's interests (by id, or 'new'), after "Improve the wording". */
+  wordings?: Record<string, Wording>;
   /** Firecrawl is set up (news search, and reading sites that need a browser). */
   firecrawl: boolean;
   list: PanelRoutine[];
@@ -41,17 +45,17 @@ const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const LIST = { personal: 'Personal (personal mode)', work: 'Work (work mode)', household: 'Household (every mode)' } as Record<string, string>;
 
 export function routinesSection(r: PanelRoutines, esc: Esc): string {
-  const cards = r.list.map((x) => routineCard(x, r.firecrawl, esc)).join('');
+  const cards = r.list.map((x) => routineCard(x, r.firecrawl, esc, r.wordings?.[x.id])).join('');
   return `<section id="routines"><h2>Routines</h2>
 <p class="meta">Jobs Max does on a schedule, so the result is ready when you ask. The <b>news briefing</b> checks your websites, picks the
 articles that match your interests, reads them and prepares a short summary of each. Ask "Hey Max, what's the news?", or hear about it in
 "what's going on in my day?". ${r.firecrawl ? '' : 'Tip: add a Firecrawl key (Connections → Web & trains) so Max can also read sites that need a browser and search the news for your interests.'}</p>
 ${r.list.length ? '' : '<p class="empty">No routines yet: create your first news briefing below.</p>'}</section>
 ${cards}
-<section id="routine-new"><h2>New news briefing</h2>${routineForm(undefined, r.firecrawl, esc)}</section>`;
+<section id="routine-new"><h2>New news briefing</h2>${routineForm(undefined, r.firecrawl, esc, r.wordings?.new)}</section>`;
 }
 
-function routineCard(x: PanelRoutine, firecrawl: boolean, esc: Esc): string {
+function routineCard(x: PanelRoutine, firecrawl: boolean, esc: Esc, wording?: Wording): string {
   const b = x.briefing;
   const host = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
   const status = x.running
@@ -81,7 +85,7 @@ ${x.lastError && !x.running ? `<p class="hint">Last run: ${esc(x.lastError)}</p>
 <form method="post" action="/routines/toggle"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary" type="submit">${x.enabled ? 'Pause' : 'Resume'}</button></form>
 </div>
 ${suggestBlock(x, esc)}
-<details><summary class="meta">Settings</summary>${routineForm(x, firecrawl, esc)}
+<details><summary class="meta">Settings</summary>${routineForm(x, firecrawl, esc, wording)}
 <form class="addfact danger" method="post" action="/routines/delete"><input type="hidden" name="id" value="${esc(x.id)}"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this routine and its briefings</label><button class="btn secondary" type="submit">Delete</button></form></details>
 </section>`;
 }
@@ -114,7 +118,7 @@ ${(i.samples?.length ? i.samples : i.sample ? [i.sample] : []).map((t) => `<span
   return `<h3>Suggested websites</h3>${intro}${list}<div class="acts" style="margin-top:8px">${button}</div>`;
 }
 
-function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc): string {
+function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc, wording?: Wording): string {
   const days = x?.days ?? [1, 2, 3, 4, 5, 6, 7];
   const lists = Object.entries(LIST).map(([v, l]) => `<option value="${v}" ${v === (x?.vault ?? 'personal') ? 'selected' : ''}>${l}</option>`).join('');
   const counts = [3, 4, 5, 6, 7, 8, 10].map((n) => `<option ${n === (x?.count ?? 6) ? 'selected' : ''}>${n}</option>`).join('');
@@ -125,14 +129,15 @@ function routineForm(x: PanelRoutine | undefined, firecrawl: boolean, esc: Esc):
 <label>What interests you <span class="meta">(topics, people, places; separated by commas)</span>
 <textarea name="interests" rows="2" placeholder="Formula 1, AI start-ups, Brighton local news, Italian politics">${esc(x?.interests ?? '')}</textarea></label>
 <label>Leave out <span class="meta">(optional)</span><input name="avoid" maxlength="500" value="${esc(x?.avoid ?? '')}" placeholder="celebrity gossip, shopping guides"></label>
+${wordingBlock(wording, [{ name: 'interests', label: 'What interests you', rows: 3 }, { name: 'avoid', label: 'Leave out', rows: 2 }], esc)}
 <div class="addfact wrap"><label class="inline">Time <input type="time" name="time" required value="${esc(x?.time ?? '06:30')}"></label>
 <label class="inline">Articles <select name="count">${counts}</select></label>
 <label class="inline">Whose <select name="vault">${lists}</select></label></div>
 <div class="days">${DAY.map((d, i) => `<label class="day"><input type="checkbox" name="days" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <label class="check"><input type="checkbox" name="search" value="yes" ${(x ? x.search : firecrawl) ? 'checked' : ''} ${firecrawl ? '' : 'disabled'}> Research: also search the news for each of my interests${firecrawl ? ' (recommended; a few Firecrawl credits a day)' : ' (needs Firecrawl)'}</label>
 ${x ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${x.enabled ? 'checked' : ''}> On</label>` : ''}
-<div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button></div>
-<p class="meta">Each briefing belongs to a mode: work briefings are only read out in work mode, personal ones in personal mode, household ones in every mode. You can have several (e.g. "Morning news" for personal mode and "Work news" for work mode): create another one below. Pick a time a little before you usually ask: gathering takes a minute or two.</p></form>`;
+<div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button> ${wordingButton('/routines/suggest', esc)}</div>
+<p class="meta"><strong>Improve the wording</strong> turns vague interests ("technology") into the specific ones that match headlines well (a team, a company, a topic as the news phrases it) and fills the leave-out list; nothing is saved until you press Save. Each briefing belongs to a mode: work briefings are only read out in work mode, personal ones in personal mode, household ones in every mode. You can have several (e.g. "Morning news" for personal mode and "Work news" for work mode): create another one below. Pick a time a little before you usually ask: gathering takes a minute or two.</p></form>`;
 }
 
 export const ROUTINES_CSS =

@@ -1,5 +1,8 @@
 /** The Health tab of the control panel: exercise, diet, heart, sleep and weight, and the plans Max makes. */
+import { Wording, wordingBlock, wordingButton } from './wording';
 export interface PanelHealth {
+  /** Wording suggested for a plan's brief (by plan id, or 'new'), after "Improve the wording". */
+  wordings?: Record<string, Wording>;
   parts: PanelHealthPart[];
   plans: PanelHealthPlan[];
   emailTo?: string;
@@ -225,11 +228,11 @@ function plansSection(h: PanelHealth, esc: Esc): string {
 <p class="meta">Max reads the websites you choose and writes your routine (or meal plan) for the day or the week, following your brief and what you've logged, then sends it to you. Ask "what's my workout today?" any time. Written by ${esc(h.model)} (change it in Settings → AI models → Health plans). ${delivery}</p>
 <form class="addfact" method="post" action="/health/email"><label class="meta" for="hemail">Send plans to</label><input id="hemail" type="email" name="email" maxlength="120" value="${esc(h.emailTo ?? '')}" placeholder="you@example.com"><button class="btn secondary" type="submit">Save</button></form>
 ${h.plans.length ? '' : '<p class="empty">No plans yet: create your first below.</p>'}</section>
-${h.plans.map((p) => planCard(p, esc)).join('')}
-<section id="health-plan-new"><h2>New plan</h2>${planForm(undefined, esc)}</section>`;
+${h.plans.map((p) => planCard(p, esc, h.wordings?.[p.id])).join('')}
+<section id="health-plan-new"><h2>New plan</h2>${planForm(undefined, esc, h.wordings?.new)}</section>`;
 }
 
-function planCard(p: PanelHealthPlan, esc: Esc): string {
+function planCard(p: PanelHealthPlan, esc: Esc, wording?: Wording): string {
   const host = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
   const status = p.running ? '<span class="badge warn">preparing…</span>' : p.enabled ? '<span class="badge ok">on</span>' : '<span class="badge off">paused</span>';
   const days = p.span === 'week' ? `Every ${DAY[(p.days[0] ?? 1) - 1]}` : p.days.length === 7 ? 'Every day' : p.days.map((d) => DAY[d - 1]).join(', ');
@@ -255,7 +258,7 @@ ${feedback}
 <div class="acts" style="margin-top:12px">
 <form method="post" action="/health/plan-run"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn" type="submit" ${p.running ? 'disabled' : ''}>Make now</button></form>${p.part === 'diet' && p.span === 'week' && p.daily ? `<form method="post" action="/health/plan-today"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">Send today's recipes</button></form>` : ''}
 <form method="post" action="/health/plan-toggle"><input type="hidden" name="id" value="${esc(p.id)}"><button class="btn secondary" type="submit">${p.enabled ? 'Pause' : 'Resume'}</button></form></div>
-<details><summary class="meta">Settings</summary>${planForm(p, esc)}
+<details><summary class="meta">Settings</summary>${planForm(p, esc, wording)}
 <form class="addfact danger" method="post" action="/health/plan-delete"><input type="hidden" name="id" value="${esc(p.id)}"><label class="meta"><input type="checkbox" name="confirm" value="yes"> Delete this plan</label><button class="btn secondary" type="submit">Delete</button></form></details>
 </section>`;
 }
@@ -332,7 +335,7 @@ ${h.shopping.some((i) => i.done) ? '<form method="post" action="/health/shop-cle
 
 const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;
 
-function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
+function planForm(p: PanelHealthPlan | undefined, esc: Esc, wording?: Wording): string {
   const days = p?.days ?? [1, 2, 3, 4, 5, 6, 7];
   const opt = (v: string, label: string, cur: string) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
   return `<form class="stack" method="post" action="/health/plan-save">${p ? `<input type="hidden" name="id" value="${esc(p.id)}">` : ''}
@@ -343,6 +346,7 @@ function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
 <textarea name="sources" rows="3" placeholder="nhs.uk/live-well/exercise/strength-exercises&#10;darebee.com/programs">${esc((p?.sources ?? []).join('\n'))}</textarea></label>
 <label>What you want <span class="meta">(your level, goal, equipment, time you have, injuries or foods to avoid)</span>
 <textarea name="brief" rows="3" required placeholder="Intermediate, want to get stronger and run 10 km. Dumbbells at home, 30–40 minutes on weekdays, longer at weekends. Bad left knee: no jumping.">${esc(p?.brief ?? '')}</textarea></label>
+${wordingBlock(wording, [{ name: 'brief', label: 'What you want', rows: 5 }], esc)}
 <div class="addfact wrap"><label class="inline">Time <input type="time" name="time" required value="${esc(p?.time ?? '06:45')}"></label>
 <label class="check"><input type="checkbox" name="email" value="yes" ${p?.email ?? true ? 'checked' : ''}> Email it to me</label>
 <label class="check"><input type="checkbox" name="whatsapp" value="yes" ${p?.whatsapp ? 'checked' : ''}> WhatsApp it to me</label></div>
@@ -351,7 +355,8 @@ function planForm(p: PanelHealthPlan | undefined, esc: Esc): string {
 <div class="days">${DAY.map((d, i) => `<label class="day"><input type="checkbox" name="days" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <p class="meta">Days: when it's made and sent. For a weekly plan, the first day ticked (e.g. Sunday evening or Monday morning).</p>
 ${p ? `<label class="check"><input type="checkbox" name="enabled" value="yes" ${p.enabled ? 'checked' : ''}> On</label>` : ''}
-<div class="acts"><button class="btn" type="submit">${p ? 'Save' : 'Create'}</button></div></form>`;
+<div class="acts"><button class="btn" type="submit">${p ? 'Save' : 'Create'}</button> ${wordingButton('/health/plan-suggest', esc)}</div>
+<p class="meta">Not sure what to write? Put it down as you'd say it and press <strong>Improve the wording</strong>: Max rewrites it with what a plan needs (level, goal, equipment, time, limits, the shape you want) and marks what he still needs to know.</p></form>`;
 }
 
 export const HEALTH_CSS =

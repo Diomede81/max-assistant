@@ -2,6 +2,7 @@
 export interface PanelPeople {
   list: PanelPerson[];
   circles: { id: string; label: string; every: number }[];
+  aboutTopics: { id: string; label: string; hint: string }[];
   touches: { id: string; label: string }[];
   whatsapp: boolean;
   /** People on the WhatsApp chat list, to fill the number in from. */
@@ -29,6 +30,8 @@ export interface PanelPerson {
   /** "Later" was pressed: no reminder before this day. */
   snoozedUntil?: string;
   interests: string[];
+  /** What is known about them, by topic. */
+  about: Record<string, string | undefined>;
   updates: { at: string; text: string }[];
   touches: { at: string; kind: string; kindLabel: string; note?: string; auto?: boolean }[];
   /** Days since any contact (undefined: never). */
@@ -67,6 +70,16 @@ function quick(x: PanelPerson, esc: Esc): string {
     (x.overdue > 0 && !x.snoozedUntil ? `<form method="post" action="/people/later"><input type="hidden" name="id" value="${esc(x.id)}"><button class="btn secondary small" type="submit" title="No reminder for a few days">Later</button></form>` : '');
 }
 
+/** Who they are: the lasting facts, a box per topic, shown filled in and edited in place. */
+function aboutBlock(x: PanelPerson, p: PanelPeople, esc: Esc): string {
+  const known = p.aboutTopics.filter((t) => x.about[t.id]);
+  const lines = known.length ? `<ul class="about-list">${known.map((t) => `<li><b>${esc(t.label)}:</b> ${esc(x.about[t.id]!)}</li>`).join('')}</ul>` : '<p class="meta">Nothing noted yet: family, work, where they live, how you met. Max uses it when you talk about them and when he suggests a gift or a topic.</p>';
+  return `<h3>About ${esc(x.name)}</h3>${lines}
+<details><summary class="meta">${known.length ? 'Edit' : 'Add'} what you know</summary><form class="stack" method="post" action="/people/about"><input type="hidden" name="id" value="${esc(x.id)}">
+${p.aboutTopics.map((t) => `<label>${esc(t.label)} <span class="meta">(${esc(t.hint)})</span><input name="about-${esc(t.id)}" maxlength="400" value="${esc(x.about[t.id] ?? '')}"></label>`).join('')}
+<div class="acts"><button class="btn secondary" type="submit">Save</button></div></form></details>`;
+}
+
 function personCard(x: PanelPerson, p: PanelPeople, esc: Esc): string {
   const status = x.overdue > 0 ? `<span class="badge warn">catch up: ${x.daysSince === undefined ? 'not in touch yet' : `${x.daysSince} days`}</span>` : x.daysSince === undefined ? '<span class="badge off">not in touch yet</span>' : `<span class="badge ok">in touch ${x.daysSince === 0 ? 'today' : `${x.daysSince} day${x.daysSince === 1 ? '' : 's'} ago`}</span>`;
   const last = (kind: string) => {
@@ -79,6 +92,7 @@ function personCard(x: PanelPerson, p: PanelPeople, esc: Esc): string {
   return `<section id="person-${esc(x.id)}"><h2>${esc(x.name)} ${status}</h2>
 <p class="meta">${esc(x.circleLabel)}${x.relation ? ` · ${esc(x.relation)}` : ''} · keep in touch every ${x.every} days${x.birthday ? ` · birthday ${esc(x.birthday)}${x.birthdayInDays !== undefined && x.birthdayInDays <= 30 ? ` (${x.birthdayInDays === 0 ? 'today!' : `in ${x.birthdayInDays} days`})` : ''}` : ''}${x.phone ? ` · ${esc(x.phone)}` : ''}${x.email ? ` · ${esc(x.email)}` : ''}</p>
 <p class="meta">Last spoke: <b>${esc(last('spoke'))}</b> · called: <b>${esc(last('called'))}</b> · texted: <b>${esc(last('texted'))}</b> · met: <b>${esc(last('met'))}</b></p>
+${aboutBlock(x, p, esc)}
 <p><b>Into:</b> ${x.interests.length ? esc(x.interests.join(', ')) : '<span class="meta">nothing noted yet</span>'}</p>
 <form class="addfact" method="post" action="/people/interests"><input type="hidden" name="id" value="${esc(x.id)}"><input name="text" maxlength="200" placeholder="Add interests, e.g. climbing, jazz, Italian food" aria-label="Interests"><button class="btn secondary" type="submit">Add</button></form>
 <h3>How they are</h3>

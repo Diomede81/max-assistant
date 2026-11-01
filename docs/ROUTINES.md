@@ -157,3 +157,13 @@ task worked out but a delivery failed, only that delivery is retried, so nobody 
 that need you (a key, an address, a reconnect) aren't retried: fix them and press **Run now**. Ask Max
 "what did the task find?" and he tells you the problem and the fix too.
 
+## Long pages: programmes, listings, long lists
+
+A page read gives the model the first 6,000 characters, which on a cinema's full programme is the first
+two days. For "all the horror films this month", Max reads the page with *looking for* set to exactly what
+the task wants ("every horror film in November with dates, times and format"), and the whole page is then
+sifted for it, part by part, by the **Long web pages** model (Settings → Models). That is still one web
+look-up. The log shows each part: `Sift part 3/5 of https://… : 7 items`. If a scheduled task's result
+looks short, check the log for `[... 50k more characters not shown]`: the task was answered from the first
+part only, and the task text should say "the whole programme" or name what to look for.
+

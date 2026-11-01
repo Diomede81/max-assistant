@@ -19,7 +19,7 @@ import { daysText, RoutinesService } from '../routines/routines.service';
 import { Effort, EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
 import { describe as describeTimer, TimerService } from '../actions/timer.service';
 import { CorrectionsService } from '../memory/corrections.service';
-import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
+import { ABOUT_TOPICS, CIRCLES, SocialService, TOUCHES } from '../social/social.service';
 import { JournalService, MOODS } from '../journal/journal.service';
 import { ModelsService, Task, TASKS } from '../models/models.service';
 import { requestPower } from '../face/power';
@@ -712,6 +712,15 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         return back(so.addUpdate(p, get('text')));
       case 'interests':
         return back(so.addInterests(p, get('text')));
+      case 'about': {
+        // every topic's box at once: unchanged ones stay, emptied ones are cleared
+        let msg = 'Saved what you know about ' + p.name + '.';
+        for (const t of Object.keys(ABOUT_TOPICS)) if (f.has(`about-${t}`)) {
+          const r = so.setAbout(p, t, get(`about-${t}`));
+          if (/^Which topic/.test(r)) msg = r;
+        }
+        return back(msg);
+      }
       case 'update-remove':
         so.removeUpdate(p, get('at'));
         return back('Removed.');
@@ -1049,11 +1058,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
               const bday = this.social!.birthdaysSoon(366).find((b) => b.person.id === x.id);
               return {
                 id: x.id, name: x.name, circle: x.circle, circleLabel: CIRCLES[x.circle]?.label ?? x.circle, relation: x.relation, every: this.social!.every(x), everySet: x.every !== undefined,
-                phone: x.phone, email: x.email, birthday: x.birthday, birthdayInDays: bday?.inDays, snoozedUntil: x.snoozedUntil && x.snoozedUntil > localToday() ? x.snoozedUntil : undefined, interests: x.interests, updates: x.updates,
+                phone: x.phone, email: x.email, birthday: x.birthday, birthdayInDays: bday?.inDays, snoozedUntil: x.snoozedUntil && x.snoozedUntil > localToday() ? x.snoozedUntil : undefined, interests: x.interests, about: x.about ?? {}, updates: x.updates,
                 touches: x.touches.map((t) => ({ ...t, kindLabel: TOUCHES[t.kind] ?? t.kind })), daysSince: this.social!.daysSince(x), overdue: this.social!.overdueDays(x),
               };
             }),
             circles: Object.entries(CIRCLES).map(([id, c]) => ({ id, label: c.label, every: c.every })),
+            aboutTopics: Object.entries(ABOUT_TOPICS).map(([id, t]) => ({ id, label: t.label, hint: t.hint })),
             touches: Object.entries(TOUCHES).map(([id, label]) => ({ id, label })),
             whatsapp: Boolean(this.whatsapp?.canMessageSelf),
             chats: this.whatsapp?.knownPeople ?? [],

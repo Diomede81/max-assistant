@@ -12,6 +12,7 @@ work); the control panel shows it in personal and work mode, never in guest mode
 | Circle | **Family**, **Close friend**, **Friend**, **Colleague** or **Acquaintance**. Each has a default for how often you'd like to be in touch (7, 14, 30, 60, 90 days); change it per person |
 | Relation | "my sister", "old school friend" |
 | In touch | Every time you spoke, called, texted, met or emailed, with the date and anything they told you. Logged by voice, on the control panel (one tap: Spoke / Texted / Met), or noticed from WhatsApp: a message to or from their number counts as texting, whether or not Max may read that chat |
+| About them | The lasting facts, by topic: **Family** (partner, children, parents, pets), **Work**, **Home** (where they live, where they're from), **How you met**, **Other** (allergies, their team, dates that matter). Edited on the card, or told to Max: "Anna has two boys, Leo and Tom", "Marco's a nurse now" |
 | Interests | What they're into, for gifts and things to talk about |
 | How they are | A dated note each time there's news: a new job, a knee on the mend, a holiday |
 | Birthday | Shown ahead of time, on Home when it's within three days |
@@ -24,6 +25,7 @@ work); the control panel shows it in personal and work mode, never in guest mode
 | "I called Mum, her knee is better" | Logs the call today, notes the news |
 | "Had lunch with Marco on Saturday" | Logs that you met, on that date |
 | "Anna's into climbing now" | Adds an interest |
+| "Anna's married to Paul, they have two boys" / "Marco works at the hospital" / "We met at school" | Notes it under Family, Work or How you met |
 | "What's new with Marco?" | Everything noted: circle, last contact, interests, news |
 | "Who should I catch up with?" | Who it has been too long with, and birthdays coming |
 | "Remind me about Marco next week" | No reminder about Marco for 7 days |

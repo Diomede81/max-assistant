@@ -46,6 +46,8 @@ export interface Person {
   /** "YYYY-MM-DD" or "MM-DD". */
   birthday?: string;
   interests: string[];
+  /** Who they are: the lasting facts about them, by topic (family, work, home, how you met, other). */
+  about?: Partial<Record<AboutTopic, string>>;
   /** How they are doing lately, newest first (what they told you, what's going on in their life). */
   updates: { at: string; text: string }[];
   touches: Touch[];
@@ -53,6 +55,17 @@ export interface Person {
   /** "Later" on a nudge: no reminder about them before this day (YYYY-MM-DD). */
   snoozedUntil?: string;
 }
+
+/** The topics of what is known about a person, in the order shown. */
+export const ABOUT_TOPICS = {
+  family: { label: 'Family', hint: 'partner, children, parents, pets: "married to Sara, two boys, Leo (8) and Tom (5)"' },
+  work: { label: 'Work', hint: 'job, employer, what they do: "nurse at the Royal Infirmary, nights"' },
+  home: { label: 'Home', hint: 'where they live, where they are from: "lives in Bristol, from Palermo"' },
+  met: { label: 'How you met', hint: '"school in Palermo, 1995", "neighbours in Hackney"' },
+  other: { label: 'Other', hint: 'anything else worth remembering: allergies, their team, what they drink, dates that matter' },
+} as const;
+export type AboutTopic = keyof typeof ABOUT_TOPICS;
+const ABOUT_CHARS = 400;
 
 /** The daily nudge about overdue catch-ups: out loud, on the screen, at this time. */
 export interface NudgeSettings {
@@ -305,6 +318,36 @@ export class SocialService implements OnModuleInit {
     return `Noted about ${p.name}: ${t}`;
   }
 
+  /** Sets (or clears) one topic of what is known about a person: "family: married to Sara, two boys". */
+  setAbout(p: Person, topic: string, text: string): string {
+    const t = aboutTopicOf(topic);
+    if (!t) return `Which topic: ${Object.values(ABOUT_TOPICS).map((x) => x.label.toLowerCase()).join(', ')}?`;
+    const v = text.replace(/\s+/g, ' ').trim().slice(0, ABOUT_CHARS);
+    p.about = { ...p.about };
+    if (v) p.about[t] = v;
+    else delete p.about[t];
+    if (!Object.keys(p.about).length) delete p.about;
+    this.persist();
+    this.log.log(`${p.name}: ${ABOUT_TOPICS[t].label.toLowerCase()} ${v ? 'noted' : 'cleared'}`);
+    return v ? `Noted about ${p.name}, ${ABOUT_TOPICS[t].label.toLowerCase()}: ${v}` : `Cleared ${ABOUT_TOPICS[t].label.toLowerCase()} for ${p.name}.`;
+  }
+
+  /** Adds to a topic rather than replacing it: "Marco also has a dog now". */
+  addAbout(p: Person, topic: string, text: string): string {
+    const t = aboutTopicOf(topic);
+    if (!t) return `Which topic: ${Object.values(ABOUT_TOPICS).map((x) => x.label.toLowerCase()).join(', ')}?`;
+    const add = text.replace(/\s+/g, ' ').trim();
+    if (!add) return `What about ${p.name}'s ${ABOUT_TOPICS[t].label.toLowerCase()}?`;
+    const had = p.about?.[t] ?? '';
+    if (had.toLowerCase().includes(add.toLowerCase())) return `Already noted about ${p.name}.`;
+    return this.setAbout(p, t, had ? `${had.replace(/[.;]\s*$/, '')}; ${add}` : add);
+  }
+
+  /** What is known about a person, one line per topic (for Max and the panel). */
+  aboutLines(p: Person): string[] {
+    return (Object.keys(ABOUT_TOPICS) as AboutTopic[]).filter((t) => p.about?.[t]).map((t) => `${ABOUT_TOPICS[t].label}: ${p.about![t]}`);
+  }
+
   addInterests(p: Person, text: string): string {
     const add = splitList(text).filter((i) => !p.interests.some((x) => x.toLowerCase() === i.toLowerCase()));
     if (!add.length) return `${p.name}'s interests already include that.`;
@@ -346,11 +389,12 @@ export class SocialService implements OnModuleInit {
     const line = (p: Person) => {
       const days = this.daysSince(p);
       const over = this.overdueDays(p);
-      return `- ${p.name} [${CIRCLES[p.circle].label.toLowerCase()}${p.relation ? `, ${p.relation}` : ''}]: ${days === undefined ? 'never in touch yet' : `last in touch ${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`} (${TOUCHES[this.lastTouch(p)!.kind].toLowerCase()})`}${over > 0 ? `, OVERDUE by ${over} days` : ''}${p.interests.length ? `; into ${p.interests.slice(0, 5).join(', ')}` : ''}${p.updates[0] ? `; latest: ${p.updates[0].text}` : ''}`;
+      const about = this.aboutLines(p).map((l) => l.slice(0, 120)).join('; ');
+      return `- ${p.name} [${CIRCLES[p.circle].label.toLowerCase()}${p.relation ? `, ${p.relation}` : ''}]: ${days === undefined ? 'never in touch yet' : `last in touch ${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`} (${TOUCHES[this.lastTouch(p)!.kind].toLowerCase()})`}${over > 0 ? `, OVERDUE by ${over} days` : ''}${about ? `; ${about}` : ''}${p.interests.length ? `; into ${p.interests.slice(0, 5).join(', ')}` : ''}${p.updates[0] ? `; latest: ${p.updates[0].text}` : ''}`;
     };
     const bdays = this.birthdaysSoon(14).map((b) => `${b.person.name}'s birthday ${b.inDays === 0 ? 'is today' : b.inDays === 1 ? 'is tomorrow' : `in ${b.inDays} days`}`);
     return [
-      'People close to the user (use the people action to log contact, news or interests; when they say they spoke to, called, texted or met someone on this list, log it; when they share news about them, note it). Gently suggest catching up with anyone overdue when it fits.',
+      'People close to the user (use the people action to log contact, news or interests; when they say they spoke to, called, texted or met someone on this list, log it; when they share news about them, note it; when they tell you a lasting fact about someone (family, work, where they live, how they met), note it with about). Gently suggest catching up with anyone overdue when it fits.',
       ...people.slice(0, 25).map(line),
       bdays.length ? `Birthdays: ${bdays.join('; ')}.` : '',
     ]
@@ -385,7 +429,8 @@ export class SocialService implements OnModuleInit {
           description:
             'The people close to the user and keeping in touch with them. log: the user spoke to, called, texted, met or ' +
             'emailed someone ("I called Mum", "had lunch with Marco"), with any news they share (how they are). news: ' +
-            'something about a person without a contact ("Marco got a new job"). interests: what they are into. who: ' +
+            'something about a person without a contact ("Marco got a new job"). about: a lasting fact about who they are, by topic ' +
+            '(family, work, home, met, other: "Anna has two boys, Leo and Tom" -> topic family; "Marco is a nurse" -> work; "they live in Bristol" -> home; "we met at school" -> met), added to what is known; a passing update is news, not about. interests: what they are into. who: ' +
             'everything about one person (before suggesting a gift, a topic, a catch-up). catch_up: who it has been too long ' +
             'with, and birthdays coming. add: a new person (name, circle: family, close friend, friend, colleague, acquaintance; ' +
             'relation such as "my sister"). update: change circle, relation, how often to keep in touch (every_days), phone, email, birthday. remove. ' +
@@ -393,12 +438,13 @@ export class SocialService implements OnModuleInit {
           parameters: {
             type: 'object',
             properties: {
-              action: { type: 'string', enum: ['log', 'news', 'interests', 'who', 'catch_up', 'add', 'update', 'remove', 'later'] },
+              action: { type: 'string', enum: ['log', 'news', 'about', 'interests', 'who', 'catch_up', 'add', 'update', 'remove', 'later'] },
+              topic: { type: 'string', enum: ['family', 'work', 'home', 'met', 'other'], description: 'For about: which topic' },
               days: { type: 'integer', description: 'For later: how many days (default: the setting)' },
               name: { type: 'string', description: 'Who (name or relation, e.g. "Mum")' },
               kind: { type: 'string', enum: ['spoke', 'called', 'texted', 'met', 'emailed'], description: 'For log: how' },
               date: { type: 'string', description: 'For log: YYYY-MM-DD if not today' },
-              text: { type: 'string', description: 'For log/news: how they are, what is going on. For interests: comma-separated' },
+              text: { type: 'string', description: 'For log/news: how they are, what is going on. For about: the fact. For interests: comma-separated' },
               circle: { type: 'string', enum: ['family', 'close', 'friend', 'colleague', 'acquaintance'] },
               relation: { type: 'string' },
               every_days: { type: 'integer', description: 'Keep in touch at least every N days' },
@@ -444,6 +490,8 @@ export class SocialService implements OnModuleInit {
         return this.touch(p, str(a.kind) ?? 'spoke', str(a.text), str(a.date));
       case 'news':
         return this.addUpdate(p, str(a.text) ?? '');
+      case 'about':
+        return this.addAbout(p, str(a.topic) ?? 'other', str(a.text) ?? '');
       case 'interests':
         return this.addInterests(p, str(a.text) ?? '');
       case 'who':
@@ -465,6 +513,7 @@ export class SocialService implements OnModuleInit {
     return [
       `${p.name}: ${CIRCLES[p.circle].label.toLowerCase()}${p.relation ? `, ${p.relation}` : ''}. Keep in touch every ${this.every(p)} days; ${days === undefined ? 'not in touch yet' : `last in touch ${days} day${days === 1 ? '' : 's'} ago`}${this.overdueDays(p) > 0 ? ` (overdue by ${this.overdueDays(p)})` : ''}.`,
       p.birthday ? `Birthday: ${p.birthday}.` : '',
+      ...this.aboutLines(p).map((l) => `${l}.`),
       p.interests.length ? `Into: ${p.interests.join(', ')}.` : '',
       p.updates.length ? `How they are (newest first):\n${p.updates.slice(0, 5).map((u) => `- ${u.at.slice(0, 10)}: ${u.text}`).join('\n')}` : '',
       recent.length ? `Recent contact:\n${recent.map((r) => `- ${r}`).join('\n')}` : '',
@@ -497,6 +546,17 @@ export function touchOf(s: string): TouchKind | undefined {
   if (/met|meet|saw|see|lunch|dinner|coffee|visit|drink/.test(t)) return 'met';
   if (/mail/.test(t)) return 'emailed';
   if (/spoke|speak|talk/.test(t)) return 'spoke';
+  return undefined;
+}
+
+function aboutTopicOf(s: string): AboutTopic | undefined {
+  const k = s.trim().toLowerCase();
+  if (k in ABOUT_TOPICS) return k as AboutTopic;
+  if (/famil|partner|wife|husband|child|kid|parent|pet/.test(k)) return 'family';
+  if (/work|job|career|employ/.test(k)) return 'work';
+  if (/home|live|lives|from|town|city|where/.test(k)) return 'home';
+  if (/met|know|known/.test(k)) return 'met';
+  if (/other|misc|note/.test(k)) return 'other';
   return undefined;
 }
 

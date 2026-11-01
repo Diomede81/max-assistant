@@ -16,6 +16,7 @@ Max uses an AI model in two kinds of places:
 | Complex tasks | Travel planning, calendar questions and other jobs with several steps, handed over by the conversation | A strong, careful model (e.g. DeepSeek); a task takes up to a minute |
 | Scheduled tasks | The tasks you schedule under Routines, unless a task names its own model | A strong, careful model; each task can also pick its own |
 | Health plans | Exercise routines and meal plans from the websites you chose | Good writing and care with dietary rules |
+| Long web pages | When a page is too long to read whole (a cinema programme, a long listing), copies out what a task asked for, part by part | Fast and cheap: a 60k-character page is 5 short calls |
 
 By default every job uses the main model. Typically you'd pick a stronger model for website suggestions
 and news summaries, and keep a cheap fast one for filing.

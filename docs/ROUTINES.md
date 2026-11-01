@@ -166,8 +166,15 @@ sifted for it, part by part, by the **Long web pages** model (Settings → Model
 look-up. A read for sifting takes the whole page (not only what Firecrawl judges its main content), waits three
 seconds for the page's scripts to fill it in, and ends with the page's links related to what was asked for (a
 genre section, the next page, a season), which Max opens too, budget allowing, before answering. The log shows
-each step: `Listing read of https://… : 58k characters, 1,240 lines, 6 related links`, then `Sift part 3/5 of
-https://… : 7 items`. If a scheduled task's result
+each step: `Listing read of https://… : 234k characters, 4,100 lines, 6 related links`, then `Sifting … key words
+"horror" mentioned 39 times, 21 stretches (130k) in 10 parts`, `Sift part 3/10 of https://… : 4 items`, and
+`Sifted …: 24 items found`.
+
+The sifting works for any task, not only films: the distinctive words of what was asked for ("horror";
+"vegan"; "under £50") pick out every stretch of the page that mentions them, so an entry tagged with the
+word is never missed and the model reads a fraction of the page. A word found everywhere on the page (the
+month's name on a month's programme) is ignored, and a request with no distinctive words ("every film this
+month") sifts the whole page, several parts at a time. A page read for sifting may take up to five minutes. If a scheduled task's result
 looks short, check the log for `[... 50k more characters not shown]`: the task was answered from the first
 part only, and the task text should say "the whole programme" or name what to look for.
 

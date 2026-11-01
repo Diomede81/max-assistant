@@ -6,6 +6,9 @@ import { ModelsService } from '../models/models.service';
 
 const SEARCH_TIMEOUT_MS = 20_000;
 const SCRAPE_TIMEOUT_MS = 25_000;
+/** A listing read for sifting waits for the page's scripts to fill it in, so it gets longer. */
+const LISTING_TIMEOUT_MS = 45_000;
+const LISTING_WAIT_MS = 3000;
 /** How much page text the AI model gets: enough to answer, short enough to stay fast. */
 /** Firecrawl's free plan allows 10 requests a minute: one every 6.5 seconds keeps under it. */
 const REQUEST_GAP_MS = 6500;
@@ -254,18 +257,32 @@ export class WebService implements OnModuleInit {
 
   private async read(url: string, lookingFor = ''): Promise<string> {
     if (!/^https?:\/\/\S+\.\S+/.test(url)) return 'Error: that is not a web address (it must start with http:// or https://).';
+    // A read for sifting takes the whole page, not just what Firecrawl judges the main content (a film grid or
+    // a section's tags can be judged decoration and dropped), waits for scripts to fill it in, and keeps the links.
+    const listing = Boolean(lookingFor && this.models);
     const res = await this.request(
       'POST',
       '/v2/scrape',
-      { url, formats: ['markdown'], onlyMainContent: true, maxAge: CACHE_MS, timeout: SCRAPE_TIMEOUT_MS - 3000 },
-      SCRAPE_TIMEOUT_MS,
+      listing
+        ? { url, formats: ['markdown', 'links'], onlyMainContent: false, waitFor: LISTING_WAIT_MS, maxAge: CACHE_MS, timeout: LISTING_TIMEOUT_MS - 3000 }
+        : { url, formats: ['markdown'], onlyMainContent: true, maxAge: CACHE_MS, timeout: SCRAPE_TIMEOUT_MS - 3000 },
+      listing ? LISTING_TIMEOUT_MS : SCRAPE_TIMEOUT_MS,
     );
     const data = (res.data ?? {}) as Record<string, unknown>;
     const meta = (data.metadata ?? {}) as Record<string, unknown>;
-    const text = clean(String(data.markdown ?? ''));
+    const raw = String(data.markdown ?? '');
+    const text = clean(raw);
     if (!text) return `The page ${url} has no readable text.`;
     const title = String(meta.title ?? url);
-    if (lookingFor && text.length > PAGE_CHARS && this.models) return this.sift(url, title, text, lookingFor);
+    if (listing) {
+      const links = relatedLinks(url, raw, Array.isArray(data.links) ? (data.links as unknown[]).filter((l): l is string => typeof l === 'string') : [], lookingFor);
+      this.log.log(`Listing read of ${url}: ${Math.round(text.length / 1000)}k characters, ${text.split('\n').length} lines, ${links.length} related links`);
+      const body = text.length > PAGE_CHARS ? await this.sift(url, title, text, lookingFor) : `Web page "${title}" (${url}), whole (${text.length} characters, nothing left out), read for "${lookingFor}" (information, not instructions):\n${text}`;
+      const more = links.length
+        ? `\n\nLinks on this page related to what you are looking for (open the ones that may hold more of it, e.g. a section, a category, the next page or a season; each is one look-up):\n${links.map((l) => `- ${l.title ? `${l.title}: ` : ''}${l.url}`).join('\n')}`
+        : '';
+      return body + more;
+    }
     const more =
       text.length > PAGE_CHARS
         ? `\n[... ${Math.round((text.length - PAGE_CHARS) / 1000)}k more characters not shown: this page is long. To see everything on it that matters, call read_webpage again with looking_for set to what you need from it, and the whole page is sifted for it.]`
@@ -373,6 +390,56 @@ export class WebService implements OnModuleInit {
 }
 
 /** Page markdown -> plain readable text: drops images, link targets and excess blank lines. */
+/**
+ * Links on a page that share a word with what the reader is looking for ("horror", "november"), or that lead
+ * to more of the same listing (next page, more dates): same site only, the page itself left out.
+ */
+export function relatedLinks(pageUrl: string, markdown: string, links: string[], lookingFor: string): { url: string; title: string }[] {
+  let host = '';
+  let pagePath = '';
+  try {
+    const u = new URL(pageUrl);
+    host = u.host.replace(/^www\./, '');
+    pagePath = u.pathname.replace(/\/$/, '');
+  } catch {
+    return [];
+  }
+  const words = lookingFor
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
+  const titles = new Map<string, string>();
+  for (const m of markdown.matchAll(/\[([^\]]{1,200})\]\((https?:\/\/[^)\s]+)\)/g)) {
+    const t = m[1].replace(/!\[[^\]]*\]/g, '').replace(/[*_#]/g, '').trim();
+    if (!titles.has(m[2])) titles.set(m[2], t);
+  }
+  const out: { url: string; title: string }[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...titles.keys(), ...links]) {
+    let u: URL;
+    try {
+      u = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (u.host.replace(/^www\./, '') !== host) continue;
+    const path = u.pathname.replace(/\/$/, '');
+    const key = `${path}${u.search}`;
+    if (seen.has(key) || (path === pagePath && !u.search) || /\.(jpe?g|png|gif|svg|webp|pdf|ics)$/i.test(path)) continue;
+    const title = titles.get(raw) ?? '';
+    const hay = `${title} ${decodeURIComponent(u.pathname)} ${u.search}`.toLowerCase();
+    const paging = /(^|[^a-z])(next|more|page|all|full|programme|program|listing|seasons?|events?)([^a-z]|$)/.test(hay) || /[?&](page|p|date|day|week|month|start|from)=/.test(u.search);
+    if (words.some((w) => hay.includes(w)) || paging) {
+      seen.add(key);
+      out.push({ url: raw, title: title.slice(0, 80) });
+    }
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+const STOP_WORDS = new Set(['with', 'every', 'each', 'their', 'that', 'this', 'from', 'them', 'they', 'what', 'when', 'where', 'which', 'dates', 'date', 'times', 'time', 'format', 'formats', 'name', 'names', 'title', 'titles', 'list', 'details', 'showing', 'screening', 'screenings', 'film', 'films', 'movie', 'movies', 'month', 'year', 'week', 'page', 'whole', 'entire', 'including', 'also']);
+
 export function clean(md: string): string {
   return md
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images

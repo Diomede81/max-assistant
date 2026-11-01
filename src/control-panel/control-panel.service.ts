@@ -16,7 +16,7 @@ import { PanelAuth } from './panel-auth';
 import { localToday, ProjectsService, taskText, repeatText } from '../memory/projects.service';
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
-import { EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
+import { Effort, EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
 import { describe as describeTimer, TimerService } from '../actions/timer.service';
 import { CorrectionsService } from '../memory/corrections.service';
 import { CIRCLES, SocialService, TOUCHES } from '../social/social.service';
@@ -732,7 +732,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const id = get('id');
     const back = (msg: string, ok = true, anchor = id ? `job-${id}` : 'jobs') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
     const job = js.jobs.find((x) => x.id === id);
-    if (action !== 'save' && !job) return back('That scheduled task no longer exists.', false, 'jobs');
+    if (action !== 'save' && action !== 'suggest' && !job) return back('That scheduled task no longer exists.', false, 'jobs');
     switch (action) {
       case 'save': {
         const kind = get('kind');
@@ -758,8 +758,20 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           id || undefined,
         );
         const ok = /^(Created|Saved)/.test(msg);
+        if (ok) js.suggestions.delete(id || 'new');
         const created = !id && ok ? js.jobs[js.jobs.length - 1] : undefined;
         return back(msg, ok, created ? `job-${created.id}` : id ? `job-${id}` : 'job-new');
+      }
+      case 'suggest': {
+        // A better wording for the task, shown under the form for the user to take or leave; nothing is saved.
+        const key = id || 'new';
+        try {
+          const s = await js.suggestBrief(get('brief'), (get('effort') || 'normal') as Effort);
+          js.suggestions.set(key, { ...s, original: get('brief') });
+          return back(s.brief ? 'Here is a suggested wording: use it, edit it, or keep your own.' : s.why[0] ?? 'No suggestion.', Boolean(s.brief), id ? `job-${id}` : 'job-new');
+        } catch (err) {
+          return back(`Could not suggest a wording: ${(err as Error).message}`, false, id ? `job-${id}` : 'job-new');
+        }
       }
       case 'sources':
         return back(js.setSources(job!.id, f.getAll('url')));
@@ -1057,6 +1069,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
             providers: this.models.providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured, setting: p.setting })),
             defaultModel: this.models.describe('jobs'),
             efforts: Object.entries(EFFORTS).map(([id, e]) => ({ id, label: e.label, help: e.help })),
+            suggestions: Object.fromEntries(this.jobs.suggestions),
             emailReady: this.jobs.emailReady,
             emailTo: this.health?.emailTo,
             whatsappReady: this.jobs.whatsappReady,

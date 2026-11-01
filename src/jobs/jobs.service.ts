@@ -27,6 +27,15 @@ export const EFFORTS = {
 } as const;
 export type Effort = keyof typeof EFFORTS;
 
+/** A better wording for a task, offered on the panel: the rewritten brief, why, and the effort it needs. */
+export interface BriefSuggestion {
+  brief: string;
+  why: string[];
+  effort?: Effort;
+  /** What the user had written when they asked. */
+  original?: string;
+}
+
 /** A task Max does on his own at a set time: once, on chosen days, or on a day of the month. */
 export interface Job {
   id: string;
@@ -307,6 +316,37 @@ export class JobsService extends EventEmitter implements OnModuleInit, OnModuleD
 
   modelText(j: Job): string {
     return this.models.describeAssignment(this.models.assignment('jobs', this.assignment(j)));
+  }
+
+  /** Suggestions made for a task's wording, by task id ('new' for the form at the bottom), shown once on the panel. */
+  readonly suggestions = new Map<string, BriefSuggestion>();
+
+  /**
+   * Rewrites what the user asked for into the wording Max's actions work best with: the exact pages, what to
+   * pick out of a long page, the scope (which dates, which months), the shape of the result. The user decides
+   * whether to use it; nothing is saved here.
+   */
+  async suggestBrief(brief: string, effort: Effort): Promise<BriefSuggestion> {
+    const text = brief.trim();
+    if (!text) return { brief: '', why: ['Write what the task should do first, then ask for a suggestion.'] };
+    const e = EFFORTS[effort] ?? EFFORTS.normal;
+    const system =
+      'You help someone word a scheduled task for Max, a home assistant that does the task on his own, at a set time, with these actions and limits:\n' +
+      '- web_search (a web search; read_top brings the top pages\' text in the same look-up).\n' +
+      '- read_webpage: a page\'s first 6000 characters, OR, given "looking for" (what to pick out, with every detail wanted), the WHOLE page sifted for it, however long, plus the page\'s links related to it (a section, the next page, a season). A long programme or listing MUST be read this way, or most of it is missed.\n' +
+      `- At most ${e.web} web look-ups per run at this effort (${e.label}: ${e.help}); the user can raise the effort.\n` +
+      '- Calendar, email, trains, news, the user\'s own notes, connected apps: read only. A task only finds out and reports: it never books, buys, sends to other people or deletes anything (the user chooses recipients on the panel).\n' +
+      '- The result goes out as written (spoken, on screen, email, WhatsApp): it should be the deliverable only, in the shape asked for.\n' +
+      'Rewrite the task in the user\'s language into the most effective wording, keeping their intent and every detail they gave, and adding only what makes the task work: the exact page(s) to open; for a long page, the "looking for" phrase with every detail to keep (one sentence); the scope made explicit (which dates or months: "every month listed on the page" or "the current month only": choose what they most likely meant and say so in WHY); the shape of the result (grouped how, one line per item with which details, counts: "say how many you found and how many pages you read"); what to leave out; "do not summarise or shorten a long list" when a complete list is wanted. Do not add steps, pages or requirements they did not imply, and nothing Max cannot do. Keep it compact: no headings, no bullet lists, plain sentences, at most 1200 characters.\n' +
+      'Answer in exactly this form:\nBRIEF:\n<the rewritten task>\nWHY:\n- <one short reason per line, at most four, what changed and why; mention if a higher effort is needed>\nEFFORT: quick|normal|thorough';
+    const out = await this.models.complete('jobs', { system, user: `The task as written (effort ${effort}):\n${text.slice(0, 3000)}`, maxTokens: 1500, temperature: 0.2, timeoutMs: 90_000 });
+    const m = /BRIEF:\s*([\s\S]*?)\n\s*WHY:\s*([\s\S]*?)(?:\n\s*EFFORT:\s*(\w+))?\s*$/i.exec(out.trim());
+    const suggested = (m ? m[1] : out).trim().replace(/^["'`]+|["'`]+$/g, '').slice(0, 1500);
+    const why = m ? m[2].split('\n').map((l) => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean).slice(0, 4) : [];
+    const rec = m?.[3]?.toLowerCase();
+    const recommended = rec && rec in EFFORTS ? (rec as Effort) : undefined;
+    this.log.log(`Task wording suggested (${text.length} -> ${suggested.length} characters${recommended && recommended !== effort ? `, effort ${effort} -> ${recommended}` : ''})`);
+    return { brief: suggested, why, effort: recommended };
   }
 
   private assignment(j: Job): Assignment | undefined {

@@ -17,6 +17,7 @@ import { localToday, ProjectsService, taskText, repeatText } from '../memory/pro
 import { TodoService } from '../memory/todo.service';
 import { daysText, RoutinesService } from '../routines/routines.service';
 import { Effort, EFFORTS, JobsService, scheduleText } from '../jobs/jobs.service';
+import { suggestWording, Wording, WordingKind } from './wording';
 import { describe as describeTimer, TimerService } from '../actions/timer.service';
 import { CorrectionsService } from '../memory/corrections.service';
 import { ABOUT_TOPICS, CIRCLES, SocialService, TOUCHES } from '../social/social.service';
@@ -148,6 +149,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
   }
 
   private readonly auth: PanelAuth;
+  /** Wording suggested on a form ("plan:<id>", "news:<id>"), shown under it until that form is saved. */
+  private readonly wordings = new Map<string, Wording>();
   /** Extra names the panel answers to (CONTROL_PANEL_URL's, CONTROL_PANEL_HOSTS). */
   private readonly hosts: Set<string>;
 
@@ -522,6 +525,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       weight: { key: 'kg', label: 'Weight', unit: 'kg', sum: false },
     };
     return {
+      wordings: this.wordingsOf('plan'),
       today,
       model: this.models?.describe('health') ?? 'the main model',
       emailTo: h.emailTo,
@@ -561,6 +565,25 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       }),
       plans: h.plans.map((p) => ({ ...p, running: h.running.has(p.id), latest: p.history[0], feedback: p.feedback })),
     };
+  }
+
+  /** "Improve the wording" on a form: asks the job's model, keeps the answer for the page to show under that form. */
+  private async wordingFor(kind: WordingKind, id: string, input: Record<string, string>, context: string): Promise<string> {
+    if (!this.models) return 'No AI model is set up yet (Settings → AI models).';
+    try {
+      const w = await suggestWording(this.models, kind, input, context);
+      const any = Object.values(w.fields).some((v) => v.trim());
+      if (any) this.wordings.set(`${kind}:${id || 'new'}`, w);
+      this.log.log(`Wording suggested for ${kind} ${id || 'new'}: ${Object.entries(w.fields).map(([k, v]) => `${k} ${v.length} chars`).join(', ')}`);
+      return any ? 'Here is a suggested wording: use it, edit it, or keep your own.' : 'No suggestion this time: write a little more about what you want first.';
+    } catch (err) {
+      return `Could not suggest a wording: ${(err as Error).message}`;
+    }
+  }
+
+  /** The suggestions kept for one kind of form, by id, for the page. */
+  private wordingsOf(kind: WordingKind): Record<string, Wording> {
+    return Object.fromEntries([...this.wordings].filter(([k]) => k.startsWith(`${kind}:`)).map(([k, w]) => [k.slice(kind.length + 1), w]));
   }
 
   private async healthAction(req: IncomingMessage, res: ServerResponse, action: string): Promise<void> {
@@ -620,6 +643,11 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         const msg = h.setEmail(get('email'));
         return back(msg, !/doesn't look right/.test(msg), 'health-plans');
       }
+      case 'plan-suggest': {
+        const id = get('id');
+        const msg = await this.wordingFor('plan', id, { brief: get('brief') }, `The plan: ${get('part') === 'diet' ? 'meal plan' : 'exercise routine'}, covering ${get('span') === 'week' ? 'the week ahead' : 'one day'}, ${(f.get('sources') ?? '').trim() ? 'following the websites listed' : 'with no websites listed'}.${h.profileText() ? ` About the user: ${h.profileText()}.` : ''}`);
+        return back(msg, !/^(Could not|No AI)/.test(msg), id ? `plan-${id}` : 'health-plan-new');
+      }
       case 'plan-save': {
         const id = get('id');
         const r = h.savePlan(
@@ -640,6 +668,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           },
           id || undefined,
         );
+        if (r.ok) this.wordings.delete(`plan:${id || 'new'}`);
         return back(r.message, r.ok, r.plan ? `plan-${r.plan.id}` : 'health-plan-new');
       }
       case 'plan-run': {
@@ -807,8 +836,12 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const id = get('id');
     const back = (msg: string, ok = true, anchor = id ? `routine-${id}` : 'routines') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
     const routine = r.routines.find((x) => x.id === id);
-    if (action !== 'save' && !routine) return back('That routine no longer exists.', false, 'routines');
+    if (action !== 'save' && action !== 'suggest' && !routine) return back('That routine no longer exists.', false, 'routines');
     switch (action) {
+      case 'suggest': {
+        const msg = await this.wordingFor('news', id, { interests: get('interests'), avoid: get('avoid') }, `The briefing: ${(f.get('sources') ?? '').trim().split('\n').filter(Boolean).length} websites listed, ${get('count') || 6} articles, research search ${f.get('search') === 'yes' ? 'on' : 'off'}.`);
+        return back(msg, !/^(Could not|No AI)/.test(msg), id ? `routine-${id}` : 'routine-new');
+      }
       case 'save': {
         const msg = r.save(
           {
@@ -826,6 +859,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
           id || undefined,
         );
         const ok = /^(Created|Saved)/.test(msg);
+        if (ok) this.wordings.delete(`news:${id || 'new'}`);
         const created = !id && ok ? r.routines[r.routines.length - 1] : undefined;
         // A new briefing with interests but no websites yet: start suggesting straight away.
         if (created && !created.sources.length) {
@@ -1042,6 +1076,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       routines: this.routines && this.memory.enabled
         ? {
             firecrawl: this.routines.firecrawl,
+            wordings: this.wordingsOf('news'),
             list: this.routines.routines.map((x) => ({
               ...x,
               daysText: daysText(x.days),

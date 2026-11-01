@@ -33,6 +33,14 @@ You can also do it by voice: "Add theverge.com to my news", "I'm interested in t
 celebrity news", "Gather my news at 6:45", "What are my news settings?", "Suggest some news websites for me"
 (the suggestions then appear under News briefing on the control panel).
 
+### Wording your interests
+
+Vague interests ("technology", "sport") match everything and crowd out what you care about. Press
+**Improve the wording** next to Save: Max turns them into the specific topics, teams, companies and
+places that headlines use, splits joined ones, and fills the leave-out list with what your interests
+imply you'd skip. The suggestion appears under the box; **Use this wording** copies it in, and nothing
+changes until you press Save.
+
 ## Using it
 
 - "Hey Max, **what's the news?**": he reads the prepared briefing, a sentence or two per article, and

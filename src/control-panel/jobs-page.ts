@@ -8,6 +8,8 @@ export interface PanelJobs {
   /** What runs a task that names no model of its own (Settings → AI models → Scheduled tasks). */
   defaultModel: string;
   efforts: { id: string; label: string; help: string }[];
+  /** Wording suggested for a task (by id, or 'new'), after "Improve the wording". */
+  suggestions?: Record<string, { brief: string; why: string[]; effort?: string; original?: string }>;
   emailReady: boolean;
   emailTo?: string;
   whatsappReady: boolean;
@@ -102,6 +104,15 @@ ${x.running ? '<span data-wait></span>' : ''}${latest}
 </section>`;
 }
 
+/** The wording Max suggests for a task: take it into the box above with one click, or ignore it. */
+function suggestionBlock(s: { brief: string; why: string[]; effort?: string } | undefined, esc: Esc): string {
+  if (!s?.brief) return '';
+  return `<div class="suggest"><p class="meta"><strong>Suggested wording</strong>${s.effort ? ` (effort: ${esc(s.effort)})` : ''}. Use it as it is, edit it, or keep your own.</p>
+<textarea rows="5" readonly aria-label="Suggested wording">${esc(s.brief)}</textarea>
+${s.why.length ? `<ul class="meta">${s.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+<div class="acts"><button class="btn secondary" type="button" onclick="var f=this.closest('form');f.brief.value=this.closest('.suggest').querySelector('textarea').value;${s.effort ? `f.effort.value='${esc(s.effort)}';` : ''}f.brief.focus()">Use this wording</button></div></div>`;
+}
+
 function jobForm(x: PanelJob | undefined, p: PanelJobs, esc: Esc): string {
   const days = x?.days ?? [1, 2, 3, 4, 5, 6, 7];
   const kind = x?.once ? 'once' : x?.monthDay ? 'month' : 'days';
@@ -117,6 +128,7 @@ function jobForm(x: PanelJob | undefined, p: PanelJobs, esc: Esc): string {
 <label>Name<input name="name" maxlength="60" value="${esc(x?.name ?? '')}" placeholder="e.g. Flights to Palermo"></label>
 <label>What to do <span class="meta">(in full, as you'd say it to Max: what, where, which dates, what matters to you)</span>
 <textarea name="brief" rows="3" required placeholder="Check flights from Bristol to Palermo for the first week of August, two adults, and tell me the three cheapest with times and airline. Also note if prices went up since last time.">${esc(x?.brief ?? '')}</textarea></label>
+${suggestionBlock(p.suggestions?.[x?.id ?? 'new'], esc)}
 <div class="addfact wrap"><label class="inline">When <select name="kind" onchange="var f=this.form;f.querySelector('.k-days').hidden=this.value!=='days';f.querySelector('.k-once').hidden=this.value!=='once';f.querySelector('.k-month').hidden=this.value!=='month'">
 <option value="days" ${kind === 'days' ? 'selected' : ''}>On these days</option><option value="once" ${kind === 'once' ? 'selected' : ''}>Once, on a date</option><option value="month" ${kind === 'month' ? 'selected' : ''}>Monthly, on a day</option></select></label>
 <label class="inline">at <input type="time" name="time" required value="${esc(x?.time ?? '07:00')}"></label>
@@ -130,6 +142,6 @@ function jobForm(x: PanelJob | undefined, p: PanelJobs, esc: Esc): string {
 <label>Also email to <span class="meta">(other people, separated by commas; sent from your own email account when the task works out)</span><input name="emailTo" maxlength="400" value="${esc((x?.emailTo ?? []).join(', '))}" placeholder="magda@example.com, marco@example.com" ${p.emailReady ? '' : 'disabled'}></label>
 <div class="addfact wrap"><span class="meta">Also WhatsApp to:</span>${p.people.length ? p.people.map((w) => `<label class="check"><input type="checkbox" name="whatsappTo" value="${esc(w.number)}" ${(x?.whatsappTo ?? []).includes(w.number) ? 'checked' : ''} ${p.whatsappReady ? '' : 'disabled'}> ${esc(w.name)} <span class="meta">${esc(w.shown)}</span></label>`).join('') : '<span class="meta">nobody on the allowed list yet (Connections → WhatsApp)</span>'}</div>
 <div class="addfact wrap"><label class="inline">Whose <select name="vault">${lists}</select></label>${x ? tick('enabled', x.enabled, 'On') : ''}</div>
-<div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button></div>
-<p class="meta">Results for other people only go out when the task worked out, and only to the addresses and people you choose here (WhatsApp: the allowed list). A work task is spoken about in work mode only (its result is still kept and sent). The model list comes from each provider; keys go in .env (Settings → AI models shows which are set up).</p></form>`;
+<div class="acts"><button class="btn" type="submit">${x ? 'Save' : 'Create'}</button> <button class="btn secondary" type="submit" formaction="/jobs/suggest" formnovalidate title="Max rewrites what you wrote into the wording his tools work best with: exact pages, what to pick out of long pages, the scope and the shape of the result. Nothing is saved until you press Save.">Improve the wording</button></div>
+<p class="meta">Not sure how to word it? Write it as you'd say it and press <strong>Improve the wording</strong>: Max suggests a version that names the pages, says what to pick out of long ones, pins down the dates and the shape of the result. Results for other people only go out when the task worked out, and only to the addresses and people you choose here (WhatsApp: the allowed list). A work task is spoken about in work mode only (its result is still kept and sent). The model list comes from each provider; keys go in .env (Settings → AI models shows which are set up).</p></form>`;
 }

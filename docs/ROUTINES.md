@@ -157,6 +157,16 @@ task worked out but a delivery failed, only that delivery is retried, so nobody 
 that need you (a key, an address, a reconnect) aren't retried: fix them and press **Run now**. Ask Max
 "what did the task find?" and he tells you the problem and the fix too.
 
+## Wording a task well
+
+Write the task as you'd say it, then press **Improve the wording** under the form. Max rewrites it into the
+shape his tools work best with: the exact pages to open, what to pick out of a long page (the "looking for"
+phrase that reads the whole page), the dates or months pinned down ("every month listed" or "the current
+month only"), the shape of the result (grouped how, one line per item, how many were found and how many
+pages were read), and what to leave out. The suggestion appears under the box with the reasons and the
+effort it needs; **Use this wording** copies it into the box, and nothing changes until you press Save or
+Create. Tasks created out loud can be improved the same way from their Settings.
+
 ## Long pages: programmes, listings, long lists
 
 A page read gives the model the first 6,000 characters, which on a cinema's full programme is the first

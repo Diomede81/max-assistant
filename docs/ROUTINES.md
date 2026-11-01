@@ -163,7 +163,11 @@ A page read gives the model the first 6,000 characters, which on a cinema's full
 two days. For "all the horror films this month", Max reads the page with *looking for* set to exactly what
 the task wants ("every horror film in November with dates, times and format"), and the whole page is then
 sifted for it, part by part, by the **Long web pages** model (Settings → Models). That is still one web
-look-up. The log shows each part: `Sift part 3/5 of https://… : 7 items`. If a scheduled task's result
+look-up. A read for sifting takes the whole page (not only what Firecrawl judges its main content), waits three
+seconds for the page's scripts to fill it in, and ends with the page's links related to what was asked for (a
+genre section, the next page, a season), which Max opens too, budget allowing, before answering. The log shows
+each step: `Listing read of https://… : 58k characters, 1,240 lines, 6 related links`, then `Sift part 3/5 of
+https://… : 7 items`. If a scheduled task's result
 looks short, check the log for `[... 50k more characters not shown]`: the task was answered from the first
 part only, and the task text should say "the whole programme" or name what to look for.
 

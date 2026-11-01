@@ -272,7 +272,7 @@ export class TaskAgentService implements OnModuleInit {
       opts.background
         ? `Pages you may open with read_webpage: the links in the task${linksIn(goal).length ? ` (${linksIn(goal).map((l) => `https://${l}`).join(', ')})` : ''} and any link a search or a page you read returns, copied exactly. For anything else, web_search first, then open a link from the results. ` +
           `You have at most ${opts.webBudget ?? 10} web look-ups in total (searches and page reads): plan them, prefer web_search with read_top=true (one look-up brings the top pages' text), ask one search at a time, and never repeat a failed one. ` +
-          'A page read shows only its first 6000 characters: for a programme, listing or long list, read it with looking_for set to exactly what the task wants from it (one look-up: the whole page is sifted), and never report a long page as complete from its first part.'
+          'A page read shows only its first 6000 characters: for a programme, listing or long list, read it with looking_for set to exactly what the task wants from it (one look-up: the whole page is sifted), and never report a long page as complete from its first part. A sifted page ends with related links (a section, a category, the next page, a season): open every one that may hold more of what the task wants, budget allowing, before you answer, and say in the result how many pages you read and how many items you found.'
         : '',
       `Current local time: ${describeNow()}.${home?.place ? ` Home: ${home.place}.` : ''}`,
       core,

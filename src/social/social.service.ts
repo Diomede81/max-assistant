@@ -394,7 +394,7 @@ export class SocialService implements OnModuleInit {
     };
     const bdays = this.birthdaysSoon(14).map((b) => `${b.person.name}'s birthday ${b.inDays === 0 ? 'is today' : b.inDays === 1 ? 'is tomorrow' : `in ${b.inDays} days`}`);
     return [
-      'People close to the user (use the people action to log contact, news or interests; when they say they spoke to, called, texted or met someone on this list, log it; when they share news about them, note it; when they tell you a lasting fact about someone (family, work, where they live, how they met), note it with about). Gently suggest catching up with anyone overdue when it fits.',
+      'People close to the user. When they say they spoke to, called, texted, met or emailed someone on this list, CALL the people action (log) at once, in the same turn, and only then say it is noted; the same for news (news), interests (interests) and lasting facts such as family, work, where they live or how you met (about). Saying "done" without calling the action records nothing. Gently suggest catching up with anyone overdue when it fits.',
       ...people.slice(0, 25).map(line),
       bdays.length ? `Birthdays: ${bdays.join('; ')}.` : '',
     ]
@@ -420,14 +420,16 @@ export class SocialService implements OnModuleInit {
   }
 
   get tools(): ChatCompletionTool[] {
-    if (!this.open) return [];
+    // Offered in every mode: outside personal mode the action answers "not done" and says why, so Max
+    // never claims to have logged something he had no way to log.
     return [
       {
         type: 'function',
         function: {
           name: 'people',
           description:
-            'The people close to the user and keeping in touch with them. log: the user spoke to, called, texted, met or ' +
+            'The people close to the user and keeping in touch with them. Nothing is recorded unless this action is called and ' +
+            'answers "Noted" or "Added": never tell the user it is done without that. log: the user spoke to, called, texted, met or ' +
             'emailed someone ("I called Mum", "had lunch with Marco"), with any news they share (how they are). news: ' +
             'something about a person without a contact ("Marco got a new job"). about: a lasting fact about who they are, by topic ' +
             '(family, work, home, met, other: "Anna has two boys, Leo and Tom" -> topic family; "Marco is a nurse" -> work; "they live in Bristol" -> home; "we met at school" -> met), added to what is known; a passing update is news, not about. interests: what they are into. who: ' +
@@ -460,12 +462,21 @@ export class SocialService implements OnModuleInit {
   }
 
   has(name: string): boolean {
-    return name === 'people' && this.open;
+    return name === 'people';
   }
 
   async call(_name: string, a: Record<string, unknown>): Promise<string> {
+    const out = await this.run(a);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+    // Every call and its outcome in the log, so "he said he did it" can be checked against what happened.
+    this.log.log(`people ${str(a.action) || 'catch_up'}${str(a.name) ? ` ${str(a.name)}` : ''}${str(a.kind) ? ` (${str(a.kind)})` : ''}: ${out.split('\n')[0].slice(0, 160)}`);
+    return out;
+  }
+
+  private async run(a: Record<string, unknown>): Promise<string> {
     const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
     const action = str(a.action) ?? 'catch_up';
+    if (!this.open) return `Not done: the people list is only used in personal mode (Max is in ${this.modes.mode} mode). Tell the user, and offer to switch to personal mode first.`;
     if (action === 'catch_up') {
       const due = this.dueForCatchUp();
       const bdays = this.birthdaysSoon(14);

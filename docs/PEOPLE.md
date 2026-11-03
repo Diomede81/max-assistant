@@ -19,6 +19,10 @@ work); the control panel shows it in personal and work mode, never in guest mode
 
 ## By voice
 
+People is personal: in work or guest mode Max can't log anything, and says so ("the people list is only used
+in personal mode, shall I switch?") instead of claiming it's done. Every call is in the log as
+`people log Marco (met): Noted: met Marco.`, so a support report shows whether a request reached the list.
+
 | You say | Max does |
 | --- | --- |
 | "Add my sister Anna to my people" / "Add Marco, a close friend" | Adds them with the right circle |

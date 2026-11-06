@@ -13,6 +13,21 @@ Your age goes up by itself each year.
 
 ## Logging
 
+### Meals and their nutrition
+
+Tell Max what you ate with as much as you know: the brand and product for something packaged ("Tesco
+chicken tikka masala, 400 g"), the weights for something you cooked ("porridge with 60 g oats and 200 ml
+semi-skimmed milk"). He logs it and looks up its nutrition: calories, protein, carbs, fat and fibre, for
+the whole amount you described. A packaged product is found by its label on the web (Firecrawl,
+Connections › Web); a home-cooked dish is worked out from standard food values and marked "estimated".
+He tells you what he found and where it came from, and the Health › Diet page shows each entry's source.
+Give the numbers yourself ("45 grams of protein") and he keeps yours. A look-up that takes longer than
+twenty seconds finishes in the background and the entry fills in on its own.
+
+Diet shows two charts over the last 14 days: protein per day first, then calories, each with its
+average over the days that have entries. The weekly summary ("how am I doing?") gives protein a day too.
+
+
 On the control panel (**Add** in each part), or just tell Max:
 
 - "I ran 5 km in 30 minutes", "I did 40 minutes of weights yesterday"

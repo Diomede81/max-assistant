@@ -71,6 +71,8 @@ const ABOUT_CHARS = 400;
 export interface NudgeSettings {
   speak: boolean;
   screen: boolean;
+  /** Also sent to the user on WhatsApp (for when they are not at home at that time). */
+  whatsapp: boolean;
   time: string;
   /** "Later" puts a person off for this many days. */
   laterDays: number;
@@ -83,7 +85,7 @@ interface State {
   nudgedOn?: string;
 }
 
-const NUDGE_DEFAULTS: NudgeSettings = { speak: true, screen: true, time: '18:00', laterDays: 3 };
+const NUDGE_DEFAULTS: NudgeSettings = { speak: true, screen: true, whatsapp: false, time: '18:00', laterDays: 3 };
 
 const TOUCHES_KEPT = 40;
 const UPDATES_KEPT = 20;
@@ -166,14 +168,21 @@ export class SocialService implements OnModuleInit {
     return { ...NUDGE_DEFAULTS, ...(this.state.nudge ?? {}) };
   }
 
-  saveNudge(input: { speak: boolean; screen: boolean; time?: string; laterDays?: string | number }): string {
+  saveNudge(input: { speak: boolean; screen: boolean; whatsapp?: boolean; time?: string; laterDays?: string | number }): string {
     if (input.time !== undefined && !/^\d{2}:\d{2}$/.test(input.time)) return 'The time should look like 18:00.';
     const later = input.laterDays === undefined || input.laterDays === '' ? this.nudge.laterDays : Number(input.laterDays);
     if (!Number.isInteger(later) || later < 1 || later > 30) return '"Later" should put someone off by 1 to 30 days.';
-    this.state.nudge = { speak: input.speak, screen: input.screen, time: input.time ?? this.nudge.time, laterDays: later };
+    this.state.nudge = { speak: input.speak, screen: input.screen, whatsapp: input.whatsapp ?? this.nudge.whatsapp, time: input.time ?? this.nudge.time, laterDays: later };
     this.persist();
     const n = this.nudge;
-    return !n.speak && !n.screen ? 'Reminders are off: Max only mentions overdue catch-ups when you ask.' : `Max reminds you at ${n.time}${n.speak && n.screen ? ', out loud and on the screen' : n.speak ? ', out loud' : ', on the screen'}.`;
+    const ways = [n.speak ? 'out loud' : '', n.screen ? 'on the screen' : '', n.whatsapp ? 'on WhatsApp' : ''].filter(Boolean);
+    return !ways.length ? 'Reminders are off: Max only mentions overdue catch-ups when you ask.' : `Max reminds you at ${n.time}, ${ways.join(', ')}.`;
+  }
+
+  /** Reminders are wanted at all (some way of telling the user is on). */
+  get nudgeOn(): boolean {
+    const n = this.nudge;
+    return n.speak || n.screen || n.whatsapp;
   }
 
   /** The overdue people to remind about now: not put off with "Later". */
@@ -183,11 +192,15 @@ export class SocialService implements OnModuleInit {
   }
 
   /** Whether the daily nudge is due now (its time has come today, and it hasn't gone out yet). */
+  /**
+   * The daily reminder is due: its time has come (not only on the exact minute: a check that lands a
+   * minute late, or Max being busy or in work mode at the time, must not lose the day's reminder) and it
+   * has not gone out today. Whether Max is in personal mode is the caller's to check, so it can say why not.
+   */
   nudgeDue(now = new Date()): boolean {
-    const n = this.nudge;
-    if (!this.open || (!n.speak && !n.screen)) return false;
+    if (!this.nudgeOn) return false;
     const { date, time } = local(now);
-    return time === n.time && this.state.nudgedOn !== date;
+    return time >= this.nudge.time && this.state.nudgedOn !== date;
   }
 
   /** Marks today's nudge as done (whatever was shown or said). */

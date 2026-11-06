@@ -41,6 +41,10 @@ lists overdue catch-ups and birthdays within three days.
 
 ## Reminders
 
+The reminder goes out at the set time, or as soon after it as Max is in personal mode that day (in work mode
+he holds it and the log says so). Tick **WhatsApp me** to get it on your phone as well, for days you are
+not at home at that time; reply "I called Marco" and he notes it.
+
 Once a day (18:00 unless you change it, People › Reminders), when it's been too long with someone, Max
 says so out loud ("It's been a while: 20 days since you called Mum, and 35 since you texted Marco. Last
 you heard, Mum's knee was on the mend. Worth a call?") and shows them on his screen, each with an

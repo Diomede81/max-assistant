@@ -726,7 +726,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     const id = get('id');
     const back = (msg: string, ok = true, anchor = id ? `person-${id}` : 'people') => this.redirect(res, `/?${ok ? 'ok' : 'error'}=${encodeURIComponent(msg)}#${anchor}`);
     if (action === 'reminders') {
-      const msg = so.saveNudge({ speak: f.get('speak') === 'yes', screen: f.get('screen') === 'yes', time: get('time') || undefined, laterDays: get('laterDays') });
+      const msg = so.saveNudge({ speak: f.get('speak') === 'yes', screen: f.get('screen') === 'yes', whatsapp: f.get('whatsapp') === 'yes', time: get('time') || undefined, laterDays: get('laterDays') });
       return back(msg, !/^(The time|"Later")/.test(msg), 'people-reminders');
     }
     if (action === 'save') {

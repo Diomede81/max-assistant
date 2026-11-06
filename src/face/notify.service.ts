@@ -17,6 +17,7 @@ import { TodoTicks } from './todo-ticks';
 import { LockService } from '../lock/lock.service';
 import { CIRCLES, Person, SocialService } from '../social/social.service';
 import { DeviceService } from '../device/device.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 const TICK_MS = 15_000;
 const TODO_MS = 60_000;
@@ -65,6 +66,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly lock?: LockService,
     @Optional() private readonly social?: SocialService,
     @Optional() private readonly device?: DeviceService,
+    @Optional() private readonly whatsapp?: WhatsAppService,
   ) {
     this.store = new SealedStore(cfg.memory.dir, 'notifications');
   }
@@ -218,15 +220,33 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
    */
   checkPeople(): void {
     const so = this.social;
-    if (!so || this.guest || this.lock?.locked || !so.nudgeDue()) return;
+    if (!so || this.lock?.locked || !so.nudgeDue()) return;
+    if (this.guest || !so.open) {
+      // Not the moment: it goes out once Max is back in personal mode today. Said once in the log.
+      const today = localToday();
+      if (this.nudgeHeldOn !== today) {
+        this.nudgeHeldOn = today;
+        this.log.log(`Catch-up reminder is due but Max is in ${this.modes?.mode ?? 'another'} mode: it goes out once he is back in personal mode today`);
+      }
+      return;
+    }
+    if (this.device?.nightNow) return; // night: the morning's check sends it
     so.nudged();
     const list = so.nudgeList();
-    if (!list.length) return;
     const n = so.nudge;
-    this.log.log(`Catch-up reminder: ${list.map((p) => p.name).join(', ')}`);
+    if (!list.length) {
+      this.log.log('Catch-up reminder: nobody overdue today');
+      return;
+    }
+    this.log.log(`Catch-up reminder: ${list.map((p) => p.name).join(', ')} (${[n.speak ? 'out loud' : '', n.screen ? 'screen' : '', n.whatsapp ? 'WhatsApp' : ''].filter(Boolean).join(', ')})`);
     if (n.speak) this.timerService?.announce(so.nudgeText(list));
     if (n.screen) this.peopleCard(list.slice(0, 8));
+    if (n.whatsapp) {
+      if (!this.whatsapp?.canMessageSelf) this.log.warn('Catch-up reminder: WhatsApp is on but not linked, so no message');
+      else this.whatsapp.sendToSelf(`${so.nudgeText(list)}\n\nReply "I called Marco" or "remind me about Marco next week" and I'll note it.`).catch((err) => this.log.warn(`Catch-up reminder on WhatsApp failed: ${(err as Error).message}`));
+    }
   }
+  private nudgeHeldOn?: string;
 
   private peopleCard(list: Person[]): void {
     const so = this.social!;

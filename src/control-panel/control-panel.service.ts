@@ -524,6 +524,14 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       sleep: { key: 'hours', label: 'Hours of sleep', unit: 'h', sum: false },
       weight: { key: 'kg', label: 'Weight', unit: 'kg', sum: false },
     };
+    const series = (m: { key: string; label: string; unit: string; sum: boolean }, part: Part) => ({
+      label: m.label,
+      unit: m.unit,
+      days: days.map((date) => {
+        const vs = h.recent(part, 14).filter((e) => e.date === date && e.values[m.key] !== undefined).map((e) => e.values[m.key]);
+        return { date, value: vs.length ? (m.sum ? Math.round(vs.reduce((a, b) => a + b, 0) * 10) / 10 : vs[vs.length - 1]) : undefined };
+      }),
+    });
     return {
       wordings: this.wordingsOf('plan'),
       today,
@@ -545,22 +553,16 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       whatsappReady: h.whatsappReady,
       parts: PART_IDS.map((id) => {
         const m = main[id];
-        const recent = h.recent(id, 14);
         return {
           id,
           ...PARTS[id],
           summary: h.summary(id),
           goal: h.goals[id],
           planable: PLAN_PARTS.includes(id),
-          entries: h.entries.filter((e) => e.part === id).slice(-10).reverse(),
-          chart: {
-            label: m.label,
-            unit: m.unit,
-            days: days.map((date) => {
-              const vs = recent.filter((e) => e.date === date && e.values[m.key] !== undefined).map((e) => e.values[m.key]);
-              return { date, value: vs.length ? (m.sum ? Math.round(vs.reduce((a, b) => a + b, 0) * 10) / 10 : vs[vs.length - 1]) : undefined };
-            }),
-          },
+          entries: h.entries.filter((e) => e.part === id).slice(-10).reverse().map((e) => ({ ...e, nutrition: e.nutrition })),
+          chart: series(m, id),
+          // Diet: protein first (the number people track), then calories.
+          charts: id === 'diet' ? [series({ key: 'protein', label: 'Protein', unit: 'g', sum: true }, id), series(m, id)] : [series(m, id)],
         };
       }),
       plans: h.plans.map((p) => ({ ...p, running: h.running.has(p.id), latest: p.history[0], feedback: p.feedback })),
@@ -596,7 +598,8 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
       case 'log': {
         if (!(part in PARTS)) return back('Unknown part.', false);
         const values = Object.fromEntries(PARTS[part].fields.map((x) => [x.key, get(x.key)]));
-        const r = h.add(part, { text: get('text'), values, date: get('date') });
+        const input = { text: get('text'), values, date: get('date') };
+        const r = part === 'diet' ? await h.logMeal(input) : h.add(part, input);
         return back(r.message.split(' That ')[0], r.ok, `health-${part}`);
       }
       case 'delete':

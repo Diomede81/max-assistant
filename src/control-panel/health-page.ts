@@ -77,9 +77,11 @@ export interface PanelHealthPart {
   fields: readonly { key: string; label: string; unit: string }[];
   summary: string;
   goal?: string;
-  entries: { id: string; date: string; text: string; values: Record<string, number> }[];
+  entries: { id: string; date: string; text: string; values: Record<string, number>; nutrition?: { how: string; source?: string; portion?: string } }[];
   /** The last 14 days of its main number (exercise minutes, calories, blood pressure…). */
   chart: { label: string; unit: string; days: { date: string; value?: number }[] };
+  /** Every chart shown (diet: protein, then calories). */
+  charts: { label: string; unit: string; days: { date: string; value?: number }[] }[];
   planable: boolean;
 }
 
@@ -169,7 +171,7 @@ function profileSection(h: PanelHealth, esc: Esc): string {
 
 function chart(c: PanelHealthPart['chart'], esc: Esc): string {
   const vals = c.days.map((d) => d.value).filter((v): v is number => v !== undefined);
-  if (!vals.length) return '<p class="empty">Nothing in the last 14 days yet.</p>';
+  if (!vals.length) return `<p class="empty">${esc(c.label)}: nothing in the last 14 days yet.</p>`;
   const max = Math.max(...vals) || 1;
   const w = 14 * 22;
   const bars = c.days
@@ -178,7 +180,9 @@ function chart(c: PanelHealthPart['chart'], esc: Esc): string {
       return `<rect x="${i * 22 + 3}" y="${80 - hgt}" width="16" height="${hgt}" rx="3"><title>${esc(d.date)}: ${d.value ?? 'nothing'}${d.value !== undefined && c.unit ? ` ${esc(c.unit)}` : ''}</title></rect>${i % 2 === 0 ? `<text x="${i * 22 + 11}" y="96">${esc(d.date.slice(8))}</text>` : ''}`;
     })
     .join('');
-  return `<figure class="hchart"><svg viewBox="0 0 ${w} 100" role="img" aria-label="${esc(c.label)}, last 14 days">${bars}</svg><figcaption class="meta">${esc(c.label)}${c.unit ? ` (${esc(c.unit)})` : ''}, last 14 days · highest ${max}</figcaption></figure>`;
+  const withValues = vals.length;
+  const avg = Math.round((vals.reduce((a, b) => a + b, 0) / withValues) * 10) / 10;
+  return `<figure class="hchart"><svg viewBox="0 0 ${w} 100" role="img" aria-label="${esc(c.label)}, last 14 days">${bars}</svg><figcaption class="meta">${esc(c.label)}${c.unit ? ` (${esc(c.unit)})` : ''}, last 14 days · highest ${max} · average ${avg} on the ${withValues} day${withValues === 1 ? '' : 's'} with entries</figcaption></figure>`;
 }
 
 function partSection(p: PanelHealthPart, today: string, esc: Esc): string {
@@ -187,7 +191,7 @@ function partSection(p: PanelHealthPart, today: string, esc: Esc): string {
   const rows = p.entries.length
     ? `<ul class="hlist">${p.entries
         .map(
-          (e) => `<li><span class="meta">${esc(e.date)}</span> ${esc([e.text, ...val(e)].filter(Boolean).join(' · '))}
+          (e) => `<li><span class="meta">${esc(e.date)}</span> ${esc([e.text, ...val(e)].filter(Boolean).join(' · '))}${e.nutrition ? ` <span class="meta">(${esc(e.nutrition.how)}${e.nutrition.source ? ` from ${esc(e.nutrition.source)}` : ''}${e.nutrition.portion ? `, ${esc(e.nutrition.portion)}` : ''})</span>` : ''}
 <form method="post" action="/health/delete"><input type="hidden" name="id" value="${esc(e.id)}"><button class="linkbtn" type="submit" title="Remove" aria-label="Remove">✕</button></form></li>`,
         )
         .join('')}</ul>`
@@ -197,7 +201,8 @@ function partSection(p: PanelHealthPart, today: string, esc: Esc): string {
     .join('');
   return `<section id="health-${esc(p.id)}"><h2>${esc(p.label)}</h2>
 <p class="meta">${esc(p.summary)}</p>
-${chart(p.chart, esc)}
+${(p.charts ?? [p.chart]).map((c) => chart(c, esc)).join('')}
+${p.id === 'diet' ? '<p class="meta">Say what you ate with the brand or the weights ("Tesco chicken tikka masala 400 g", "porridge with 60 g oats and 200 ml milk") and Max looks up the calories, protein, carbs, fat and fibre: from the label for a packaged product, estimated for a home-cooked dish. Give the numbers yourself to skip the look-up.</p>' : ''}
 <h3>Add</h3>
 <form class="stack" method="post" action="/health/log"><input type="hidden" name="part" value="${esc(p.id)}">
 <div class="addfact wrap"><label class="inline">${esc(p.text)}<input name="text" maxlength="300" placeholder="${esc(p.example)}"></label>${inputs}

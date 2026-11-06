@@ -599,7 +599,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
         if (!(part in PARTS)) return back('Unknown part.', false);
         const values = Object.fromEntries(PARTS[part].fields.map((x) => [x.key, get(x.key)]));
         const input = { text: get('text'), values, date: get('date') };
-        const r = part === 'diet' ? await h.logMeal(input) : h.add(part, input);
+        const r = part === 'diet' ? await h.logMeal({ ...input, fromUser: true }) : h.add(part, input);
         return back(r.message.split(' That ')[0], r.ok, `health-${part}`);
       }
       case 'delete':

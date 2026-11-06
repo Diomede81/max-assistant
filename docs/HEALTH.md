@@ -21,8 +21,13 @@ semi-skimmed milk"). He logs it and looks up its nutrition: calories, protein, c
 the whole amount you described. A packaged product is found by its label on the web (Firecrawl,
 Connections › Web); a home-cooked dish is worked out from standard food values and marked "estimated".
 He tells you what he found and where it came from, and the Health › Diet page shows each entry's source.
-Give the numbers yourself ("45 grams of protein") and he keeps yours. A look-up that takes longer than
+Give the numbers yourself ("45 grams of protein") and he keeps yours. He never takes the voice model's own guess as
+the answer: numbers only count as yours when you said them; otherwise the meal is looked up, and the model's
+guess is kept only if nothing is found online, marked as an estimate. A look-up that takes longer than
 twenty seconds finishes in the background and the entry fills in on its own.
+
+Mentioning the same meal again on the same day ("my porridge had 80 g of oats, not 60") updates the entry you
+already have rather than adding another, and the nutrition is looked up again if the description changed.
 
 Diet shows two charts over the last 14 days: protein per day first, then calories, each with its
 average over the days that have entries. The weekly summary ("how am I doing?") gives protein a day too.

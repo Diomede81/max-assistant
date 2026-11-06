@@ -167,6 +167,19 @@ const MAX_SOURCES = 5;
 const HISTORY = 20;
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+/** The same meal said twice: most of the shorter description's words appear in the other's. */
+export function sameMeal(a: string, b: string): boolean {
+  const words = (t: string) => new Set(t.toLowerCase().replace(/\d+(\.\d+)?\s*(g|ml|kg|l|grams?|litres?|cups?|tbsp|tsp)?\b/g, ' ').split(/[^\p{L}]+/u).filter((w) => w.length > 2 && !MEAL_STOP.has(w)));
+  const wa = words(a);
+  const wb = words(b);
+  if (!wa.size || !wb.size) return false;
+  const [small, big] = wa.size <= wb.size ? [wa, wb] : [wb, wa];
+  let shared = 0;
+  for (const w of small) if (big.has(w)) shared++;
+  return shared / small.size >= 0.6;
+}
+const MEAL_STOP = new Set(['the', 'and', 'with', 'for', 'had', 'ate', 'some', 'this', 'that', 'morning', 'lunch', 'dinner', 'breakfast', 'today', 'tonight', 'again', 'also', 'actually', 'about', 'around', 'bowl', 'plate', 'portion']);
+
 const num = (v: unknown): number | undefined => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : NaN;
   return Number.isFinite(n) && n >= 0 && n < 100_000 ? Math.round(n * 100) / 100 : undefined;
@@ -266,19 +279,77 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
    * quantities. Waits up to NUTRITION_WAIT_MS; a slower look-up finishes in the background and
    * fills the entry in when it lands.
    */
-  async logMeal(input: { text?: string; values?: Record<string, unknown>; date?: string }): Promise<{ ok: boolean; message: string }> {
-    const r = this.add('diet', input);
-    if (!r.ok) return r;
-    const entry = this.data.entries[this.data.entries.length - 1];
+  async logMeal(input: { text?: string; values?: Record<string, unknown>; date?: string; fromUser?: boolean; replacesPrevious?: boolean }): Promise<{ ok: boolean; message: string }> {
+    // Nutrition numbers count as the user's only when the caller says so (the control panel form, or the voice
+    // model with numbers_from_user): a model's own guesses are kept aside and the look-up happens anyway.
+    const guessed: Record<string, number> = {};
+    const values = { ...(input.values ?? {}) };
+    if (!input.fromUser) {
+      for (const k of NUTRIENTS) {
+        const v = num(values[k]);
+        if (v !== undefined) guessed[k] = v;
+        delete values[k];
+      }
+    }
+    // The same meal mentioned again today ("my porridge", "actually it was 80 g of oats") updates the entry it
+    // already has instead of adding another: the fuller description wins, the user's numbers replace old ones.
+    const today = local().date;
+    const date = input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date) && input.date <= today ? input.date : today;
+    const text = (input.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const twin = input.replacesPrevious
+      ? [...this.data.entries].reverse().find((e) => e.part === 'diet' && e.date === date)
+      : text
+        ? [...this.data.entries].reverse().find((e) => e.part === 'diet' && e.date === date && sameMeal(e.text, text))
+        : undefined;
+    let r: { ok: boolean; message: string };
+    let entry: Entry;
+    if (twin) {
+      // The new wording is taken when it adds detail: it is longer, carries quantities (a correction), or is a
+      // correction by the user's own say-so; an addition that doesn't restate the meal is appended to it.
+      const before = twin.text;
+      if (text) {
+        if (input.replacesPrevious && !sameMeal(before, text)) twin.text = `${before}; ${text}`.slice(0, 300);
+        else if (input.replacesPrevious || text.length >= before.length || /\d/.test(text)) twin.text = text;
+      }
+      const changed = twin.text.toLowerCase() !== before.toLowerCase();
+      for (const k of Object.keys(values)) {
+        const v = num(values[k]);
+        if (v !== undefined) twin.values[k] = v;
+      }
+      if (changed) {
+        // a different description: the old nutrition no longer fits; it is looked up again below
+        for (const k of NUTRIENTS) if (num(values[k]) === undefined) delete twin.values[k];
+        delete twin.nutrition;
+      }
+      twin.at = new Date().toISOString();
+      this.save();
+      entry = twin;
+      this.log.log(`Meal "${twin.text}": updated today's entry rather than adding another`);
+      r = { ok: true, message: `Updated today's entry rather than adding another: ${twin.text}.` };
+      if (!changed && entry.nutrition && NUTRIENTS.some((k) => entry.values[k] !== undefined)) return { ok: true, message: `${r.message} Its nutrition stays as it was.` };
+    } else {
+      r = this.add('diet', { ...input, values });
+      if (!r.ok) return r;
+      entry = this.data.entries[this.data.entries.length - 1];
+    }
     const given = NUTRIENTS.filter((k) => entry.values[k] !== undefined);
     if (given.includes('protein') && given.includes('kcal')) {
       entry.nutrition = { how: 'given' };
       this.save();
       return r;
     }
+    if (Object.keys(guessed).length) this.log.log(`Meal "${entry.text}": the model offered its own numbers (${Object.entries(guessed).map(([k, v]) => `${k} ${v}`).join(', ')}); looking the meal up instead`);
     if (!entry.text) return { ok: true, message: `${r.message} No description, so no nutrition to look up.` };
     const lookup = this.lookupNutrition(entry.text)
       .then((n) => {
+        if (!n && Object.keys(guessed).length) {
+          // Nothing found online: the model's own numbers are better than none, said to be an estimate.
+          for (const k of NUTRIENTS) if (entry.values[k] === undefined && guessed[k] !== undefined) entry.values[k] = Math.round(guessed[k]);
+          entry.nutrition = { how: 'estimated', note: 'Nothing found online: these are the voice model\'s own estimate.' };
+          this.save();
+          this.log.warn(`Nutrition for "${entry.text}": nothing found; kept the model's estimate`);
+          return { values: guessed, how: 'estimated' as const, source: undefined, portion: undefined, note: entry.nutrition.note };
+        }
         if (!n) {
           this.log.warn(`Nutrition for "${entry.text}": nothing found`);
           return undefined;
@@ -1180,7 +1251,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
           description:
             'Log something in the user\'s Health section when they tell you about it: exercise ("I ran 5 km in 30 minutes"), food and drink, ' +
             'resting heart rate or blood pressure ("128 over 82"), sleep, weight. One call per thing. Numbers in the fields, words in "text". ' +
-            'A meal (diet): put everything they said about it in text (brand, product, weights, portions: "Tesco chicken tikka masala 400 g", "porridge, 60 g oats, 200 ml milk") and leave the nutrition fields empty unless they gave the numbers: Max looks up the calories, protein, carbs, fat and fibre himself and the answer says what he found and whether it is from a label or estimated.',
+            'A meal (diet): put everything they said about it in text (brand, product, weights, portions: "Tesco chicken tikka masala 400 g", "porridge, 60 g oats, 200 ml milk"). Max ALWAYS looks the meal up online himself (calories, protein, carbs, fat, fibre): never do a web_search for it and never fill the nutrition fields from your own knowledge. Fill them only with numbers the user said, and then set numbers_from_user to true. Call this straight away when they mention eating something, without asking whether to look it up; the answer says what was found and whether it came from a label or is an estimate. The same meal mentioned again today updates its entry rather than adding another; a correction ("actually it was 80 g") goes with replaces_previous true.',
           parameters: {
             type: 'object',
             properties: {
@@ -1188,6 +1259,8 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
               text: { type: 'string', description: 'What it was, e.g. "Run", "Chicken salad", "after waking up"' },
               ...fields,
               date: { type: 'string', description: 'YYYY-MM-DD if not today (e.g. "yesterday")' },
+              numbers_from_user: { type: 'boolean', description: 'Diet only: true when the nutrition numbers in the fields are ones the user said (not your own estimate)' },
+              replaces_previous: { type: 'boolean', description: 'Diet only: true when the user is correcting or adding to the meal they last logged today ("actually it was 80 g of oats"), so that entry is updated instead of a new one added' },
             },
             required: ['part'],
           },
@@ -1296,7 +1369,7 @@ export class HealthService implements OnModuleInit, OnModuleDestroy {
       const values: Record<string, unknown> = {};
       for (const f of PARTS[part].fields) values[f.key] = args[f.key];
       const input = { text: typeof args.text === 'string' ? args.text : '', values, date: typeof args.date === 'string' ? args.date : undefined };
-      const logged = part === 'diet' ? (await this.logMeal(input)).message : this.add(part, input).message;
+      const logged = part === 'diet' ? (await this.logMeal({ ...input, fromUser: args.numbers_from_user === true, replacesPrevious: args.replaces_previous === true })).message : this.add(part, input).message;
       // A session from the plan: ask how it went, so the next ones can be adjusted (the plan's feedback).
       const ask = part === 'exercise' ? this.sessionToAskAbout() : undefined;
       return ask

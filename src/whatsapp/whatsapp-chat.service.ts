@@ -64,7 +64,7 @@ export class WhatsAppChatService implements OnModuleInit, OnModuleDestroy {
     this.log.log(`Message from you (${text.split(/\s+/).length} words)`);
     let out = '';
     try {
-      for await (const fragment of this.llm.respond(this.history)) out += fragment;
+      for await (const fragment of this.llm.respond(this.history, { task: 'whatsapp' })) out += fragment;
     } catch (err) {
       const why = explainLlmError(err);
       this.log.warn(why.log);

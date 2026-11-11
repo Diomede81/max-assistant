@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import OpenAI from 'openai';
 import type {
   ChatCompletionMessageParam,
@@ -11,6 +11,7 @@ import { describeNow } from '../actions/clock';
 import { wantsScreen } from '../actions/screen-tools.service';
 import { MemoryService } from '../memory/memory.service';
 import { SoulService } from '../soul/soul.service';
+import { ModelsService, Task } from '../models/models.service';
 
 const MAX_TOOL_ROUNDS = 4;
 const NO_HA_NOTE =
@@ -36,6 +37,7 @@ export class LlmService {
     private readonly tools: ToolRouterService,
     private readonly memory: MemoryService,
     private readonly soul: SoulService,
+    @Optional() private readonly models?: ModelsService,
   ) {
     this.primary = new OpenAI({ baseURL: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey || 'none' });
     if (cfg.llm.fallbackBaseUrl && cfg.llm.fallbackModel) {
@@ -44,7 +46,20 @@ export class LlmService {
   }
 
   /** Yields spoken text fragments. Mutates `history` with the assistant/tool turns. */
-  async *respond(history: ChatCompletionMessageParam[]): AsyncGenerator<string> {
+  /**
+   * The model a channel's replies come from. WhatsApp: its own job's model, else the Complex tasks model (a typed
+   * chat has no rush, and a strong model finishes multi-step requests without being asked twice), else the main one.
+   */
+  private modelFor(task?: Task): { client: OpenAI; model: string; main: boolean; label: string } | undefined {
+    if (!task || !this.models) return undefined;
+    const job: Task = task === 'whatsapp' && !this.models.hasOwnModel('whatsapp') && this.models.hasOwnModel('tasks') ? 'tasks' : task;
+    const m = this.models.clientFor(job);
+    return m.main ? undefined : m;
+  }
+
+  async *respond(history: ChatCompletionMessageParam[], opts: { task?: Task } = {}): AsyncGenerator<string> {
+    const chosen = this.modelFor(opts.task);
+    if (chosen && !history.some((m) => m.role === 'assistant')) this.log.log(`${opts.task} replies come from ${chosen.label}`);
     // Memory: the standing core, plus notes relevant to what the user just said.
     const included = new Set<string>();
     const core = this.memory.enabled ? this.memory.promptSection(included) : '';
@@ -71,7 +86,7 @@ export class LlmService {
       const started = Date.now();
       let stream: Awaited<ReturnType<LlmService['openStream']>>;
       try {
-        stream = await this.openStream(messages, round === 0 && forceScreen);
+        stream = await this.openStream(messages, round === 0 && forceScreen, chosen);
       } catch (err) {
         // Some models try to call a device action even when Home Assistant is offline
         // (no tools sent); the provider then rejects the request. Say so plainly.
@@ -160,7 +175,7 @@ export class LlmService {
     return text ? [{ role: 'system', content: text }] : [];
   }
 
-  private async openStream(messages: ChatCompletionMessageParam[], forceScreen = false) {
+  private async openStream(messages: ChatCompletionMessageParam[], forceScreen = false, chosen?: { client: OpenAI; model: string; label: string }) {
     const tools = this.tools.tools;
     const screen = tools.some((t) => t.type === 'function' && t.function.name === 'show_on_screen');
     const body = (model: string, reasoningEffort?: string, force = forceScreen) => ({
@@ -169,7 +184,8 @@ export class LlmService {
       stream: true as const,
       temperature: 0.3,
       // Spoken replies are short, but a recipe sent to the screen needs room (or it's cut off and lost).
-      max_tokens: force ? 1500 : screen ? 800 : 300,
+      // A typed reply (WhatsApp) may run longer than a spoken one: a reviewed plan does not fit in 300 tokens.
+      max_tokens: force ? 1500 : chosen ? 1200 : screen ? 800 : 300,
       ...(tools.length ? { tools, tool_choice: force ? { type: 'function' as const, function: { name: 'show_on_screen' } } : ('auto' as const) } : {}),
       // Provider-specific values (e.g. DeepSeek's "none") aren't in the SDK's type list.
       ...(reasoningEffort ? { reasoning_effort: reasoningEffort as 'low' } : {}),
@@ -180,6 +196,13 @@ export class LlmService {
       } catch (err) {
         // Some models don't accept a required action (e.g. in thinking mode): ask normally instead.
         this.log.warn(`could not require the screen (${(err as Error).message}); asking normally`);
+      }
+    }
+    if (chosen) {
+      try {
+        return await chosen.client.chat.completions.create(body(chosen.model, undefined, false), { timeout: Math.max(this.cfg.llm.timeoutMs, 120_000), maxRetries: 0 });
+      } catch (err) {
+        this.log.warn(`${chosen.label} failed (${(err as Error).message}); the main model answers this time`);
       }
     }
     try {

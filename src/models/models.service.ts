@@ -11,6 +11,7 @@ export const TASKS = {
   memory: { label: 'Filing conversations', help: 'After each conversation, decides what is worth remembering and where.' },
   digest: { label: 'Memory tidy-up', help: 'Rolls old conversation notes up into weekly and monthly digests.' },
   meetings: { label: 'Meeting answers', help: 'Answers you out loud in online meetings: a fast model keeps the wait short.' },
+  whatsapp: { label: 'WhatsApp chat', help: 'Answers you when you write to Max on WhatsApp. Typing has no rush, so a strong, careful model suits it. Until you pick one, the Complex tasks model answers (or the main model if none).' },
   tasks: { label: 'Complex tasks', help: 'Travel planning, calendar questions and other jobs with several steps: the conversation hands them to this model, which works them out with Max\'s actions. Pick a strong model (e.g. DeepSeek); until you do, the conversation does them itself.' },
   health: { label: 'Health plans', help: 'Writes your exercise routines and meal plans from the websites you chose: a strong model gives better plans.' },
   home: { label: 'Home automations', help: 'Turns an automation you describe ("when I\'m out and the alarm is on…") into one for Home Assistant.' },
@@ -113,6 +114,12 @@ export class ModelsService implements OnModuleInit {
 
   private provider(id: string): (Provider & { configured: boolean }) | undefined {
     return this.providers().find((p) => p.id === id);
+  }
+
+  /** The client and model name a job runs on (the main model when none is chosen), for callers that stream. */
+  clientFor(task: Task): { client: OpenAI; model: string; main: boolean; label: string } {
+    const a = this.assignment(task);
+    return { client: this.client(a.provider), model: a.provider === 'default' ? this.cfg.llm.model : a.model, main: a.provider === 'default', label: this.describe(task) };
   }
 
   private client(id: string): OpenAI {

@@ -72,8 +72,9 @@ ${Object.entries(FACE_STYLES).map(([k, label]) => `<label class="meta tick"><inp
         if (j.error) failed.push(files[i].name + ': ' + j.error); else done++;
       } catch (e) { failed.push(files[i].name + ': upload failed'); }
     }
-    if (failed.length) { msg.textContent = failed.join(' · '); if (done) setTimeout(function () { location.hash = 'screen'; location.reload(); }, 2500); }
-    else { location.hash = 'screen'; location.reload(); }
+    var back = function () { location.hash = 'screen'; (window.panelRefresh || location.reload)(); };
+    if (failed.length) { msg.textContent = failed.join(' · '); if (done) setTimeout(back, 2500); }
+    else back();
   });
 })();
 </script>

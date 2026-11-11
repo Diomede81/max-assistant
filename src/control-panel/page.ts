@@ -473,7 +473,7 @@ ${past.length ? `<h3>Earlier</h3><ul>${past.slice(0, 30).map(row).join('')}</ul>
 <div class="meta">What everyone sees when he joins${m.settings.botName ? ` (now "${esc(m.settings.botNow)}")` : ''}. Empty: "${esc(m.settings.botDefault)}".</div></div>
 <button class="btn" type="submit">Save</button></form>
 <div class="acts">${post('/meetings/check', {}, 'Check the Recall.ai connection')}${m.live ? post('/meetings/check-live', {}, 'Check the secure link') : ''}</div>
-${now.length ? '<script>setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) location.reload(); }, 15000);</script>' : ''}
+${now.length ? '<script>setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) (window.panelRefresh || location.reload)(); }, 15000);</script>' : ''}
 </section>${detail}`;
 }
 
@@ -1173,6 +1173,8 @@ input[type=date],input[type=time]{flex:none}details{margin-top:4px}.items{list-s
 .btn{flex:none;background:var(--accent);color:#fff;text-decoration:none;border:0;border-radius:8px;padding:8px 14px;min-height:36px;display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .btn.secondary{background:transparent;color:var(--accent);border:1px solid var(--line)}
 .notice{border-radius:10px;padding:10px 14px;margin-bottom:16px}.notice.ok{background:var(--okbg);color:var(--ok)}.notice.error{background:var(--errbg);color:var(--err)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));z-index:30;max-width:min(560px,calc(100vw - 32px));box-shadow:0 8px 24px rgba(0,0,0,.18);margin:0;font-size:14px;transition:opacity .3s}.toast.gone{opacity:0}@media (min-width:900px){.toast{bottom:24px}}
+form[aria-busy=true] .btn,form[aria-busy=true] button{opacity:.6;cursor:progress}
 code{background:var(--offbg);padding:1px 5px;border-radius:5px;font-size:13px}a{color:var(--accent)}
 form{margin:0}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 @media (max-width:520px){.row{flex-direction:column;align-items:stretch}.btn{text-align:center;min-height:44px}.addfact{flex-wrap:wrap}.addfact input{flex-basis:100%}section{padding:16px}}
@@ -1210,8 +1212,8 @@ ${areas.map(pane).join('\n')}
 <div class="sheet" id="sheet" hidden><div class="dhead"><b>Menu</b><button type="button" id="sheetClose" aria-label="Close">✕</button></div><nav aria-label="All areas">${menu}</nav>${acts}</div>
 <script>
 (function () {
-  var panes = [].slice.call(document.querySelectorAll('.pane'));
   var menuLinks = [].slice.call(document.querySelectorAll('[data-tab]'));
+  var keepScroll = false;
   var sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim'), moreBtn = document.getElementById('moreBtn');
   var ALIAS = ${JSON.stringify(ALIAS)};
   function openMenu(open) {
@@ -1226,6 +1228,7 @@ ${areas.map(pane).join('\n')}
   [].slice.call(sheet.querySelectorAll('a')).forEach(function (a) { a.addEventListener('click', function () { openMenu(false); }); });
   // The address says where we are: #tab-health (an area), #health-meals (a part, or a section inside one).
   function route() {
+    var panes = [].slice.call(document.querySelectorAll('.pane'));
     var id = decodeURIComponent(location.hash.slice(1));
     if (ALIAS[id]) id = ALIAS[id];
     var el = id ? document.getElementById(id) : null;
@@ -1248,10 +1251,75 @@ ${areas.map(pane).join('\n')}
     menuLinks.forEach(function (a) { var on = a.getAttribute('data-tab') === pane.id.slice(4); a.classList.toggle('on', on); if (on && a.closest('.bar')) inBar = true; });
     moreBtn.classList.toggle('on', !inBar);
     var first = part && (sec || part.querySelector(':scope > section'));
+    if (keepScroll) { keepScroll = false; return; }
     if (el && el !== pane && el !== part && el !== first) el.scrollIntoView(); else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
   route();
+  // Buttons work in the background: the form goes by fetch, the fresh page is fetched and its content swapped
+  // in, the message shows as a toast, and the page neither reloads nor jumps. Anything odd falls back to a
+  // normal submit, so nothing depends on this.
+  var toastTimer;
+  function toast(notice) {
+    var old = document.querySelector('.toast'); if (old) old.remove();
+    if (!notice) return;
+    notice.classList.add('toast'); notice.setAttribute('role', 'status');
+    document.body.appendChild(notice);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { notice.classList.add('gone'); setTimeout(function () { notice.remove(); }, 400); }, notice.classList.contains('error') ? 9000 : 4500);
+  }
+  function swap(html, hash) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var fresh = doc.querySelector('main'), main = document.querySelector('main');
+    if (!fresh || !main) { location.reload(); return; }
+    var notice = fresh.querySelector('.notice'); if (notice) notice.remove();
+    var y = window.scrollY;
+    main.innerHTML = fresh.innerHTML;
+    // scripts inside the swapped content (a QR code poll, a countdown) only run when added afresh
+    [].slice.call(main.querySelectorAll('script')).forEach(function (old) { var sc = document.createElement('script'); sc.textContent = old.textContent; old.parentNode.replaceChild(sc, old); });
+    var side = doc.querySelector('aside.side nav'), here = document.querySelector('aside.side nav');
+    if (side && here) here.innerHTML = side.innerHTML;
+    menuLinks = [].slice.call(document.querySelectorAll('[data-tab]'));
+    var target = hash || location.hash;
+    keepScroll = target === location.hash;
+    if (target !== location.hash) location.hash = target; else route();
+    if (keepScroll === false && target === location.hash) window.scrollTo(0, y);
+    toast(notice);
+    armWait();
+  }
+  var waitTimer;
+  // Something is being prepared (website suggestions, a running task): look again shortly, in the background.
+  function armWait() {
+    clearTimeout(waitTimer);
+    if (document.querySelector('[data-wait]')) waitTimer = setTimeout(function () { window.panelRefresh(); }, 15000);
+  }
+  function load(to) {
+    var i = to.indexOf('#'), hash = i >= 0 ? to.slice(i) : '', path = i >= 0 ? to.slice(0, i) : to;
+    return fetch(path, { headers: { 'X-Panel': 'fetch' }, credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('page ' + r.status); return r.text(); })
+      .then(function (html) { swap(html, hash); });
+  }
+  window.panelRefresh = function () { load(location.pathname + location.search + location.hash).catch(function () { location.reload(); }); };
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (e.defaultPrevented || !(f instanceof HTMLFormElement) || (f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+    if (f.hasAttribute('data-reload') || f.enctype === 'multipart/form-data' || f.target || !window.fetch || !window.DOMParser) return;
+    var sub = e.submitter, action = (sub && sub.getAttribute('formaction')) || f.getAttribute('action') || location.pathname;
+    if (!action.startsWith('/')) return;
+    e.preventDefault();
+    var fd = new FormData(f);
+    if (sub && sub.name) fd.append(sub.name, sub.value);
+    f.setAttribute('aria-busy', 'true');
+    fetch(action, { method: 'POST', body: new URLSearchParams(fd), headers: { 'X-Panel': 'fetch' }, credentials: 'same-origin' })
+      .then(function (r) {
+        var type = r.headers.get('content-type') || '';
+        if (type.indexOf('application/json') >= 0) return r.json().then(function (j) { if (j && j.to) return load(j.to); location.reload(); });
+        if (type.indexOf('text/html') >= 0) return r.text().then(function (html) { swap(html, location.hash); });
+        location.reload();
+      })
+      .catch(function () { f.removeAttribute('aria-busy'); f.submit(); })
+      .then(function () { f.removeAttribute('aria-busy'); });
+  });
   // An update is running: Max restarts during it. Look every 10 s; reload when he's back.
   if (document.querySelector('[data-updating]')) {
     var down = false;
@@ -1261,7 +1329,7 @@ ${areas.map(pane).join('\n')}
     setTimeout(function () { if (!down) location.reload(); }, 30000);
   }
   // Something is being prepared (website suggestions): look again shortly.
-  if (document.querySelector('[data-wait]')) setTimeout(function () { location.reload(); }, 15000);
+  armWait();
 })();
 </script></body></html>`;
 }

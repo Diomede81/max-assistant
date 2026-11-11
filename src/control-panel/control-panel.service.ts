@@ -175,6 +175,7 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (req.headers['x-panel'] === 'fetch') (res as ServerResponse & { panelFetch?: boolean }).panelFetch = true;
     // Never inside another website's frame (click tricks), no guessing of file types, no leaking addresses.
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
@@ -1555,8 +1556,17 @@ export class ControlPanelService implements OnModuleInit, OnModuleDestroy {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body, null, 2));
   }
 
+  /**
+   * After an action: back to the page. A button pressed in the browser sends its form in the background
+   * (X-Panel: fetch) and gets the address as JSON instead of a redirect, so it can fetch the fresh page and
+   * swap it in without reloading.
+   */
   private redirect(res: ServerResponse, to: string): void {
     if (res.headersSent) return;
+    if ((res as ServerResponse & { panelFetch?: boolean }).panelFetch) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(JSON.stringify({ to }));
+      return;
+    }
     res.writeHead(302, { Location: to }).end();
   }
 

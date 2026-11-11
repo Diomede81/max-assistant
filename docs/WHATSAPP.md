@@ -32,6 +32,10 @@ with 🤖 so you can tell his messages from yours. Anything you'd ask him out lo
 "remind me at 6 to call Mum", "turn off the heating", "how do I get to Bath by 10?". He remembers the chat while
 it goes on, and files it in memory once it has been quiet for half an hour, like a spoken conversation.
 
+- **A stronger model answers here.** Spoken replies need a fast model; typed ones don't. WhatsApp replies come
+  from the model chosen for **WhatsApp chat** under Settings → AI models, or, until you pick one, the **Complex
+  tasks** model, so reviewing a plan or a request with several steps is done properly the first time. Replies
+  may run longer than spoken ones. If that model fails, the main one answers that message.
 - **Voice notes work too**: send one in your own chat and Max listens to it with his own speech-to-text (the
   local Whisper on the box, language detected) and answers in writing. Voice notes in chats he may see are
   turned into words the same way, so "what did Magda say?" includes them. The audio is never kept, only the

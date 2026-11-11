@@ -13,6 +13,7 @@ Max uses an AI model in two kinds of places:
 | Website suggestions | Suggests news websites for your interests | Broad knowledge of the web; runs rarely |
 | Filing conversations | After each conversation, decides what to remember and where | Reliable and cheap; runs often |
 | Memory tidy-up | Rolls old notes into weekly and monthly digests | Cheap; runs in the background |
+| WhatsApp chat | Answers when you write to Max on WhatsApp (reviewing a plan, a question with several steps). Until you pick one, the Complex tasks model answers, or the main model if none | A strong, careful model: typing has no rush, and it finishes multi-step requests without being asked twice |
 | Complex tasks | Travel planning, calendar questions and other jobs with several steps, handed over by the conversation | A strong, careful model (e.g. DeepSeek); a task takes up to a minute |
 | Scheduled tasks | The tasks you schedule under Routines, unless a task names its own model | A strong, careful model; each task can also pick its own |
 | Health plans | Exercise routines and meal plans from the websites you chose | Good writing and care with dietary rules |
